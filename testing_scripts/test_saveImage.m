@@ -27,5 +27,17 @@ while exist(testFile, 'file') == 2
     end
 end
 
-imwrite(array, testFile);
+if isa(array, 'single')
+    t = Tiff(testFile, 'w');
+    setTag(t, 'ImageLength', size(array, 1))
+    setTag(t, 'ImageWidth',  size(array, 2))
+    setTag(t, 'Photometric', Tiff.Photometric.MinIsBlack);
+    setTag(t, 'SampleFormat', Tiff.SampleFormat.IEEEFP);
+    setTag(t, 'BitsPerSample', 32)
+    setTag(t, 'SamplesPerPixel', 1)
+    setTag(t, 'PlanarConfiguration', Tiff.PlanarConfiguration.Chunky);
+    t.write(array);
+else
+    imwrite(array, testFile);
+end
 fprintf("'%s' saved\n", testFile);

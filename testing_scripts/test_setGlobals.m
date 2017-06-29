@@ -1,7 +1,7 @@
 function test_setGlobals()
 
 global TESTDIR;
-TESTDIR = 'C:/Users/husby036/Documents/Cprojects/test_s2s/testFiles';
+TESTDIR = test_getTestdir();
 
 global PREFIX_RUNNUM;
 PREFIX_RUNNUM = 'CURRENT_RUNNUM_';

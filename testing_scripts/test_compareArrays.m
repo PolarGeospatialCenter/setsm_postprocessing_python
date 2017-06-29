@@ -12,6 +12,10 @@ end
 % end
 
 
+if ~isequal(size(arr1), size(arr2))
+    error('Input arrays for comparison differ in shape.');
+end
+
 diff = single(arr2) - single(arr1);
 
 diff_bool = diff;

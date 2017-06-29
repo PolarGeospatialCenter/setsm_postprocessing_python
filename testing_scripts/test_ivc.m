@@ -51,6 +51,7 @@ fprintf(['' ...
         '(browse/list) [runnum] [imgnum]\n' ...
         'add [browse_1] [browse_2] ... [browse_n]\n' ...
         'remove [selection_1] [selection_2] ... [selection_n]\n' ...
+        'delete [selection_1] [selection_2] ... [selection_n]\n' ...
         'refresh\n' ...
         'view {raster/image} [selection_1] [selection_2] ... [selection_n]\n' ...
         'compare {raster/image} [selection_1 selection_2]\n' ...
@@ -74,6 +75,22 @@ while ~ready
         
         if strcmp(command_args(1), 'figclose')
             close all;
+            
+            command_args(1) = [];
+        end
+        
+        if strcmp(command_args(1), 'delete')
+            if isempty(arg_nums)
+                to_delete = selection;
+            else
+                to_delete = selection(arg_nums);
+            end
+            
+            for i = 1:length(to_delete)
+                delete([TESTDIR,'/',char(to_delete(i))]);
+            end
+            
+            command_args(1) = 'refresh';
         end
         
         if strcmp(command_args(1), 'refresh')
@@ -177,6 +194,22 @@ while ~ready
                 elseif strcmp(command_args(1), 'compare')
                     if isempty(arg_nums)
                         [~, compare] = test_matchFnames(selection);
+                        if isempty(compare)
+                            if length(selection) == 2
+                                arr1 = test_readArray(selection(1));
+                                arr2 = test_readArray(selection(2));
+                                if isequal(size(arr1), size(arr2))
+                                    compare = repmat("", [1, 2]);
+                                    compare(1,1) = selection(1);
+                                    compare(1,2) = selection(2);
+                                else
+                                    errmsg = 'Selected pair of images differ in array shape.\n';
+                                end
+                            else
+                                errmsg = 'No images could be automatically matched for comparison.\n';
+                            end
+                        end
+                            
                     elseif length(arg_nums) == 1
                         errmsg = "Zero or two number arguments must be given to 'compare' command.\n";
                         error('CUSTOM MESSAGE');
@@ -231,7 +264,11 @@ while ~ready
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
                     fprintf("Running %s test_compareImages('%s', '%s', '%s', %d)\n", ...
                         progress, compare_args(i,1), compare_args(i,2), figtitle, image_type);
-                    test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type);
+                    try
+                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type);
+                    catch ME
+                        fprintf(2, "--> ERROR: %s\n", ME.message);
+                    end
                 end
                 
             end
@@ -249,6 +286,9 @@ while ~ready
             while exist(FILE_COMPARE_READY, 'file') == 2
                 ;
             end
+            
+            close all;
+            
             return;
         end
         

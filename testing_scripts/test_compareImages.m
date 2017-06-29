@@ -56,5 +56,6 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
 end
 
 if single
+    figure('Name', figtitle);
     test_showArray(arr1, imgFile1);
 end
