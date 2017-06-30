@@ -278,9 +278,10 @@ def saveArrayAsTiff(array, dest,
             else:
                 ds_out.SetProjection(ds_like.GetProjectionRef())
         else:
-            raise InvalidArgumentError("Shape of like_rasterFile '{}' does not match the shape of 'array' to be saved".format(
-                like_rasterFile
-            ))
+            raise InvalidArgumentError(
+                "Shape of like_rasterFile '{}' does not match the shape of 'array' to be saved".format(
+                like_rasterFile)
+            )
 
     else:
         if array.shape[1] == X.size and array.shape[0] == Y.size:
@@ -292,7 +293,9 @@ def saveArrayAsTiff(array, dest,
             else:
                 print "WARNING: Missing projection reference for saved raster '{}'".format(dest)
         else:
-            raise InvalidArgumentError("Lengths of [X, Y] grid coordinates do not match the shape of 'array' to be saved")
+            raise InvalidArgumentError(
+                "Lengths of [X, Y] grid coordinates do not match the shape of 'array' to be saved"
+            )
 
     ds_out.GetRasterBand(1).WriteArray(array_out)
     ds_out = None  # Dereference dataset to initiate write to disk of intermediate image.
@@ -1010,8 +1013,8 @@ def test_getNextImgnum(runnum=test_getRunnum(), compare=False, concurrent=False)
 
 def test_saveImage(array, PILmode, fname='testImage_py.tif'):
 
-    if '.tif' not in fname:
-        fname = fname+'.tif'
+    if not fname.endswith('.tif'):
+        fname += '.tif'
 
     testFile = os.path.join(TESTDIR, fname)
     while os.path.isfile(testFile):
@@ -1065,8 +1068,8 @@ def test_saveRaster(array, fname='testRaster_py.tif',
                     like_rasterFile=None,
                     nodataVal=None, dtype_out=None, force_dtype=False, skip_casting=False):
 
-    if '.tif' not in fname:
-        fname = fname+'.tif'
+    if not fname.endswith('.tif'):
+        fname += '.tif'
 
     if proj_ref is None:
         print "WARNING: No proj_ref argument given to test_saveRaster()."
@@ -1151,6 +1154,15 @@ def test_waitForComparison(expected_imgnum):
 
 def test_FP(demFile):
 
+    if not demFile.endswith('.tif'):
+        demFile += '.tif'
+    if not os.path.isfile(demFile):
+        demFile_temp = os.path.join(TESTDIR, demFile)
+        if os.path.isfile(demFile_temp):
+            demFile = demFile_temp
+        else:
+            raise InvalidArgumentError("No such demFile: '{}'".format(demFile))
+
     Z, X, Y = oneBandImageToArrayZXY(demFile)
     fp_vertices = getFPvertices(Z, X, Y, nodataVal=-9999)
     num = len(fp_vertices[0])
@@ -1170,6 +1182,15 @@ Y: {}
 
 
 def test_shape(demFile):
+
+    if not demFile.endswith('.tif'):
+        demFile += '.tif'
+    if not os.path.isfile(demFile):
+        demFile_temp = os.path.join(TESTDIR, demFile)
+        if os.path.isfile(demFile_temp):
+            demFile = demFile_temp
+        else:
+            raise InvalidArgumentError("No such demFile: '{}'".format(demFile))
 
     shapefileFile = demFile.replace('dem.tif', 'dem_boundary.shp')
 
@@ -1192,27 +1213,3 @@ def test_shape(demFile):
     # Dereference datasource to initiate write to disk.
     ds = None
     print "'{}' saved".format(shapefileFile)
-
-
-def test_FP_q(demName):
-
-    stripdir = 'C:/Users/husby036/Documents/Cprojects/test_stripes/dry_valleys/done/'
-    demFile = stripdir + demName + '.tif'
-
-    return test_FP(demFile)
-
-
-def test_shape_q(demName):
-
-    stripdir = 'C:/Users/husby036/Documents/Cprojects/test_stripes/dry_valleys/done/'
-    demFile = stripdir + demName + '.tif'
-
-    test_shape(demFile)
-
-
-def test_shape_qL(demName):
-
-    stripdir = '/mnt/pgc/data/scratch/erik/test_stripes/done/'
-    demFile = stripdir + demName + '.tif'
-
-    test_shape(demFile)

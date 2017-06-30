@@ -29,7 +29,7 @@ class CornerCoords:
     corner points of a raster dataset (ds), allowing for nonzero rotation factors.
     """
     def __init__(self, ds, spatialRef=False):
-        self.coords = self.get_corner_coords(ds)
+        self.coords = self.get_corner_coords(self, ds)
         self.x = self.coords[:, 0]
         self.y = self.coords[:, 1]
         self.sr = osr.SpatialReference(ds.GetProjectionRef()) if spatialRef else None

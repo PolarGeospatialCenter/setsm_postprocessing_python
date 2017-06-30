@@ -39,7 +39,7 @@ def generateMasks(matchFile):
         if setsmVersion is None:
             setsmVersion = 2.03082016
             print "WARNING: Missing SETSM Version number in '{}'".format(metaFile)
-            print "Using settings for default 'SETSM Version={}'".format(setsmVersion)
+            print "--> Using settings for default 'SETSM Version={}'".format(setsmVersion)
 
     matchtag, res = rat.oneBandImageToArray_res(matchFile)
     matchtag = matchtag.astype(np.bool)
@@ -60,7 +60,7 @@ def generateMasks(matchFile):
     # Set edgemask filtering parameters based on SETSM version and image resolution.
     if setsmVersion < 2.01292016:       # This comparison is ridiculously stupid, I know.
                                         # But what can ya do?
-        n = int(math.floor(21*2/res))   # data density kernal [was "kernel_size"]
+        n = int(math.floor(21*2/res))   # data density kernel [was "kernel_size"]
         Pmin = 0.8                      # data density threshold for masking [was "map_threshold"]
         Amin = int(2000/res)            # minimum data cluster area [was "cluster_area_min"]
         cf = 0.5                        # boundary curvature factor (0 = convex hull, 1 = point boundary)
@@ -96,11 +96,8 @@ def generateMasks(matchFile):
     ###########################################################
 
     print "Step 3: Deriving datamask"
-    if ~np.any(edgemask):
-        datamask = edgemask
-    else:
-        matchtag[~edgemask] = 0
-        datamask = getDataDensityMask(matchtag, n, Pmin, Amin, Amax)
+    matchtag[~edgemask] = 0
+    datamask = getDataDensityMask(matchtag, n, Pmin, Amin, Amax)
     rat.saveArrayAsTiff(datamask.astype(np.uint8), matchFile.replace('matchtag.tif', 'datamask.tif'),
                         like_rasterFile=matchFile)
 
@@ -350,9 +347,15 @@ def add_edge(edges, edge_points, coords, i, j):
 #########################
 
 
-def test_DDM(matchName):
+def test_DDM(matchFile):
 
-    testdir = 'C:/Users/husby036/Documents/Cprojects/'
-    matchFile = testdir + matchName + '.tif'
+    if not matchFile.endswith('.tif'):
+        matchFile += '.tif'
+    if not os.path.isfile(matchFile):
+        matchFile_temp = os.path.join(rat.TESTDIR, matchFile)
+        if os.path.isfile(matchFile_temp):
+            matchFile = matchFile_temp
+        else:
+            raise rat.InvalidArgumentError("No such matchFile: '{}'".format(matchFile))
 
     generateMasks(matchFile)

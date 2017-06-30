@@ -116,9 +116,7 @@ def main():
         sys.exit(1)
 
     # Create strip output directory if it doesn't already exist.
-    isFirstRun = False
     if not os.path.isdir(abs_dstdir):
-        isFirstRun = True
         os.makedirs(abs_dstdir)
 
     # Find unique strip IDs (<catid1_catid2>).
@@ -134,7 +132,7 @@ def main():
         # -t    scenes2strips_single.py useless.
         # If output does not already exist, add to task list.
         dst_dems = glob.glob(os.path.join(abs_dstdir, '*'+stripid+'_seg*_dem.tif'))
-        if not dst_dems and args.restrip:
+        if dst_dems and not (args.remask or args.restrip):
             print "{} output files exist, skipping".format(stripid)
 
         else:
@@ -142,7 +140,7 @@ def main():
             # If PBS, submit to scheduler.
             if args.pbs:
                 job_name = 's2s{:04g}'.format(i)
-                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6},p7={7},p8={8} {9}'.format(
+                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6},p7={7} {9}'.format(
                     job_name,
                     single_script,
                     abs_srcdir,
@@ -151,14 +149,13 @@ def main():
                     '--no-entropy' * args.no_entropy,
                     '--remask' * args.remask,
                     '--restrip' * args.restrip,
-                    '--first-run' * isFirstRun,
                     abs_qsubpath
                 )
                 print cmd
 
             # ...else run Python.
             else:
-                cmd = r'{0} {1} {2} {3} {4} {5} {6} {7} {8}'.format(
+                cmd = r'{0} {1} {2} {3} {4} {5} {6} {7}'.format(
                     'python',
                     single_script,
                     abs_srcdir,
@@ -166,8 +163,7 @@ def main():
                     args.res,
                     '--no-entropy' * args.no_entropy,
                     '--remask' * args.remask,
-                    '--restrip' * args.restrip,
-                    '--first-run' * isFirstRun
+                    '--restrip' * args.restrip
                 )
                 print r'{}, {}'.format(i, cmd)
 

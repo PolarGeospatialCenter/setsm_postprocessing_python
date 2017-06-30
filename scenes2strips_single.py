@@ -60,10 +60,10 @@ def main():
         help="Recreate and overwrite all existing output strips (mosaicking output)."
     )
     parser.add_argument(
-        '--first-run',
+        '--dryrun',
         action='store_true',
         default=False,
-        help="Skip strip output existence checks, but do filtering checks."
+        help="Print actions without executing."
     )
     args = parser.parse_args()
 
@@ -105,9 +105,7 @@ def main():
         sys.exit(1)
 
     # Create strip output directory if it doesn't already exist.
-    isFirstRun = args.first_run
     if not os.path.isdir(abs_dstdir):
-        isFirstRun = True
         os.makedirs(abs_dstdir)
 
     # Make sure all matchtag and ortho files exist. If missing, skip.
@@ -126,7 +124,7 @@ def main():
 
     skip = False
     reprocess = False
-    if args.restrip or isFirstRun:
+    if args.remask or args.restrip:
         reprocess = True
     else:
         # Perform existence check.
@@ -156,20 +154,13 @@ def main():
     if reprocess:
         dst_output = glob.glob(os.path.join(abs_dstdir, '*'+args.stripid+'_seg*'))
         if dst_output:
-            if isFirstRun:
-                print (
-                    "ERROR: --first-run argument was given, but strip output exists for {}".
-                    format(args.stripid)
-                )
-                print "Exiting."
-                sys.exit(1)
-            print "{} old strip output exists, deleting and reprocessing".format(args.stripid)
+            print "old strip output exists, deleting and reprocessing"
             for f in dst_output:
                 # print "removed {}".format(f)
                 if not args.dryrun:
                     os.remove(f)
     elif skip:
-        print "{} younger strip than scene masks exists, skipping".format(args.stripid)
+        print "younger strip than scene masks exists, skipping"
         sys.exit(1)
 
     # Filter all scenes in this strip.
@@ -192,7 +183,7 @@ def main():
         print "building segment {}".format(segnum)
         try:
             X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, output_list = scenes2strips(
-                args.src, input_list
+                args.srcdir, input_list
             )
         except MissingFileError as err:
             print >>sys.stderr, err.msg
@@ -213,7 +204,7 @@ def main():
         saveArrayAsTiff(O, output_orthoFile, X, Y, proj_ref, nodataVal=0,     dtype_out='int16')
 
         time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
-        writeStripMeta(output_metaFile, args.src, output_list, trans, rmse, proj4, fp_vertices, time)
+        writeStripMeta(output_metaFile, args.srcdir, output_list, trans, rmse, proj4, fp_vertices, time)
 
         input_list = list(set(input_list).difference(set(output_list)))
 

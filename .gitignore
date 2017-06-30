@@ -2,3 +2,6 @@
 *.csv
 *.pyc
 *.asv
+
+.idea/*
+testing_scripts/link_new_files_from_main.bat
