@@ -246,6 +246,9 @@ while ~ready
                 num_format = ['%',num2str(digits),'d'];
                 
                 fprintf("\n");
+                if compare_total > 0
+                    fprintf("[t_arr1, t_arr2, t_diff, t_diff_bool] = \n");
+                end
                 for i = 1:compare_total
                     if strcmp(compare_args(i,2), "")
                         figtitle = compare_args(i,1);
@@ -262,7 +265,7 @@ while ~ready
                     end
                     
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
-                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %d)\n", ...
+                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %d);\n", ...
                         progress, compare_args(i,1), compare_args(i,2), figtitle, image_type);
                     try
                         test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type);
@@ -372,7 +375,7 @@ while ~ready
         fprintf('(Press [ENTER] to start auto view/compare of selected images)\n\n');
     end
     
-    next_command = input('>> ', 's');
+    next_command = input('ivc>> ', 's');
     
     if exist('expected_num', 'var')
         if strcmp(next_command, '')
