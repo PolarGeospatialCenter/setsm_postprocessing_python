@@ -1,4 +1,5 @@
 # Version 2.0; Ryan Shellberg, Erik Husby; Polar Geospatial Center, University of Minnesota; 2017
+# Translated from MATLAB code written by Ian Howat, Ohio State University, 2017
 
 from __future__ import division
 import math

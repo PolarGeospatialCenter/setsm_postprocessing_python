@@ -29,23 +29,33 @@ PROJREF_POLAR_STEREO = """PROJCS["unnamed",GEOGCS["WGS 84",DATUM["WGS_1984",SPHE
 
 class RasterIOError(Exception):
     def __init__(self, msg):
-        self.msg = "RasterIOError: " + msg
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
 class UnsupportedDataTypeError(Exception):
     def __init__(self, msg):
-        self.msg = "UnsupportedDataTypeError: " + msg
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
 class InvalidArgumentError(Exception):
     def __init__(self, msg):
-        self.msg = "InvalidArgumentError: " + msg
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
 class UnsupportedMethodError(Exception):
     def __init__(self, msg):
-        self.msg = "UnsupportedMethodError: " + msg
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
 class TestingError(Exception):
     def __init__(self, msg):
-        self.msg = "TestingError: " + msg
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
 
 

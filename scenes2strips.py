@@ -1,4 +1,5 @@
-# Version 2.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2016
+# Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2016
+# Translated from MATLAB code written by Ian Howat, Ohio State University, 2017
 
 from __future__ import division
 import os.path
@@ -14,13 +15,11 @@ import raster_array_tools as rat
 from mask_scene import generateMasks
 
 
-class MissingFileError(Exception):
-    def __init__(self, msg):
-        self.msg = "MissingFileError: " + msg
-
 class DimensionError(Exception):
     def __init__(self, msg):
-        self.msg = "DimensionError: " + msg
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
 
 class CornerCoords:
@@ -81,6 +80,8 @@ class CornerCoords:
 
 
 def rectFootprint(*geoms):
+    # TODO: Write docstring.
+
     minx = float('inf')
     miny = float('inf')
     maxx = float('-inf')
@@ -106,10 +107,6 @@ def rectFootprint(*geoms):
 
     return ogr.Geometry(wkt=fp_wkt)
 
-
-# Start of functions created specifically for mosaicking,
-# translated from MATLAB functions written by Ian Howat,
-# Ohio State University, 2017.
 
 def orderPairs(demdir, files):
     """
@@ -165,28 +162,23 @@ def orderPairs(demdir, files):
     return files_ordered
 
 
-def loaddata(demFile, matchFile, orthoFile, edgemaskFile, datamaskFile):
+def loaddata(demFile, matchFile, orthoFile, maskFile):
     """
     Load data files and perform basic conversions.
     """
     z, x_dem, y_dem = rat.oneBandImageToArrayZXY(demFile)
+    # TODO: Figure out when the following conversion is actually necessary.
     # Pixel value of -9999 is nodata; interpret it as NaN.
     z[np.where(z == -9999)] = np.nan
 
-    if os.path.isfile(matchFile):
-        m = rat.oneBandImageToArray(matchFile).astype(np.bool)  # Shows uint8 in MATLAB.
-        if m.shape != z.shape:
-            print "WARNING: matchFile '{}' has wrong dimensions".format(matchFile)
-            print "Interpolating to match associated dem's dimensions"
-            x, y = rat.getXYarrays(matchFile)
-            m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
-            m[np.where(np.isnan(m))] = 0  # Convert back to bool.
-            m = m.astype(np.bool)
-            new_matchFile = matchFile.replace('matchtag.tif', 'matchtag_s2s.tif')
-            rat.saveArrayAsTiff(m, new_matchFile, like_rasterFile=demFile)
-            matchFile = new_matchFile
-    else:
-        raise MissingFileError("matchFile '{}' could not be found".format(matchFile))
+    m = rat.oneBandImageToArray(matchFile).astype(np.bool)
+    if m.shape != z.shape:
+        print "WARNING: matchFile '{}' has wrong dimensions".format(matchFile)
+        print "Interpolating to match associated dem's dimensions"
+        x, y = rat.getXYarrays(matchFile)
+        m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
+        m[np.where(np.isnan(m))] = 0  # Convert back to bool.
+        m = m.astype(np.bool)
 
     if os.path.isfile(orthoFile):
         o = rat.oneBandImageToArray(orthoFile).astype(np.uint16)
@@ -198,39 +190,17 @@ def loaddata(demFile, matchFile, orthoFile, edgemaskFile, datamaskFile):
             o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
             o[np.where(np.isnan(o))] = 0  # Convert back to uint16.
             o = o.astype(np.uint16)
-            new_orthoFile = orthoFile.replace('ortho.tif', 'ortho_s2s.tif')
-            rat.saveArrayAsTiff(o, new_orthoFile, like_rasterFile=demFile)
-            orthoFile = new_orthoFile
     else:
-        raise MissingFileError("orthoFile '{}' could not be found".format(orthoFile))
+        o = np.zeros(z.shape)
 
-    try:
-        if os.path.isfile(edgemaskFile):
-            em = rat.oneBandImageToArray(edgemaskFile).astype(np.bool)  # Shows int32 in MATLAB,
-                                                                        # but should be logical.
-            if em.shape != z.shape:
-                raise DimensionError("edgemaskFile '{}' has wrong dimensions".format(edgemaskFile))
-        else:
-            raise MissingFileError("edgemaskFile '{}' could not be found".format(edgemaskFile))
+    if maskFile is not None:
+        md = rat.oneBandImageToArray(maskFile).astype(np.bool)
+        if md.shape != z.shape:
+            raise DimensionError("maskFile '{}' has wrong dimensions".format(maskFile))
+    else:
+        md = np.ones(z.shape, dtype=bool)
 
-        if os.path.isfile(datamaskFile):
-            dm = rat.oneBandImageToArray(datamaskFile).astype(np.bool)  # Shows int32 in MATLAB,
-                                                                        # but should be logical.
-            if dm.shape != z.shape:
-                raise DimensionError("datamaskFile '{}' has wrong dimensions".format(datamaskFile))
-        else:
-            raise MissingFileError("datamaskFile '{}' could not be found".format(datamaskFile))
-
-    except (MissingFileError, DimensionError) as err:
-        print >>sys.stderr, err.msg
-        print "Deriving new edgemask and datamask from associated matchtag\n"
-        print "Running data_density_mask.py:"
-        generateMasks(matchFile)
-        em = rat.oneBandImageToArray(edgemaskFile).astype(np.bool)
-        dm = rat.oneBandImageToArray(datamaskFile).astype(np.bool)
-        print
-
-    return x_dem, y_dem, z, m, o, em, dm, matchFile, orthoFile
+    return x_dem, y_dem, z, m, o, md
 
 
 def cropnans(matrix, buff=0):
@@ -263,11 +233,11 @@ def cropnans(matrix, buff=0):
     return (rowcrop_i, rowcrop_j+1), (colcrop_i, colcrop_j+1)
 
 
-def applyMasks(x, y, z, match, ortho, edgemask, datamask):
+def applyMasks(x, y, z, match, ortho, mask):
+    # TODO: Write docstring.
 
-    z[~datamask] = np.nan
-    match[~datamask] = 0
-    ortho[~edgemask] = 0
+    z[~mask] = np.nan
+    match[~mask] = 0
 
     # If there is any good data, crop the matrices of bordering NaNs.
     if np.any(~np.isnan(z)):
@@ -283,6 +253,7 @@ def applyMasks(x, y, z, match, ortho, edgemask, datamask):
 
 
 def regrid(x, y, z, match, ortho):
+    # TODO: Write docstring.
 
     dx = x[1] - x[0]
     dy = y[1] - y[0]
@@ -307,7 +278,7 @@ def regrid(x, y, z, match, ortho):
 
 
 def batchConcatenate(pairs, direction, axis_num):
-    # Function added by Erik Husby
+    # TODO: Write docstring.
 
     if direction in ('left', 'up'):
         for i in range(len(pairs)):
@@ -328,7 +299,6 @@ def expandCoverage(Z, M, O, R1, direction):
     (('left' or 'right') / ('up' or 'down'))
     must be passed in for direction.
     """
-    # Function added by Erik Husby
 
     # NumPy FutureWarning stating that
     # numpy.full(shapeTup, False/0) will return an array of dtype('bool'/'int64')
@@ -363,6 +333,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     % 2010. z2r is the regiestered DEM, p is the z,x,y transformation
     % parameters and rms is the rms of the transformation in the vertical.
     """
+
     # Maximum offset allowed
     maxp = 15
 
@@ -488,7 +459,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     return np.array([z2out, p, d0])
 
 
-def scenes2strips(demdir, demFile_list):
+def scenes2strips(demdir, demFile_list, nomask=False):
     """
     function [X,Y,Z,M,O,trans,rmse,f]=scenes2strips(demdir,f)
     %SCENES2STRIPS merge scenes into strips
@@ -507,6 +478,7 @@ def scenes2strips(demdir, demFile_list):
     %
     % Version 3.0, Ian Howat, Ohio State University, 2015
     """
+
     # Order scenes in north-south or east-west direction by aspect ratio.
     print "ordering {} scenes".format(len(demFile_list))
     files_ordered = orderPairs(demdir, demFile_list)
@@ -515,27 +487,30 @@ def scenes2strips(demdir, demFile_list):
     # -t     output strips are saved.
     proj_ref = rat.getProjRef(os.path.join(demdir, files_ordered[0]))
 
-    # Intialize output stats.
+    # Initialize output stats.
     trans = np.zeros((3, len(files_ordered)))
     rmse = np.zeros(len(files_ordered))
 
     # File loop.
     for i in range(len(files_ordered)):
 
-        # Construct filesnames.
+        # Construct filenames.
         demFile = os.path.join(demdir, files_ordered[i])
         matchFile = demFile.replace('dem.tif', 'matchtag.tif')
         orthoFile = demFile.replace('dem.tif', 'ortho.tif')
-        # %shadeFile= strrep(demFile,'dem.tif','dem_shade.tif');
-        edgemaskFile = demFile.replace('dem.tif', 'edgemask.tif')
-        datamaskFile = demFile.replace('dem.tif', 'datamask.tif')
+        # %shadeFile= demFile.replace('dem.tif','dem_shade.tif')
+        # %maskFile=  demFile.replace('dem.tif','mask.tif')
+
+        maskFile = None if nomask else demFile.replace('dem.tif','mask.tif')
 
         print "scene {} of {}: {}".format(i+1, len(files_ordered), demFile)
 
-        # print "Loading dem, match, ortho, edgemask, datamask"
-        x,y,z,m,o,em,dm, matchFile, orthoFile = loaddata(
-            demFile, matchFile, orthoFile, edgemaskFile, datamaskFile
-        )
+        try:
+            x,y,z,m,o,md = loaddata(demFile, matchFile, orthoFile, maskFile)
+        except Exception as e:
+            print "Data read error:"
+            print >>sys.stderr, e.msg
+            print "...skipping"
 
         # Check for no data.
         if ~dm.any():
@@ -543,17 +518,15 @@ def scenes2strips(demdir, demFile_list):
             continue
 
         # Apply masks.
-        # print "Applying masks"
-        x,y,z,m,o = applyMasks(x,y,z,m,o,em,dm)
+        x,y,z,m,o = applyMasks(x,y,z,m,o,md)
 
         dx = x[1] - x[0]
         dy = y[1] - y[0]
 
         # Fix grid so that x, y coordinates of
         # pixels in overlapping scenes will match up.
-        # TODO: The following still needs testing.
+        # TODO: The following function still needs testing.
         if ((x[1] / dx) % 1 != 0) or ((y[1] / dy) % 1 != 0):
-            # print "Regridding:"
             x,y,z,m,o = regrid(x,y,z,m,o)
 
         # If this is the first scene in strip,
@@ -564,7 +537,6 @@ def scenes2strips(demdir, demFile_list):
             continue
 
         # Pad new arrays to stabilize interpolation.
-        # print "Expanding strip coverage"
         buff = int(10*dx + 1)
         z = np.pad(z, buff, 'constant', constant_values=np.nan)
         m = np.pad(m, buff, 'constant', constant_values=0)
@@ -737,7 +709,6 @@ def scenes2strips(demdir, demFile_list):
         # Coregistration
 
         # Coregister this scene to the strip mosaic.
-        # print "Performing coregistration:\n"
         trans[:, i], rmse[i] = coregisterdems(
             Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
                x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
@@ -764,7 +735,6 @@ def scenes2strips(demdir, demFile_list):
             yi = np.round(yi, 4)
 
         # Interpolate the floating data to the reference grid.
-        # print "Interpolating dem, mask, ortho to reference grid"
         zi = rat.interp2_gdal(xi, yi, z-trans[0,i], Xsub, Ysub, 'linear')
         del z
 
@@ -783,7 +753,6 @@ def scenes2strips(demdir, demFile_list):
         del Xsub, Ysub
 
         # Remove border 0's introduced by nn interpolation.
-        # print "Cleaning up interpolated data borders"
         M3 = ~np.isnan(zi)
         M3 = ndimage.binary_erosion(M3, structure=np.ones((6, 6)))  # border cutline
 
@@ -798,7 +767,6 @@ def scenes2strips(demdir, demFile_list):
         del M4
 
         # Make weighted elevation grid.
-        # print "Making weighted grids to place in strip"
         A = Zsub*W + zi*(1-W)
         A[np.where( np.isnan(Zsub) & ~np.isnan(zi))] =   zi[np.where( np.isnan(Zsub) & ~np.isnan(zi))]
         A[np.where(~np.isnan(Zsub) &  np.isnan(zi))] = Zsub[np.where(~np.isnan(Zsub) &  np.isnan(zi))]
