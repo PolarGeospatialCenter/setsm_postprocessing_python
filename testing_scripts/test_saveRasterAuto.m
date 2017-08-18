@@ -18,17 +18,33 @@ if ~exist('projstr', 'var') || isempty(projstr)
 end
 
 
+if isstruct(Z)
+    array_order = ["dem", "match", "ortho", "mask"];
+    array_names = fieldnames(Z);
+    test_saveRasterAuto(eval(['Z.',char(array_names(1))]), X, Y, array_order(1), ...
+        keyword, descr, compare, concurrent, projstr);
+    for i = 2:length(array_names)
+        test_saveRasterAuto(eval(['Z.',char(array_names(i))]), X, Y, array_order(i), ...
+            keyword, descr, true, concurrent, projstr);
+    end
+    return;
+end
+
+if iscell(Z)
+    Z = Z{1,1};
+end
+
 % Determine the correct data type for saving the raster data.
 fmt = -1;
 nodata = -1;
 if strcmp(flavor, 'dem')
     fmt = 4;
     nodata = -9999;
+elseif strcmp(flavor, 'match') || strcmp(flavor, 'mask')
+    fmt = 1;
+    nodata = 0;
 elseif strcmp(flavor, 'ortho')
     fmt = 2;
-    nodata = 0;
-elseif strcmp(flavor, 'match') || strcmp(flavor, 'edge') || strcmp(flavor, 'data')
-    fmt = 1;
     nodata = 0;
 else
     error('Invalid argument flavor for raster: %s', flavor);
@@ -52,6 +68,6 @@ if isempty(imgnum)
 end
 testFname = sprintf('run%03d_%03d_ml_ras_%s_%dx%d%s.tif', ...
     runnum, imgnum, keyword, length(Y), length(X), description);
-Z(isnan(Z)) = -9999;
-test_saveRaster(Z, X, Y, fmt, nodata, projstr, testFname);
-Z(Z == -9999) = NaN;
+Z_copy = Z;
+Z_copy(isnan(Z_copy)) = nodata;
+test_saveRaster(Z_copy, X, Y, fmt, nodata, projstr, testFname);

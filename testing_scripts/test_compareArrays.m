@@ -45,11 +45,12 @@ cnts_diff_bool = histcounts(diff_bool);
 fprintf("--- statistics for boolean difference map ---\n");
 fprintf("(value, count):");
 for i = 1:length(vals_diff_bool)
-    fprintf(" (%d, %d)", vals_diff_bool(i), cnts_diff_bool(i));
+    fprintf(vals_diff_bool(i) + 1, ...
+        " (%d, %d)", vals_diff_bool(i), cnts_diff_bool(i));
 end
 fprintf("\n");
 
 if UL_nans > 0 || UR_nans > 0
-    fprintf("[(UL unique NaNs, %d) (UR unique NaNs, %d)]\n", ...
+    fprintf(2, "[(UL unique NaNs, %d) (UR unique NaNs, %d)]\n", ...
         UL_nans, UR_nans);
 end

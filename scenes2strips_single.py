@@ -8,7 +8,7 @@ from datetime import datetime
 
 from mask_scene import generateMasks
 from raster_array_tools import saveArrayAsTiff
-from scenes2strips import scenes2strips, MissingFileError
+from scenes2strips import scenes2strips
 
 
 def main():
@@ -181,13 +181,9 @@ def main():
     while len(input_list) > 0:
         segnum += 1
         print "building segment {}".format(segnum)
-        try:
-            X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, output_list = scenes2strips(
-                args.srcdir, input_list
-            )
-        except MissingFileError as err:
-            print >>sys.stderr, err.msg
-            sys.exit(1)
+        X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, output_list = scenes2strips(
+            args.srcdir, input_list
+        )
 
         stripid_full = output_list[0][0:47]
         output_demFile = os.path.join(
@@ -211,19 +207,15 @@ def main():
 
 def shouldSkipMasking(matchFile):
     matchFile_date = os.path.getmtime(matchFile)
-    skip_masking = True
-    for maskFile in (matchFile.replace('matchtag.tif', 'edgemask.tif'),
-                     matchFile.replace('matchtag.tif', 'datamask.tif')):
-        if not os.path.isfile(maskFile):  # Masking must be done.
-            skip_masking = False
-            break
+    maskFile = matchFile.replace('matchtag.tif', 'mask.tif')
+
+    if os.path.isfile(maskFile):
         # Update Mode - will only reprocess masks older than the matchtag file.
         maskFile_date = os.path.getmtime(maskFile)
-        if (maskFile_date - matchFile_date) < -6.9444e-04:
-            skip_masking = False
-            break
+        if (maskFile_date - matchFile_date) >= -6.9444e-04:
+            return True
 
-    return skip_masking
+    return False
 
 
 def writeStripMeta(o_metaFile, scenedir, dem_list,

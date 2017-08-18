@@ -340,23 +340,3 @@ def add_edge(edges, edge_points, coords, i, j):
         return
     edges.add((i, j))
     edge_points.append(coords[[i, j]])
-
-
-
-#########################
-### Testing Functions ###
-#########################
-
-
-def test_DDM(matchFile):
-
-    if not matchFile.endswith('.tif'):
-        matchFile += '.tif'
-    if not os.path.isfile(matchFile):
-        matchFile_temp = os.path.join(rat.TESTDIR, matchFile)
-        if os.path.isfile(matchFile_temp):
-            matchFile = matchFile_temp
-        else:
-            raise rat.InvalidArgumentError("No such matchFile: '{}'".format(matchFile))
-
-    generateMasks(matchFile)

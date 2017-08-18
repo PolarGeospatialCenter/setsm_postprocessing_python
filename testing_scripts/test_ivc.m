@@ -249,6 +249,7 @@ while ~ready
                 if compare_total > 0
                     fprintf("[t_arr1, t_arr2, t_diff, t_diff_bool] = \n");
                 end
+                x = onCleanup(@() fprintf(2, "Operation terminated by user.\n"));
                 for i = 1:compare_total
                     if strcmp(compare_args(i,2), "")
                         figtitle = compare_args(i,1);
@@ -273,6 +274,7 @@ while ~ready
                         fprintf(2, "--> ERROR: %s\n", ME.message);
                     end
                 end
+                clear x
                 
             end
             
@@ -375,7 +377,8 @@ while ~ready
         fprintf('(Press [ENTER] to start auto view/compare of selected images)\n\n');
     end
     
-    next_command = input('ivc>> ', 's');
+    fprintf(2, 'IVC>> ');
+    next_command = input('', 's');
     
     if exist('expected_num', 'var')
         if strcmp(next_command, '')
@@ -392,5 +395,3 @@ while ~ready
     
     command_args = string(strsplit(strtrim(command), ' '));
 end
-
-[singles, pairs] = test_matchFnames(selection);

@@ -12,7 +12,7 @@ from scipy import ndimage, interpolate, misc
 from skimage import morphology
 
 import raster_array_tools as rat
-from mask_scene import generateMasks
+import test
 
 
 class DimensionError(Exception):
@@ -25,7 +25,7 @@ class DimensionError(Exception):
 class CornerCoords:
     """
     This class is designed to make easily accessible the coordinates of the four
-    corner points of a raster dataset (ds), allowing for nonzero rotation factors.
+    corner points of a raster dataset ds, allowing for nonzero rotation factors.
     """
     def __init__(self, ds, spatialRef=False):
         self.coords = self.get_corner_coords(self, ds)
@@ -36,7 +36,7 @@ class CornerCoords:
     @staticmethod
     def get_corner_coords(self, ds):
         """
-        Returns a 5x2 matrix of corner coordinate pairs for the raster dataset.
+        Returns a 5x2 matrix of corner coordinate pairs for the raster dataset ds.
         Ordered with the top left corner first, goes clockwise, ends back at top left.
         """
         gt = ds.GetGeoTransform()
@@ -80,8 +80,10 @@ class CornerCoords:
 
 
 def rectFootprint(*geoms):
-    # TODO: Write docstring.
-
+    """
+    Returns the smallest rectangular footprint that contains all input polygons,
+    all as OGRGeometry objects.
+    """
     minx = float('inf')
     miny = float('inf')
     maxx = float('-inf')
@@ -157,9 +159,9 @@ def orderPairs(demdir, files):
             print "Break in overlap detected, returning this segment only"
             break
 
-    files_ordered = [files[i] for i in ordered_file_indices]
+    demFiles_ordered = [files[i] for i in ordered_file_indices]
 
-    return files_ordered
+    return demFiles_ordered
 
 
 def loaddata(demFile, matchFile, orthoFile, maskFile):
@@ -167,21 +169,18 @@ def loaddata(demFile, matchFile, orthoFile, maskFile):
     Load data files and perform basic conversions.
     """
     z, x_dem, y_dem = rat.oneBandImageToArrayZXY(demFile)
-    # TODO: Figure out when the following conversion is actually necessary.
-    # Pixel value of -9999 is nodata; interpret it as NaN.
-    z[np.where(z == -9999)] = np.nan
 
-    m = rat.oneBandImageToArray(matchFile).astype(np.bool)
+    m = rat.oneBandImageToArray(matchFile)
     if m.shape != z.shape:
         print "WARNING: matchFile '{}' has wrong dimensions".format(matchFile)
         print "Interpolating to match associated dem's dimensions"
         x, y = rat.getXYarrays(matchFile)
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.where(np.isnan(m))] = 0  # Convert back to bool.
-        m = m.astype(np.bool)
+    m = m.astype(np.bool)
 
     if os.path.isfile(orthoFile):
-        o = rat.oneBandImageToArray(orthoFile).astype(np.uint16)
+        o = rat.oneBandImageToArray(orthoFile)
         if o.shape != z.shape:
             print "WARNING: orthoFile '{}' has wrong dimensions".format(orthoFile)
             print "Interpolating to match associated dem's dimensions"
@@ -189,16 +188,20 @@ def loaddata(demFile, matchFile, orthoFile, maskFile):
             o[np.where(np.isnan(o))] = np.nan  # Set border to NaN so it won't be interpolated.
             o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
             o[np.where(np.isnan(o))] = 0  # Convert back to uint16.
-            o = o.astype(np.uint16)
     else:
         o = np.zeros(z.shape)
+    o = o.astype(np.uint16)
 
     if maskFile is not None:
-        md = rat.oneBandImageToArray(maskFile).astype(np.bool)
+        md = rat.oneBandImageToArray(maskFile)
         if md.shape != z.shape:
             raise DimensionError("maskFile '{}' has wrong dimensions".format(maskFile))
     else:
         md = np.ones(z.shape, dtype=bool)
+    md = md.astype(np.bool)
+
+    # A pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
+    z[np.where((z < -100) | (z == 0))] = np.nan
 
     return x_dem, y_dem, z, m, o, md
 
@@ -349,11 +352,11 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         m1 = varargin[0]
         m2 = varargin[1]
 
-    rx = x1[1] - x1[0]     # coordinate spacing
-    p  = np.zeros(3)       # initial trans variable
-    pn = p.copy()          # iteration variable
-    d0 = np.inf            # initial rmse
-    it = 1                 # iteration step
+    rx = x1[1] - x1[0]  # coordinate spacing
+    p  = np.zeros(3)    # initial trans variable
+    pn = p.copy()       # iteration variable
+    d0 = np.inf         # initial rmse
+    it = 1              # iteration step
 
     while it:
 
@@ -459,7 +462,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     return np.array([z2out, p, d0])
 
 
-def scenes2strips(demdir, demFile_list, nomask=False):
+def scenes2strips(demdir, demFiles, nomask=False):
     """
     function [X,Y,Z,M,O,trans,rmse,f]=scenes2strips(demdir,f)
     %SCENES2STRIPS merge scenes into strips
@@ -480,22 +483,22 @@ def scenes2strips(demdir, demFile_list, nomask=False):
     """
 
     # Order scenes in north-south or east-west direction by aspect ratio.
-    print "ordering {} scenes".format(len(demFile_list))
-    files_ordered = orderPairs(demdir, demFile_list)
+    print "ordering {} scenes".format(len(demFiles))
+    demFiles_ordered = orderPairs(demdir, demFiles)
 
     # FIXME: Create a systematic way of determining the projection in which
     # -t     output strips are saved.
-    proj_ref = rat.getProjRef(os.path.join(demdir, files_ordered[0]))
+    proj_ref = rat.getProjRef(os.path.join(demdir, demFiles_ordered[0]))
 
     # Initialize output stats.
-    trans = np.zeros((3, len(files_ordered)))
-    rmse = np.zeros(len(files_ordered))
+    trans = np.zeros((3, len(demFiles_ordered)))
+    rmse = np.zeros(len(demFiles_ordered))
 
     # File loop.
-    for i in range(len(files_ordered)):
+    for i in range(len(demFiles_ordered)):
 
         # Construct filenames.
-        demFile = os.path.join(demdir, files_ordered[i])
+        demFile = os.path.join(demdir, demFiles_ordered[i])
         matchFile = demFile.replace('dem.tif', 'matchtag.tif')
         orthoFile = demFile.replace('dem.tif', 'ortho.tif')
         # %shadeFile= demFile.replace('dem.tif','dem_shade.tif')
@@ -503,22 +506,23 @@ def scenes2strips(demdir, demFile_list, nomask=False):
 
         maskFile = None if nomask else demFile.replace('dem.tif','mask.tif')
 
-        print "scene {} of {}: {}".format(i+1, len(files_ordered), demFile)
+        print "scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile)
 
         try:
-            x,y,z,m,o,md = loaddata(demFile, matchFile, orthoFile, maskFile)
+            x, y, z, m, o, md = loaddata(demFile, matchFile, orthoFile, maskFile)
         except Exception as e:
             print "Data read error:"
             print >>sys.stderr, e.msg
             print "...skipping"
+            continue
 
         # Check for no data.
-        if ~dm.any():
-            print "no data, skipping "
+        if ~md.any():
+            print "no data, skipping"
             continue
 
         # Apply masks.
-        x,y,z,m,o = applyMasks(x,y,z,m,o,md)
+        x, y, z, m, o = applyMasks(x, y, z, m, o, md)
 
         dx = x[1] - x[0]
         dy = y[1] - y[0]
@@ -527,12 +531,12 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         # pixels in overlapping scenes will match up.
         # TODO: The following function still needs testing.
         if ((x[1] / dx) % 1 != 0) or ((y[1] / dy) % 1 != 0):
-            x,y,z,m,o = regrid(x,y,z,m,o)
+            x, y, z, m, o = regrid(x, y, z, m, o)
 
         # If this is the first scene in strip,
         # set as strip and continue to next scene.
         if 'X' not in vars():
-            X,Y,Z,M,O = x,y,z,m,o
+            X, Y, Z, M, O = x, y, z, m, o
             del x, y, z, m, o
             continue
 
@@ -551,8 +555,7 @@ def scenes2strips(demdir, demFile_list, nomask=False):
             X1 = np.arange(x[0], X[0], dx)
             X = np.concatenate((X1, X))
             Z, M, O = expandCoverage(Z, M, O, X1, direction='left')
-            del X1  # Deletes retained from translation.
-                    # Not sure if at all necessary.
+            del X1
         if x[-1] > X[-1]:
             X1 = np.arange(X[-1]+dx, x[-1]+dx, dx)
             X = np.concatenate((X, X1))
@@ -585,12 +588,14 @@ def scenes2strips(demdir, demFile_list, nomask=False):
 
         # NEW MOSAICKING CODE
 
+        cmin = 1000  # Minimum data cluster area for 2m.
+
         # Crop to just region of overlap.
         A = (~np.isnan(Zsub) & ~np.isnan(z)).astype(np.float32)
 
         # Check for segment break.
-        if np.sum(A) <= 1000:
-            files_ordered = files_ordered[:i]
+        if np.sum(A) <= cmin:
+            demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
             rmse = rmse[:i]
             break
@@ -599,14 +604,13 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         r, c = cropnans(A, buff)
 
         # Make overlap mask removing isolated pixels.
-        cmin = 1000  # minimum data cluster area for 2m
         Zsub_q =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
         z_q    = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
         # Nodata in strip and data in scene is a one.
         A = morphology.remove_small_objects(Zsub_q & z_q, min_size=cmin, connectivity=2).astype(np.float32)
 
         # Check for redundant scene.
-        if np.sum(A) <= 1000:
+        if np.sum(A) <= cmin:
             print "redundant scene, skipping "
             continue
 
@@ -617,8 +621,8 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         A[Zz_q] = 2
 
         # Check for segment break.
-        if np.sum(A) <= 1000:
-            files_ordered = files_ordered[:i]
+        if np.sum(A) <= cmin:
+            demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
             rmse = rmse[:i]
             break
@@ -686,7 +690,6 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         del A
         W[np.where(np.isnan(Zsub) & np.isnan(z))] = np.nan
 
-
         # Shift weights so that more of the reference layer is kept.
         f0 = 0.25  # overlap fraction where ref z weight goes to zero
         f1 = 0.55  # overlap fraction where ref z weight goes to one
@@ -694,7 +697,6 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         W = (1/(f1-f0))*W - f0/(f1-f0)
         W[np.where(W > 1)] = 1
         W[np.where(W < 0)] = 0
-
 
         # Remove <25% edge of coverage from each in pair.
         # FIXME: Each throws "RuntimeWarning: invalid value encountered in less_equal".
@@ -719,7 +721,7 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         # Check for segment break.
         if np.isnan(rmse[i]):
             print "Unable to coregister, breaking segment"
-            files_ordered = files_ordered[:i]
+            demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
             rmse = rmse[:i]
             break
@@ -728,7 +730,7 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         xi = x - trans[1, i]
         yi = y - trans[2, i]
 
-        # Check that uniform spacing is maintained (sometimes rounding errors)
+        # Check that uniform spacing is maintained (sometimes rounding errors).
         if len(np.unique(np.diff(xi))) > 1:
             xi = np.round(xi, 4)
         if len(np.unique(np.diff(yi))) > 1:
@@ -746,7 +748,7 @@ def scenes2strips(demdir, demFile_list, nomask=False):
 
         # Interpolate ortho to same grid.
         oi = o.astype(np.float32)
-        oi[np.where(oi == 0)] = np.nan  # set border to NaN so won't be interpolated
+        oi[np.where(oi == 0)] = np.nan  # Set border to NaN so it won't be interpolated.
         oi = rat.interp2_gdal(xi, yi, oi, Xsub, Ysub, 'cubic')
         del o
 
@@ -800,7 +802,6 @@ def scenes2strips(demdir, demFile_list, nomask=False):
     # print "strip data broken"
 
     # Crop to data.
-    # print "Cropping to data"
     if 'Z' in vars() and np.any(~np.isnan(Z)):
         rcrop, ccrop = cropnans(Z)
         if rcrop is not None:
@@ -811,9 +812,9 @@ def scenes2strips(demdir, demFile_list, nomask=False):
             O = O[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             Z[np.where(np.isnan(Z))] = -9999
 
-            fp_vertices = rat.getFPvertices(Z, X, Y, nodataVal=-9999)
-            proj_ref = rat.getProjRef(os.path.join(demdir, files_ordered[0]))
-            proj4 = osr.SpatialReference(proj_ref).ExportToProj4()
+        fp_vertices = rat.getFPvertices(Z, X, Y, nodataVal=-9999)
+        proj_ref = rat.getProjRef(os.path.join(demdir, demFiles_ordered[0]))
+        proj4 = osr.SpatialReference(proj_ref).ExportToProj4()
     else:
         X = np.array([])
         Y = np.array([])
@@ -824,4 +825,4 @@ def scenes2strips(demdir, demFile_list, nomask=False):
         proj4 = None
         fp_vertices = (None, None)
 
-    return X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, files_ordered
+    return X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, demFiles_ordered
