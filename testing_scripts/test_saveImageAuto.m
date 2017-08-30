@@ -1,8 +1,11 @@
-function test_saveImageAuto(array, keyword, descr, compare, concurrent)
+function test_saveImageAuto(array, flavor, matchkey, descr, compare, concurrent)
 % Saves an indexed image in a test file directory speicifed by test_setGlobals.m.
 
-if ~exist('keyword', 'var') || isempty(keyword)
-    keyword = '';
+if ~exist('flavor', 'var') || isempty(flavor)
+    flavor = 'auto';
+end
+if ~exist('matchkey', 'var') || isempty(matchkey)
+    matchkey = 'auto';
 end
 if ~exist('descr', 'var') || isempty(descr)
     descr = '';
@@ -15,20 +18,29 @@ if ~exist('concurrent', 'var') || isempty(concurrent)
 end
 
 
-keyword = pad(strrep(keyword(1:min(5, length(keyword))), '~', '-'), 5, '_');
-
-description = '';
-if ~strcmp(descr, '')
-    description = ['~',strrep(descr, ' ', '-')];
+array_name = [];
+if isstruct(array)
+    if length(fieldnames(array)) > 1
+        test_handleBatchImageRasterAuto(array, flavor, matchkey, descr, compare, concurrent);
+        return;
+    else
+        array_name = fieldnames(array);
+        array = array.(array_name{1});
+        if iscell(array)
+            array = array{1,1};
+        end
+        array_name = array_name(1);
+        array_name = array_name{1,1};
+    end
+else
+    array_name = inputname(1);
 end
 
-% Save the test image.
-runnum = test_getRunnum();
-imgnum = test_getNextImgnum(runnum, compare, concurrent);
-if isempty(imgnum)
-    imgnum = 1;
+% Determine the correct data type for saving the raster data.
+if strcmp(flavor, 'auto')
+    flavor = array_name;
 end
-sz = size(array);
-testFname = sprintf('run%03d_%03d_ml_img_%s_%dx%d%s.tif', ...
-    runnum, imgnum, keyword, sz(1), sz(2), description);
+[flavor_name, fmt, nodata] = test_interpretImageRasterFlavor(flavor);
+
+testFname = test_getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, compare, concurrent, false);
 test_saveImage(array, testFname);

@@ -8,20 +8,19 @@ if ~exist('isRaster', 'var') || isempty(isRaster)
     isRaster = false;
 end
 
-test_setGlobals();
-global TESTDIR;
-
 
 single = true;
 
 diff = [];
 diff_bool = [];
 
-imgFile1 = char(imgFile1);
-if ~(exist(imgFile1, 'file') == 2)
-    imgFile1 = [TESTDIR,'/',imgFile1];
-    if ~(exist(imgFile1, 'file') == 2)
-        error('Argument imgFile1 image file does not exist.');
+try
+    imgFile1 = test_findFile(imgFile1);
+catch ME
+    if strcmp(ME.message, 'cannot find test file')
+        error('Argument imgFile1 test file does not exist.');
+    else
+        rethrow(ME);
     end
 end
 
@@ -35,10 +34,13 @@ end
 if exist('imgFile2', 'var') && ~isempty(imgFile2)
     imgFile2 = char(imgFile2);
     if ~isempty(imgFile2)
-        if ~(exist(imgFile2, 'file') == 2)
-            imgFile2 = [TESTDIR,'/',imgFile2];
-            if ~(exist(imgFile2, 'file') == 2)
-                error('Argument imgFile2 image file does not exist.');
+        try
+            imgFile2 = test_findFile(imgFile2);
+        catch ME
+            if strcmp(ME.message, 'cannot find test file')
+                error('Argument imgFile2 test file does not exist.');
+            else
+                rethrow(ME);
             end
         end
         

@@ -53,11 +53,13 @@ fprintf(['' ...
         'remove [selection_1] [selection_2] ... [selection_n]\n' ...
         'delete [selection_1] [selection_2] ... [selection_n]\n' ...
         'refresh\n' ...
-        'view {raster/image} [selection_1] [selection_2] ... [selection_n]\n' ...
-        'compare {raster/image} [selection_1 selection_2]\n' ...
-        'auto {raster/image}\n' ...
+        'view [selection_1] [selection_2] ... [selection_n]\n' ...
+        'compare [selection_1 selection_2]\n' ...
+        'auto\n' ...
+        'force (view/compare/auto)\n' ...
         'figclose\n' ...
-        'quit\n']);
+        'quit\n' ...
+        'close\n']);
     
 indexstr = '';
 browseFiles = [];
@@ -65,6 +67,7 @@ browse = [];
 selection = [];
 view = [];
 compare = [];
+force = false;
 errmsg = '';
 
 ready = false;
@@ -72,6 +75,14 @@ while ~ready
     arg_nums = cell2mat(arrayfun(@(x) str2double(char(x)), command_args, 'UniformOutput', false));
     arg_nums(isnan(arg_nums)) = [];
     try
+        
+        if strcmp(command_args(1), 'force')
+            force = true;
+            
+            command_args(1) = [];
+        else
+            force = false;
+        end
         
         if strcmp(command_args(1), 'figclose')
             close all;
@@ -196,8 +207,8 @@ while ~ready
                         [~, compare] = test_matchFnames(selection);
                         if isempty(compare)
                             if length(selection) == 2
-                                arr1 = test_readArray(selection(1));
-                                arr2 = test_readArray(selection(2));
+                                arr1 = test_readImage(selection(1));
+                                arr2 = test_readImage(selection(2));
                                 if isequal(size(arr1), size(arr2))
                                     compare = repmat("", [1, 2]);
                                     compare(1,1) = selection(1);
@@ -249,7 +260,6 @@ while ~ready
                 if compare_total > 0
                     fprintf("[t_arr1, t_arr2, t_diff, t_diff_bool] = \n");
                 end
-                x = onCleanup(@() fprintf(2, "Operation terminated by user.\n"));
                 for i = 1:compare_total
                     if strcmp(compare_args(i,2), "")
                         figtitle = compare_args(i,1);
@@ -271,10 +281,14 @@ while ~ready
                     try
                         test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type);
                     catch ME
-                        fprintf(2, "--> ERROR: %s\n", ME.message);
+                        if force
+                            fprintf(2, "--> CAUGHT ERROR: %s\n", ME.message);
+                            fprintf(2, "Continuing by force...\n");
+                        else
+                            rethrow(ME);
+                        end
                     end
                 end
-                clear x
                 
             end
             
@@ -284,7 +298,7 @@ while ~ready
             command_args(1) = [];
         end
         
-        if strcmp(command_args(1), 'quit')
+        if strcmp(command_args(1), 'quit') || strcmp(command_args(1), 'close')
             if concurrent && exist(FILE_COMPARE_WAIT, 'file') == 2
                 delete(FILE_COMPARE_WAIT);
             end
@@ -292,7 +306,9 @@ while ~ready
                 ;
             end
             
-            close all;
+            if strcmp(command_args(1), 'close')
+                close all;
+            end
             
             return;
         end

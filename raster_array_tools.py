@@ -9,8 +9,8 @@ from subprocess import check_call
 
 import gdal, ogr
 import numpy as np
-from scipy import interpolate, misc, ndimage, spatial
-from scipy.weave import inline, converters
+import scipy
+from scipy import ndimage
 
 _outline = open("outline.c", "r").read()
 _outline_every1 = open("outline_every1.c", "r").read()
@@ -52,9 +52,9 @@ class UnsupportedMethodError(Exception):
 
 
 
-###########
-# File IO #
-###########
+#############
+# Raster IO #
+#############
 
 
 def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
@@ -417,8 +417,8 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
         # cubic methods shows NaN borders when interpolating out of input domain.
         xx,  yy  = np.meshgrid(X, Y)
         xxi, yyi = np.meshgrid(Xi, Yi)
-        Zi = interpolate.griddata((xx.flatten(),   yy.flatten()), Z.flatten(),
-                                  (xxi.flatten(), yyi.flatten()), method)
+        Zi = scipy.interpolate.griddata((xx.flatten(),   yy.flatten()), Z.flatten(),
+                                        (xxi.flatten(), yyi.flatten()), method)
         Zi.resize((Yi.size, Xi.size))
 
     elif SBS:
@@ -426,8 +426,8 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
         # Can't handle NaN input; results in all NaN output.
         xx,  yy  = np.meshgrid(X, Y)
         xxi, yyi = np.meshgrid(Xi, Yi)
-        fn = interpolate.SmoothBivariateSpline(xx.flatten(), yy.flatten(), Z.flatten(),
-                                               kx=order[method], ky=order[method])
+        fn = scipy.interpolate.SmoothBivariateSpline(xx.flatten(), yy.flatten(), Z.flatten(),
+                                                     kx=order[method], ky=order[method])
         Zi = fn.ev(xxi, yyi)
         Zi.resize((Yi.size, Xi.size))
 
@@ -435,44 +435,44 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
         # Supports nearest and linear interpolation methods.
         xxi, yyi = np.meshgrid(Xi, Yi[::-1])
         pi = np.column_stack((yyi.flatten(), xxi.flatten()))
-        fn = interpolate.RegularGridInterpolator((Y[::-1], X), Z, method=method,
-                                                 bounds_error=(not extrap), fill_value=RGI_fillVal)
+        fn = scipy.interpolate.RegularGridInterpolator((Y[::-1], X), Z, method=method,
+                                                       bounds_error=(not extrap), fill_value=RGI_fillVal)
         Zi = fn(pi, method=method)
         Zi.resize((Yi.size, Xi.size))
 
     elif ((method == 'cubic') and np.any(np.isnan(Z))) or CLT:
         # Performs cubic interpolation of data,
         # but includes logic to first perform a nearest resampling of input NaNs.
-        # Produces the same error as interpolate.griddata when used on large arrays.
+        # Produces the same error as scipy.interpolate.griddata when used on large arrays.
         if np.any(np.isnan(Z)):
             Zi = interp2_scipy(X, Y, Z, Xi, Yi, 'nearest')
             Zi_data = np.where(~np.isnan(Zi))
             Z_data  = np.where(~np.isnan(Z))
             p  = np.column_stack((Z_data[0],   Z_data[1]))
             pi = np.column_stack((Zi_data[0], Zi_data[1]))
-            fn = interpolate.CloughTocher2DInterpolator(p, Z[Z_data], fill_value=CLT_fillVal)
+            fn = scipy.interpolate.CloughTocher2DInterpolator(p, Z[Z_data], fill_value=CLT_fillVal)
             Zi[Zi_data] = fn(pi)
         else:
             xx,  yy  = np.meshgrid(X, Y)
             xxi, yyi = np.meshgrid(Xi, Yi)
             p  = np.column_stack((xx.flatten(), yy.flatten()))
             pi = np.column_stack((xxi.flatten(), yyi.flatten()))
-            fn = interpolate.CloughTocher2DInterpolator(p, Z.flatten(), fill_value=CLT_fillVal)
+            fn = scipy.interpolate.CloughTocher2DInterpolator(p, Z.flatten(), fill_value=CLT_fillVal)
             Zi = fn(pi)
             Zi.resize((Yi.size, Xi.size))
 
     elif (method in ('quadratic', 'quartic')) or RBS:
         # Supports all 5 orders of spline interpolation.
         # Can't handle NaN input; results in all NaN output.
-        fn = interpolate.RectBivariateSpline(Y[::-1], X, Z,
-                                             kx=order[method], ky=order[method])
+        fn = scipy.interpolate.RectBivariateSpline(Y[::-1], X, Z,
+                                                   kx=order[method], ky=order[method])
         Zi = fn(Yi[::-1], Xi, grid=True)
 
     else:
         # Supports linear, cubic, and quintic interpolation methods.
         # Can't handle NaN input; results in all NaN output.
         # Default interpolator for its presumed efficiency.
-        fn = interpolate.interp2d(X, Y[::-1], Z, kind=method)
+        fn = scipy.interpolate.interp2d(X, Y[::-1], Z, kind=method)
         Zi = fn(Xi, Yi)
 
     if borderNaNs:
@@ -501,7 +501,7 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
 # -t    of MATLAB's imresize method.
 def my_imresize(array, size, method, PILmode=None):
     """
-    Resizes a NumPy 2D array using either SciPy's misc.imresize function
+    Resizes a NumPy 2D array using either SciPy's scipy.misc.imresize function
     or GDAL's gdal.ReprojectImage (through a call of local interp2_gdal).
     Specify the size of the resized array as an int (percent of current size),
     float (fraction of current size), or tuple ([col, row] size of output array).
@@ -521,8 +521,8 @@ def my_imresize(array, size, method, PILmode=None):
         new_shape = size
 
     if PILmode is not None:
-        array_r = misc.imresize(array, new_shape, method, mode=PILmode)
-        # NOTE: misc.imresize 'nearest' has slightly different results compared to
+        array_r = scipy.misc.imresize(array, new_shape, method, mode=PILmode.upper())
+        # NOTE: scipy.misc.imresize 'nearest' has slightly different results compared to
         #   MATLAB's imresize 'nearest'. Most significant is a 1-pixel SE shift.
         if method == 'nearest':
             # Correct for 1-pixel SE shift by concatenating a copy of
@@ -541,6 +541,24 @@ def my_imresize(array, size, method, PILmode=None):
         array_r = interp2_gdal(X, Y, array, Xi, Yi, method, borderNaNs=False)
 
     return array_r
+
+
+
+######################
+# Array Calculations #
+######################
+
+
+def getDataDensityMap(array, n=11):
+    """
+    Given a NumPy 2D boolean array, returns an array of the same size
+    with each node describing the fraction of nodes containing ones
+    within a [n x n]-size kernel (or "window") of the input array.
+    """
+    P = scipy.signal.fftconvolve(array, np.ones((n, n)), mode='same')
+    P = P / n**2
+
+    return P
 
 
 
@@ -628,7 +646,7 @@ def getFPring_convhull(array_filled, X, Y):
     del data_boundary
 
     # Convex hull method.
-    convex_hull = spatial.ConvexHull(boundary_points)
+    convex_hull = scipy.spatial.ConvexHull(boundary_points)
     hull_points = boundary_points[convex_hull.vertices]
     del convex_hull
 
@@ -823,13 +841,17 @@ def outline(array, every, start=None, pass_start=False, complete_ring=True):
     rows, cols = data.shape
 
     if every != 1:
-        padded_route = inline(_outline, ['data', 'rows', 'cols', 'every', 'starty', 'startx', 'pass_start'],
-                              type_converters=converters.blitz)
+        padded_route = scipy.weave.inline(
+            _outline, ['data', 'rows', 'cols', 'every', 'starty', 'startx', 'pass_start'],
+            type_converters=scipy.weave.converters.blitz
+        )
         if complete_ring and (len(padded_route) > 0) and (padded_route[0] != padded_route[-1]):
             padded_route.append(padded_route[0])
     else:
-        padded_route = inline(_outline_every1, ['data', 'rows', 'cols', 'starty', 'startx', 'pass_start'],
-                              type_converters=converters.blitz)
+        padded_route = scipy.weave.inline(
+            _outline_every1, ['data', 'rows', 'cols', 'starty', 'startx', 'pass_start'],
+            type_converters=scipy.weave.converters.blitz
+        )
 
     fixed_route = [(row[0], row[1]) for row in (np.array(padded_route) - 1)]
 

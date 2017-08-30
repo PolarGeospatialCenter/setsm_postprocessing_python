@@ -604,21 +604,20 @@ def scenes2strips(demdir, demFiles, nomask=False):
         r, c = cropnans(A, buff)
 
         # Make overlap mask removing isolated pixels.
-        Zsub_q =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
-        z_q    = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
+        Z_cropped_nodata =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
+        z_cropped_data   = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
         # Nodata in strip and data in scene is a one.
-        A = morphology.remove_small_objects(Zsub_q & z_q, min_size=cmin, connectivity=2).astype(np.float32)
+        A = morphology.remove_small_objects(
+            Z_cropped_nodata & z_cropped_data, min_size=cmin, connectivity=2).astype(np.float32)
 
         # Check for redundant scene.
         if np.sum(A) <= cmin:
             print "redundant scene, skipping "
             continue
 
-        Zsub_q = ~Zsub_q
-        z_q    = ~z_q
         # Data in strip and nodata in scene is a two.
-        Zz_q = morphology.remove_small_objects(Zsub_q & z_q, min_size=cmin, connectivity=2)
-        A[Zz_q] = 2
+        A[morphology.remove_small_objects(
+            ~Z_cropped_nodata & ~z_cropped_data, min_size=cmin, connectivity=2)] = 2
 
         # Check for segment break.
         if np.sum(A) <= cmin:
@@ -636,15 +635,15 @@ def scenes2strips(demdir, demFiles, nomask=False):
 
         Ar = rat.my_imresize(A, 0.1, 'nearest', PILmode='F')
 
-        Ar_q = (Ar != 0)
-        B = (Ar_q != ndimage.binary_erosion(Ar_q))
+        # Locate pixels on outside of boundary of overlap region.
+        Ar_nonzero = (Ar != 0)
+        B = (Ar_nonzero != ndimage.binary_erosion(Ar_nonzero))
         B = np.where(B)
 
-        # TODO: Decide what to do with the following optional section.
-        #########################################
-        #### START POSSIBLY OPTIONAL SECTION ####
-        #########################################
-
+        # TODO: The following method of extrapolation uses a cheap trick
+        # -t    in an attempt to get as close as possible to replicating
+        # -t    the results of MATLAB's "scatteredInterpolant" function.
+        # -t    Decide if this is really okay to do.
         # Pixels outside of the convex hull of input points for interpolate.griddata
         # currently can't be extrapolated (by default they are filled with NaN),
         # so I do a trick here where I use interpolate.SmoothBivariateSpline to assign
@@ -652,31 +651,25 @@ def scenes2strips(demdir, demFiles, nomask=False):
         fn = interpolate.SmoothBivariateSpline(B[0], B[1], Ar[B].astype(np.float64), kx=1, ky=1)
                                                                 # kx, ky = 1 since first order
                                                                 # spline interpolation is linear.
-        Ci = (np.array([0,             0, Ar.shape[0]-1, Ar.shape[0]-1]),
-              np.array([0, Ar.shape[1]-1, Ar.shape[1]-1,             0]))
-        Ari = fn.ev(Ci[0], Ci[1])
-        Ari = np.round(Ari).astype(int)
-        Ari[np.where(Ari < 1)] = 1
-        Ari[np.where(Ari > 2)] = 2
-        Ar[Ci] = Ari
+        corner_coords = (np.array([0,             0, Ar.shape[0]-1, Ar.shape[0]-1]),
+                         np.array([0, Ar.shape[1]-1, Ar.shape[1]-1,             0]))
+        Ar_interp = fn.ev(corner_coords[0], corner_coords[1])
+        Ar_interp = np.round(Ar_interp).astype(int)
+        Ar_interp[np.where(Ar_interp < 1)] = 1
+        Ar_interp[np.where(Ar_interp > 2)] = 2
+        Ar[corner_coords] = Ar_interp
 
-        # Update "known" "boundary" coordinates np.where tuple.
-        By = np.concatenate((B[0], Ci[0]))
-        Bx = np.concatenate((B[1], Ci[1]))
+        # Add the corner coordinates to the list of boundary coordinates,
+        # which will be used for interpolation.
+        By = np.concatenate((B[0], corner_coords[0]))
+        Bx = np.concatenate((B[1], corner_coords[1]))
         B = (By, Bx)
 
-        #######################################
-        #### END POSSIBLY OPTIONAL SECTION ####
-        #######################################
-
-        # Perform the main interpolation.
-        Bi = np.where(Ar == 0)
-        Ari = interpolate.griddata(B, Ar[B].astype(np.float64),
-                                   Bi, 'linear')
-        # Fix filled in regions.
-        # TODO: Use the following line if preceding optional section is omitted.
-        # Ari[np.where(np.isnan(Ari))] = 1.5
-        Ar[Bi] = Ari
+        # Use the coordinates and values of boundary pixels
+        # to interpolate values for pixels with value zero.
+        Ar_zero_coords = np.where(~Ar_nonzero)
+        Ar_interp = interpolate.griddata(B, Ar[B].astype(np.float64), Ar_zero_coords, 'linear')
+        Ar[Ar_zero_coords] = Ar_interp
 
         Ar = misc.imresize(Ar, A.shape, 'bilinear', mode='F')
         Ar[np.where((A == 1) & (Ar != 1))] = 1
@@ -709,6 +702,9 @@ def scenes2strips(demdir, demFiles, nomask=False):
         o[np.where(W >= 1)] = 0
 
         # Coregistration
+
+        P0 = rat.getDataDensityMap(Msub[r[0]:r[1], c[0]:c[1]]) > 0.9
+        P1 = rat.getDataDensityMap(m[r[0]:r[1], c[0]:c[1]])    > 0.9
 
         # Coregister this scene to the strip mosaic.
         trans[:, i], rmse[i] = coregisterdems(

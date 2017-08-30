@@ -46,7 +46,7 @@ fprintf("--- statistics for boolean difference map ---\n");
 fprintf("(value, count):");
 for i = 1:length(vals_diff_bool)
     fprintf(vals_diff_bool(i) + 1, ...
-        " (%d, %d)", vals_diff_bool(i), cnts_diff_bool(i));
+        " (%d, %e)", vals_diff_bool(i), cnts_diff_bool(i));
 end
 fprintf("\n");
 

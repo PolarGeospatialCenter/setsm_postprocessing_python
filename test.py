@@ -4,6 +4,7 @@ from __future__ import division
 import inspect
 import os
 import platform
+import re
 from glob import glob
 
 import ogr, osr
@@ -57,8 +58,7 @@ def stringifyThisFunctionForExec():
             found = True
         line = this_file.readline()
     if not found:
-        print "ERROR: Could not find function definition matching '{}'".format(caller_funcName)
-        return
+        raise TestingError("Could not find function definition matching '{}'".format(caller_funcName))
 
     # Find the return statement that called this function.
     found = False
@@ -71,9 +71,8 @@ def stringifyThisFunctionForExec():
             indent = line[:line.find(this_funcReturn)]
         line = this_file.readline()
     if not found:
-        print "ERROR: Could not find return statement matching '{}' within '{}'".format(
-            this_funcReturn, caller_funcDef)
-        return
+        raise TestingError("Could not find return statement matching '{}' within function '{}'".format(
+                           this_funcReturn, caller_funcDef))
 
     # Add all code that follows that first return statement to a string variable,
     # stopping when the next function definition is read or EOF is reached.
@@ -91,8 +90,11 @@ def stringifyThisFunctionForExec():
 def checkVars():
     return stringifyThisFunctionForExec()
 
-    array_vars = ('x', 'y', 'z', 'm', 'o', 'md',
-                  'X', 'Y', 'Z', 'M', 'O')
+    array_vars = (
+        'x', 'y', 'z', 'm', 'o', 'md', '-',
+        'X', 'Y', 'Z', 'M', 'O', '-',
+        'Xsub', 'Ysub', 'Zsub', 'Msub', 'Osub'
+    )
 
     print
     for i in range(len(array_vars)):
@@ -102,22 +104,125 @@ def checkVars():
             expr = 'str({}.dtype)'.format(var)
             print '> {}.dtype = {}'.format(var, eval(expr))
 
+            expr = '{}.shape'.format(var)
+            shape = eval(expr)
+            if len(shape) == 1:
+                shape = (1, shape[0])
+            print '    shape = {}'.format(str(shape).replace('L', ''))
+
             expr = 'np.nanmin({})'.format(var)
             print '    min = {}'.format(eval(expr))
 
             expr = 'np.nanmax({})'.format(var)
             print '    max = {}'.format(eval(expr))
 
+        elif var == '-':
+            print '------------------'
+
     print
+
+
+def splitTupleString(tup_string):
+    tup_pattern = re.compile("\((.*)\)")
+    search_result = re.search(tup_pattern, tup_string)
+    if search_result is None:
+        return None
+    else:
+        return tuple(element.strip() for element in search_result.group(1).split(','))
+
+
+def splitArgsString(args_string):
+    lefts  = '([{'
+    rights = ')]}'
+    lefts_count  = np.array([0, 0, 0])
+    rights_count = np.array([0, 0, 0])
+    quotes = ("'", '"')
+    curr_string_type = -1
+
+    args = []
+    arg_start_index = 0
+    i = 0
+    for c in args_string:
+
+        if curr_string_type == -1:
+            if c == ',':
+                if np.array_equal(lefts_count, rights_count):
+                    args.append(args_string[arg_start_index:i])
+                    arg_start_index = i + 1
+            elif c in lefts:
+                lefts_count[lefts.find(c)] += 1
+            elif c in rights:
+                rights_count[rights.find(c)] += 1
+            elif c in quotes:
+                curr_string_type = quotes.index(c)
+
+        elif c == quotes[curr_string_type]:
+            # We've reached the end of a string.
+            curr_string_type = -1
+
+        i += 1
+
+    if arg_start_index < i:
+        args.append(args_string[arg_start_index:i])
+
+    return tuple(a.strip() for a in args)
+
+
+def getCalledFunctionArgs(depth=1, funcName=None):
+    stack = inspect.stack()
+    func_frame_record = None
+
+    try:
+        if depth == 0 or depth == float('inf'):
+            if funcName is None:
+                raise InvalidArgumentError("Must be given a function name to search for when depth is not certain")
+            stack_iterable = xrange(len(stack))
+            if depth != 0:
+                stack_iterable = reversed(stack_iterable)
+            for i in stack_iterable:
+                fr_funcName = stack[i][3]
+                if fr_funcName == funcName:
+                    func_frame_record = stack[i+1]
+                    break
+            if func_frame_record is None:
+                raise InvalidArgumentError("Function name '{}' could not be found in the stack".format(funcName))
+        else:
+            try:
+                func_frame_record = stack[depth+1]
+            except IndexError:
+                raise InvalidArgumentError("Invalid 'depth' index for stack: {}".format(depth))
+            if funcName is not None and stack[depth][3] != funcName:
+                raise InvalidArgumentError("Function name '{}' could not be found in the stack"
+                                           " at index {}".format(funcName, depth))
+    except InvalidArgumentError:
+        print "STACK AT ERROR:"
+        for fr in stack:
+            print fr
+        raise
+
+    funcCall = ''.join([str(line).strip() for line in func_frame_record[4]])
+
+    args_pattern_str = "\w" if funcName is None else funcName
+    args_pattern_str += "\s*\((.+)\)"
+    args_pattern = re.compile(args_pattern_str)
+    search_result = re.search(args_pattern, funcCall)
+    if search_result is None:
+        return ()
+    else:
+        args_string = search_result.group(1)
+
+    return splitArgsString(args_string)
 
 
 def findFile(testFile):
     if not os.path.isfile(testFile):
-        testFile_temp = os.path.join(TESTDIR, testFile)
+        testFile_temp = testFile+'.tif'
         if not os.path.isfile(testFile_temp):
-            testFile_temp += '.tif'
+            testFile_temp = os.path.join(TESTDIR, testFile)
             if not os.path.isfile(testFile_temp):
-                raise InvalidArgumentError("No such test file: '{}'".format(testFile))
+                testFile_temp += '.tif'
+                if not os.path.isfile(testFile_temp):
+                    raise InvalidArgumentError("Cannot find test file: '{}'".format(testFile))
         testFile = testFile_temp
     return testFile
 
@@ -202,126 +307,180 @@ def getNextImgnum(runnum=getRunnum(), compare=False, concurrent=False):
     return next_imgnum
 
 
-def saveImage(array, PILmode, fname='testImage_py.tif'):
+def getTestFileFromFname(fname):
     if not fname.endswith('.tif'):
         fname += '.tif'
-
     testFile = os.path.join(TESTDIR, fname)
     while os.path.isfile(testFile):
-        opt = raw_input("Test image '{}' already exists. Overwrite? (y/n): ".format(testFile))
+        opt = raw_input("Test file '{}' already exists. Overwrite? (y/n): ".format(testFile.replace(TESTDIR, '{TESTDIR}/')))
         if opt.strip().lower() == 'y':
             break
         else:
             opt = raw_input("Append description to filename (or press [ENTER] to cancel): ")
             if opt == '':
-                return
+                return None
             else:
-                testFile = testFile.replace('.tif', '_'+opt.replace(' ', '-')+'.tif')
-
-    image = misc.toimage(array, high=np.max(array), low=np.min(array), mode=PILmode.upper())
-    image.save(testFile)
-    print "'{}' saved".format(testFile)
+                testFile = testFile.replace('.tif', '~'+opt.replace(' ', '-')+'.tif')
+    return testFile
 
 
-def saveImageAuto(array, flavor, keyword='', descr='', compare=False, concurrent=False):
-    # Determine the correct data type for saving the image data.
-    PILmode = None
-    if flavor == 'dem':
-        PILmode = 'F'
-    elif flavor in ('match', 'edge', 'data'):
-        PILmode = 'L'
-    elif flavor == 'ortho':
-        PILmode = 'I'
+def interpretImageRasterFlavor(flavor):
+    flavor_name = ''
+    image_PILmode = None
+    raster_format = None
+    raster_nodata = None
+
+    if flavor is not None and flavor != '':
+        if flavor in ('dem', 'z'):
+            flavor_name = 'dem'
+            image_PILmode = 'F'
+            raster_format = 'float32'
+            raster_nodata = -9999
+        elif flavor in ('match', 'm'):
+            flavor_name = 'match'
+            image_PILmode = 'L'
+            raster_format = 'uint8'
+            raster_nodata = 0
+        elif flavor in ('ortho', 'o', 'or'):
+            flavor_name = 'ortho'
+            image_PILmode = 'I'
+            raster_format = 'int16'
+            raster_nodata = 0
+        elif flavor in ('mask', 'md', 'd'):
+            flavor_name = 'mask'
+            image_PILmode = 'L'
+            raster_format = 'uint8'
+            raster_nodata = 0
+        else:
+            raise InvalidArgumentError("Invalid image/raster 'flavor': {}".format(flavor))
+
+    return flavor_name, image_PILmode, raster_format, raster_nodata
+
+
+def handleBatchImageRasterAuto(arrays, flavor, matchkey, descr, compare, concurrent, *X_Y_pref):
+    array_names_tuple = splitTupleString(getCalledFunctionArgs(2)[0])
+
+    flavor_order = None
+    if flavor is None:
+        flavor_order = [None]*len(arrays)
+    elif flavor == 'auto':
+        flavor_order = array_names_tuple
+    elif flavor.startswith('-'):
+        if len(flavor) != (1+len(arrays)):
+            raise InvalidArgumentError("'flavor' argument starting with '-' must be followed by"
+                                       " a number of characters (flavor abbreviations) equal to"
+                                       " the number of input 'arrays'")
+        flavor_order = flavor[1:len(flavor)]
     else:
-        raise InvalidArgumentError("Invalid raster 'flavor': {}".format(flavor))
+        flavor_order = [flavor]*len(arrays)
 
-    if keyword == '':
-        keyword = flavor
-    keyword = '{:_<5}'.format(keyword[:5].replace('~', '-'))
-    description = '' if descr == '' else '~'+descr.replace(' ', '-')
+    key_order = None
+    if matchkey is None:
+        key_order = [None]*len(arrays)
+    elif matchkey == 'auto':
+        key_order = array_names_tuple
+    elif matchkey == 'flavor':
+        key_order = [interpretImageRasterFlavor(f)[0] for f in array_names_tuple]
+    else:
+        key_order = [matchkey]*len(arrays)
 
-    # Save the test image.
+    if not X_Y_pref:
+        saveImageAuto(arrays[0], flavor_order[0], key_order[0], descr, compare, concurrent)
+        for i in range(1, len(arrays)):
+            saveImageAuto(arrays[i], flavor_order[i], key_order[i], descr, True, concurrent)
+    else:
+        X, Y, proj_ref = X_Y_pref
+        saveRasterAuto(arrays[0], X, Y, flavor_order[0], key_order[0], descr, compare, concurrent, proj_ref)
+        for i in range(1, len(arrays)):
+            saveRasterAuto(arrays[i], X, Y, flavor_order[i], key_order[i], descr, True, concurrent, proj_ref)
+    return
+
+
+def getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, compare, concurrent, isRaster):
     runnum = getRunnum()
     imgnum = getNextImgnum(runnum, compare, concurrent)
     if imgnum is None:
         imgnum = 1
-    testFname = 'run{:03d}_{:03d}_py_img_{}_{}x{}{}.tif'.format(
-        runnum, imgnum, keyword, array.shape[0], array.shape[1], description
+    flavor = '{:_<5}'.format(flavor_name)
+    filetype = 'ras' if isRaster else 'img'
+    key = ''
+    if matchkey is not None:
+        if matchkey == 'auto':
+            key = array_name
+        elif matchkey == 'flavor':
+            key = interpretImageRasterFlavor(array_name)[0]
+        else:
+            key = matchkey
+        key = key.replace(' ', '-').replace('~', '-')
+    description = '~'+descr.replace(' ', '-') if descr != '' else ''
+
+    testFname = 'run{:03d}_{:03d}_py_{}_{}_{}_{}x{}{}.tif'.format(
+        runnum, imgnum, filetype, flavor, key, array.shape[0], array.shape[1], description
     )
+    return testFname
+
+
+def saveImage(array, PILmode='F', fname='testImage_py.tif'):
+    testFile = getTestFileFromFname(fname)
+    if testFile is None:
+        return
+    image = misc.toimage(array, high=np.max(array), low=np.min(array), mode=PILmode.upper())
+    image.save(testFile)
+    print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
+
+
+def saveImageAuto(array, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False):
+    if type(array) in (tuple, list):
+        handleBatchImageRasterAuto(array, flavor, matchkey, descr, compare, concurrent)
+        return
+    array_name = getCalledFunctionArgs()[0]
+
+    # Determine the correct data type for saving the raster data.
+    if flavor == 'auto':
+        flavor = array_name
+    flavor_name, PILmode, _, _ = interpretImageRasterFlavor(flavor)
+
+    testFname = getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, compare, concurrent, False)
     saveImage(array, PILmode, fname=testFname)
 
 
 def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
-                    proj_ref=None, geotrans_rot_tup=(0, 0),
-                    like_rasterFile=None,
-                    nodataVal=None, dtype_out=None, force_dtype=False, skip_casting=False):
-    if not fname.endswith('.tif'):
-        fname += '.tif'
+               proj_ref=None, geotrans_rot_tup=(0, 0),
+               like_rasterFile=None,
+               nodataVal=None, dtype_out=None, force_dtype=False, skip_casting=False):
+    testFile = getTestFileFromFname(fname)
+    if testFile is None:
+        return
 
     if proj_ref is None:
-        print "WARNING: No proj_ref argument given to saveRaster()."
-        print "Using default global PROJREF_POLAR_STEREO."
+        print "WARNING: No proj_ref argument given to saveRaster()"
+        print "-> Using default global PROJREF_POLAR_STEREO."
         proj_ref = PROJREF_POLAR_STEREO
-
-    testFile = os.path.join(TESTDIR, fname)
-    while os.path.isfile(testFile):
-        opt = raw_input("Test raster '{}' already exists. Overwrite? (y/n): ")
-        if opt.strip().lower() == 'y':
-            break
-        else:
-            opt = raw_input("Append description to filename (or press [ENTER] to cancel): ")
-            if opt == '':
-                return
-            else:
-                testFile = testFile.replace('.tif', '_'+opt.replace(' ', '-')+'.tif')
 
     rat.saveArrayAsTiff(Z, testFile,
                         X, Y, proj_ref, geotrans_rot_tup,
                         like_rasterFile,
                         nodataVal, dtype_out, force_dtype, skip_casting)
+    print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
-    print "'{}' saved".format(testFile)
 
-
-def saveRasterAuto(Z, X, Y, flavor='', keyword='', descr='', compare=False, concurrent=False, proj_ref=None):
+def saveRasterAuto(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, proj_ref=None):
     if type(Z) in (tuple, list):
-        array_order = ('dem', 'match', 'ortho', 'mask')
-        saveRasterAuto(Z[0], X, Y, array_order[0], keyword, descr, compare, concurrent, proj_ref)
-        for i in range(1, len(Z)):
-            saveRasterAuto(Z[i], X, Y, array_order[i], keyword, descr, True, concurrent, proj_ref)
+        handleBatchImageRasterAuto(Z, flavor, matchkey, descr, compare, concurrent, X, Y, proj_ref)
         return
+    array_name = getCalledFunctionArgs()[0]
 
     # Determine the correct data type for saving the raster data.
-    fmt = None
-    nodata = None
-    if flavor != '':
-        if flavor == 'dem':
-            fmt = 'float32'
-            nodata = -9999
-        elif flavor in ('match', 'mask'):
-            fmt = 'uint8'
-            nodata = 0
-        elif flavor == 'ortho':
-            fmt = 'int16'
-            nodata = 0
-        else:
-            raise InvalidArgumentError("Invalid raster 'flavor': {}".format(flavor))
+    if flavor == 'auto':
+        flavor = array_name
+    flavor_name, _, fmt, nodata = interpretImageRasterFlavor(flavor)
 
-    if keyword == '':
-        keyword = flavor
-    keyword = '{:_<5}'.format(keyword[:5].replace('~', '-'))
-    description = '' if descr == '' else '~'+descr.replace(' ', '-')
-
-    # Save the test raster.
-    runnum = getRunnum()
-    imgnum = getNextImgnum(runnum, compare, concurrent)
-    if imgnum is None:
-        imgnum = 1
-    testFname = 'run{:03d}_{:03d}_py_ras_{}_{}x{}{}.tif'.format(
-        runnum, imgnum, keyword, len(Y), len(X), description
-    )
-    Z_copy = np.copy(Z)
-    Z_copy[np.where(np.isnan(Z_copy))] = nodata
+    testFname = getImageRasterAutoFname(Z, array_name, flavor_name, matchkey, descr, compare, concurrent, True)
+    if nodata is not None:
+        Z_copy = np.copy(Z)
+        Z_copy[np.where(np.isnan(Z_copy))] = nodata
+    else:
+        Z_copy = Z
     saveRaster(Z_copy, X, Y, fname=testFname, proj_ref=proj_ref, nodataVal=nodata, dtype_out=fmt)
 
 
@@ -379,8 +538,7 @@ def saveDBP(demFile):
     Z, X, Y, proj_ref = rat.oneBandImageToArrayZXY_projRef(demFile)
     poly = rat.getDataBoundariesPoly(Z, X, Y, nodataVal=-9999)
     if not poly:
-        print "ERROR: Failed to create data cluster boundaries polygon"
-        return
+        raise TestingError("Failed to create data cluster boundaries polygon")
 
     driver = ogr.GetDriverByName("ESRI Shapefile")
     ds = driver.CreateDataSource(shapefileFile)

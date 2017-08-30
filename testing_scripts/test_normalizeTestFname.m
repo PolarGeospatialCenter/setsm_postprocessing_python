@@ -10,6 +10,11 @@ end
 if isempty(i) || i < 2
     resultstr = [];
     return;
+else
+    resultstr = testFname(1:i-1);
 end
 
-resultstr = strrep(strrep(testFname(1:i-1), '_ml_', '_**_'), '_py_', '_**_');
+resultstr = strrep(resultstr, '_ml_img_', '_**_***_');
+resultstr = strrep(resultstr, '_ml_ras_', '_**_***_');
+resultstr = strrep(resultstr, '_py_img_', '_**_***_');
+resultstr = strrep(resultstr, '_py_ras_', '_**_***_');

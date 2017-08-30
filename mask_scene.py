@@ -157,16 +157,16 @@ def getEntropyMask(ortho, res):
     return M
 
 
-def getDataDensityMap(array, k):
+def getDataDensityMap(array, n=11):
     """
     Given a NumPy 2D boolean array, returns an array of the same size
     with each node describing the fraction of nodes containing ones
-    within a [k x k]-size kernel (or "window") of the input array.
+    within a [n x n]-size kernel (or "window") of the input array.
     """
-    conv = signal.fftconvolve(array, np.ones((k, k)), mode='same')
-    density_map = conv / float(k*k)
+    P = signal.fftconvolve(array, np.ones((n, n)), mode='same')
+    P = P / n**2
 
-    return density_map
+    return P
 
 
 def getEdgeMask(matchtag, kernel_size, threshold_Pmin, cluster_Amin, curvature_factor, crop, M0):

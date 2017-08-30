@@ -1,5 +1,5 @@
-function [Z] = test_struct(varargin)
+function [var_struct] = test_struct(varargin)
 
 for i = 1:nargin
-    eval(['Z.',char(96+i),' = varargin(i);']);
+    eval(['var_struct.',inputname(i),' = varargin(i);']);
 end

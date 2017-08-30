@@ -8,23 +8,9 @@ test_setGlobals();
 global TESTDIR;
 
 
-if ~contains(fname, '.tif')
-    fname = strcat(fname, '.tif');
-end
-
-testFile = [TESTDIR,'/',fname];
-while exist(testFile, 'file') == 2
-    opt = input(sprintf('Test image "%s" already exists. Overwrite? (y/n): ', testFile), 's');
-    if strcmpi(opt, 'y')
-        break;
-    else
-        opt = input('Append description to filename (or press [ENTER] to cancel): ', 's');
-        if isempty(opt)
-            return;
-        else
-            testFile = strrep(testFile, '.tif', ['_',strrep(opt,' ','-'),'.tif']);
-        end
-    end
+testFile = test_getTestFileFromFname(fname);
+if isempty(testFile)
+    return;
 end
 
 if isa(array, 'single')
@@ -40,4 +26,4 @@ if isa(array, 'single')
 else
     imwrite(array, testFile);
 end
-fprintf("'%s' saved\n", testFile);
+fprintf("'%s' saved\n", strrep(testFile, TESTDIR, '{TESTDIR}'));
