@@ -51,12 +51,12 @@ class CornerCoords:
             [ds.RasterXSize, ds.RasterYSize],
             [0, ds.RasterYSize],
             [0, 0]
-            ])
+        ])
 
         gt_mat = np.array([
             [gt[1], gt[4]],
             [gt[2], gt[5]]
-            ])
+        ])
 
         return top_left_mat + np.dot(raster_XY_size_mat, gt_mat)
 
@@ -67,7 +67,6 @@ class CornerCoords:
             for j in range(2):
                 c[i].append(str(self.coords[i][j]))
             c[i] = " ".join(c[i])
-
         return 'POLYGON ((' + ','.join(c) + '))'
 
     def geometry(self):
@@ -462,7 +461,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     return np.array([z2out, p, d0])
 
 
-def scenes2strips(demdir, demFiles, nomask=False):
+def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
     """
     function [X,Y,Z,M,O,trans,rmse,f]=scenes2strips(demdir,f)
     %SCENES2STRIPS merge scenes into strips
@@ -480,6 +479,10 @@ def scenes2strips(demdir, demFiles, nomask=False):
     %   detected, the list of output files will be less than the input.
     %
     % Version 3.0, Ian Howat, Ohio State University, 2015
+
+    If 'noMask' is True, a mask will not be applied.
+    'max_coreg_rmse' is the maximum coregistration error limit in meters.
+    --Errors above this limit will result in a segment break.
     """
 
     # Order scenes in north-south or east-west direction by aspect ratio.
@@ -504,7 +507,7 @@ def scenes2strips(demdir, demFiles, nomask=False):
         # %shadeFile= demFile.replace('dem.tif','dem_shade.tif')
         # %maskFile=  demFile.replace('dem.tif','mask.tif')
 
-        maskFile = None if nomask else demFile.replace('dem.tif','mask.tif')
+        maskFile = None if noMask else demFile.replace('dem.tif','mask.tif')
 
         print "scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile)
 
@@ -715,7 +718,7 @@ def scenes2strips(demdir, demFiles, nomask=False):
         )[[1, 2]]
 
         # Check for segment break.
-        if np.isnan(rmse[i]):
+        if np.isnan(rmse[i]) or rmse[i] > max_coreg_rmse:
             print "Unable to coregister, breaking segment"
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]

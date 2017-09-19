@@ -37,10 +37,19 @@ else
 end
 
 % Determine the correct data type for saving the raster data.
+flavor_name = '';
 if strcmp(flavor, 'auto')
     flavor = array_name;
 end
-[flavor_name, fmt, nodata] = test_interpretImageRasterFlavor(flavor);
+try
+    [flavor_name,~,~] = test_interpretImageRasterFlavor(flavor);
+catch ME
+    if startsWith(ME.message, 'Invalid image/raster "flavor":')
+        ;
+    else
+        rethrow(ME);
+    end
+end
 
 testFname = test_getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, compare, concurrent, false);
 test_saveImage(array, testFname);

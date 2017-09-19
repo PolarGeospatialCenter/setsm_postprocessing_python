@@ -35,12 +35,14 @@ test_showArray(diff, 'Difference (UR-UL)');
 subplot(2,2,4);
 test_showArray(diff_bool, 'Boolean Difference');
 
-figure('Name', figtitle);
-test_histArray(diff);
-title('Difference (UR-UL)');
-
 vals_diff_bool = unique(diff_bool);
 cnts_diff_bool = histcounts(diff_bool);
+
+if length(vals_diff_bool) > 1
+    figure('Name', figtitle);
+    test_histArray(diff);
+    title('Difference (UR-UL)');
+end
 
 fprintf("--- statistics for boolean difference map ---\n");
 fprintf("(value, count):");

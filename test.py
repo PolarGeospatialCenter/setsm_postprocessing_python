@@ -9,7 +9,7 @@ from glob import glob
 
 import ogr, osr
 import numpy as np
-from scipy import misc
+import scipy
 
 from mask_scene import generateMasks
 import raster_array_tools as rat
@@ -227,12 +227,6 @@ def findFile(testFile):
     return testFile
 
 
-def openRasterZ(rasterFile):
-    rasterFile = findFile(rasterFile)
-    Z, _, _ = rat.oneBandImageToArrayZXY(rasterFile)
-    return Z
-
-
 def getRunnum():
     runnum = -1
     runnumFiles = glob(os.path.join(TESTDIR, PREFIX_RUNNUM+'*'))
@@ -424,7 +418,7 @@ def saveImage(array, PILmode='F', fname='testImage_py.tif'):
     testFile = getTestFileFromFname(fname)
     if testFile is None:
         return
-    image = misc.toimage(array, high=np.max(array), low=np.min(array), mode=PILmode.upper())
+    image = scipy.misc.toimage(array, high=np.max(array), low=np.min(array), mode=PILmode.upper())
     image.save(testFile)
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
@@ -436,9 +430,20 @@ def saveImageAuto(array, flavor='auto', matchkey='auto', descr='', compare=False
     array_name = getCalledFunctionArgs()[0]
 
     # Determine the correct data type for saving the raster data.
-    if flavor == 'auto':
-        flavor = array_name
-    flavor_name, PILmode, _, _ = interpretImageRasterFlavor(flavor)
+    flavor_name = ''
+    PILmode = ''
+    if flavor.upper() in ('F', 'I', 'L'):
+        PILmode = flavor
+    else:
+        if flavor == 'auto':
+            try:
+                flavor_name, PILmode, _, _ = interpretImageRasterFlavor(array_name)
+            except InvalidArgumentError:
+                print "WARNING: Unable to automatically determine flavor for array with name '{}'".format(array_name)
+                print "-> Saving image in default format with PILmode 'F' (float)"
+                PILmode = 'F'
+        else:
+            flavor_name, PILmode, _, _ = interpretImageRasterFlavor(flavor)
 
     testFname = getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, compare, concurrent, False)
     saveImage(array, PILmode, fname=testFname)
@@ -503,6 +508,18 @@ def waitForComparison(expected_imgnum):
     os.remove(FILE_COMPARE_READY)
 
     return
+
+
+def readImage(imgFile='testImage_ml.tif'):
+    imgFile = findFile(imgFile)
+    array = scipy.misc.imread(imgFile)
+    return array
+
+
+def readRasterZ(rasterFile='testRaster_ml.tif'):
+    rasterFile = findFile(rasterFile)
+    Z, _, _ = rat.oneBandImageToArrayZXY(rasterFile)
+    return Z
 
 
 def doMasking(matchFile):

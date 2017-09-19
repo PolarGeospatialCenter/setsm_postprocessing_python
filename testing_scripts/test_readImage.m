@@ -1,13 +1,9 @@
 function [array] = test_readImage(imgFile)
 
-try
-    imgFile = test_findFile(imgFile);
-catch ME
-    if strcmp(ME.message, 'cannot find test file')
-        error('Argument imgFile test file does not exist.');
-    else
-        rethrow(ME);
-    end
+if ~exist('imgFile', 'var') || isempty(imgFile)
+    imgFile = 'testImage_py.tif';
 end
 
+
+imgFile = test_findFile(imgFile);
 array = imread(imgFile);
