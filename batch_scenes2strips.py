@@ -1,155 +1,121 @@
-# Version 1.0; Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2017
+# Version 3.0; Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2017
 
 import argparse
 import glob
 import os
 import subprocess
 import sys
+from datetime import datetime
+
+from mask_scene import generateMasks
+from raster_array_tools import saveArrayAsTiff
+from scenes2strips import scenes2strips
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Filters scene dems in a source directory,"
-            " then mosaics them into strips and saves the results."
-            "\nBatch work is done in units of strip ID (<catid1_catid2>), as parsed from scene dem"
-            " filenames."
-        )
-    )
-    parser.add_argument(
-        'srcdir',
-        help=(
-            "Path to source directory containing scene dems to process."
-            " If --dstdir is not specified, this path should contain the substring 'tif_results'."
-        )
-    )
-    parser.add_argument(
-        'res',
-        choices=['2', '8'],
-        help="Resolution of target dems (2 or 8 meters)."
-    )
-    parser.add_argument(
-        '--dstdir',
-        help=(
-            "Path to directory for output mosaicked strip data"
-            " (default is srcdir.replace('tif_results', 'strips'))."
-        )
-    )
-    parser.add_argument(
-        '--no-entropy',
-        action='store_true',
-        default=False,
-        help="Use filter without entropy protection."
-    )
-    parser.add_argument(
-        '--remask',
-        action='store_true',
-        default=False,
-        help="Recreate and overwrite all existing edgemasks and datamasks (filtering output)."
-    )
-    parser.add_argument(
-        '--restrip',
-        action='store_true',
-        default=False,
-        help="Recreate and overwrite all existing output strips (mosaicking output)."
-    )
-    parser.add_argument(
-        '--pbs',
-        action='store_true',
-        default=False,
-        help="Submit tasks to PBS."
-    )
-    parser.add_argument(
-        '--qsubscript',
-        help=(
-            "Path to qsub script to use in PBS submission"
-            " (default is qsub_scenes2strips.sh in script root folder)."
-        )
-    )
-    parser.add_argument(
-        '--dryrun',
-        action='store_true',
-        default=False,
-        help="Print actions without executing."
-    )
+    parser = argparse.ArgumentParser(description=(
+        "Filters scene dems in a source directory,"
+        " then mosaics them into strips and saves the results."
+        "\nBatch work is done in units of strip ID (<catid1_catid2>), as parsed from scene dem"
+        " filenames."))
+
+    parser.add_argument('src',
+        help=("Path to source directory containing scene dems to process."
+              " If --dst is not specified, this path should contain the substring 'tif_results'."))
+    parser.add_argument('res', choices=['2', '8'],
+        help="Resolution of target dems (2 or 8 meters).")
+
+    parser.add_argument('--dst',
+        help="Path to destination directory for output mosaicked strip data"
+             " (default is src.(reverse)replace('tif_results', 'strips')).")
+
+    parser.add_argument('--rema2a', action='store_true', default=False,
+        help="Use filter rema2a.")
+    parser.add_argument('--noentropy', action='store_true', default=False,
+        help="Use filter without entropy protection.")
+
+    parser.add_argument('--pbs', action='store_true', default=False,
+        help="Submit tasks to PBS.")
+    parser.add_argument('--qsubscript',
+        help="Path to qsub script to use in PBS submission"
+             " (default is qsub_scenes2strips.sh in script root folder).")
+    parser.add_argument('--dryrun', action='store_true', default=False,
+        help="Print actions without executing.")
+
+    parser.add_argument('--stripid',
+        help="Run filtering and mosaicking for a single strip with id"
+             " <catid1_catid2> (as parsed from scene dem filenames).")
+
+    # Parse arguments.
     args = parser.parse_args()
+    scriptpath = os.path.abspath(sys.argv[0])
+    scriptdir = os.path.abspath(os.path.dirname(scriptpath))
+    srcdir = os.path.abspath(args.src)
+    dstdir = os.path.abspath(args.dst) if args.dst is not None else None
+    if dstdir is None:
+        # Set default dst dir.
+        split_ind = srcdir.rfind('tif_results')
+        if split_ind == -1:
+            parser.error("src path does not contain 'tif_results', so default dst cannot be set")
+        dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
+        print "dst dir set to: %s" % dstdir
+    qsubpath = os.path.abspath(args.qsubscript) if args.qsubscript is not None \
+        else os.path.abspath(os.path.join(scriptdir, 'qsub_scenes2strips.sh'))
 
-    abs_scriptdir = os.path.abspath(os.path.dirname(sys.argv[0]))
-    single_script = os.path.join(abs_scriptdir, 'scenes2strips_single.py')
-
-    # Verify source directory.
-    if not os.path.isdir(args.srcdir):
-        parser.error("srcdir must be a directory.")
-    abs_srcdir = os.path.abspath(args.srcdir)
-
-    # Verify output directory.
-    if args.dstdir is None:
-        # TODO: Use the following regex method of determining strip output directory?
-        # dirtail_pattern = re.compile("[/\\\]tif_results[/\\\]\d+m[/\\\]?$")
-        # result = re.search(dirtail_pattern, abs_srcdir)
-        # if result:
-        #     dirtail = result.group(0)
-        #     abs_dstdir = re.sub(
-        #         dirtail_pattern,
-        #         dirtail.replace('tif_results', 'strips').replace('\\', '\\\\'),
-        #         abs_srcdir
-        #     )
-        # else:
-        #     parser.error(
-        #         "srcdir does not meet naming convention requirements for setting a default dstdir."
-        #     )
-        abs_dstdir = abs_srcdir.replace('tif_results', 'strips')
-        print "Strip output directory set to: {}".format(abs_dstdir)
-    else:
-        abs_dstdir = os.path.abspath(args.dstdir)
-
-    # Verify qsub script.
-    abs_qsubpath = (os.path.abspath(args.qsubscript) if args.qsubscript is not None
-                    else os.path.join(abs_scriptdir, 'qsub_scenes2strips.sh'))
-    if not os.path.isfile(abs_qsubpath):
-        parser.error("qsubscript path is not valid: {}".format(abs_qsubpath))
-
-    # Find scene dems to be merged into strips.
-    src_dems = glob.glob(os.path.join(abs_srcdir, '*dem.tif'))
-    if not src_dems:
-        print "No scene dems found to merge. Exiting."
-        sys.exit(1)
+    # Validate arguments.
+    if not os.path.isdir(srcdir):
+        parser.error("src must be a directory")
+    if dstdir == srcdir:
+        parser.error("src dir is the same as the dst dir: %s" % dstdir)
+    if not os.path.isfile(qsubpath):
+        parser.error("qsubscript path is not valid: %s" % qsubpath)
+    if args.noentropy and args.rema2a:
+        parser.error("noentropy and rema2a filters are incompatible")
 
     # Create strip output directory if it doesn't already exist.
-    if not os.path.isdir(abs_dstdir):
-        os.makedirs(abs_dstdir)
+    if not os.path.isdir(dstdir):
+        if not args.dryrun:
+            os.makedirs(dstdir)
 
-    # Find unique strip IDs (<catid1_catid2>).
-    stripids = list(set([os.path.basename(s)[14:47] for s in src_dems]))
-    stripids.sort()
+    if args.stripid is None:
+        # Do batch processing.
 
-    # Process each strip ID.
-    i = 0
-    for stripid in stripids:
-        i += 1
+        # Find all scene dems to be merged into strips.
+        scene_dems = glob.glob(os.path.join(srcdir, '*dem.tif'))
+        if not scene_dems:
+            print "No scene dems found to merge. Exiting."
+            sys.exit(1)
 
-        # TODO: Remove the following skip check that that renders existence checks in
-        # -t    scenes2strips_single.py useless.
-        # If output does not already exist, add to task list.
-        dst_dems = glob.glob(os.path.join(abs_dstdir, '*'+stripid+'_seg*_dem.tif'))
-        if dst_dems and not (args.remask or args.restrip):
-            print "{} output files exist, skipping".format(stripid)
+        # Find unique strip IDs (<catid1_catid2>).
+        stripids = list(set([os.path.basename(s)[14:47] for s in scene_dems]))
+        stripids.sort()
 
-        else:
+        del scene_dems
+
+        # Process each strip ID.
+        i = 0
+        for stripid in stripids:
+            i += 1
+
+            # If output does not already exist, add to task list.
+            dst_dems = glob.glob(os.path.join(dstdir, '*'+stripid+'_seg*_dem.tif'))
+            if dst_dems:
+                print "{} output files exist, skipping".format(stripid)
+                continue
 
             # If PBS, submit to scheduler.
             if args.pbs:
                 job_name = 's2s{:04g}'.format(i)
-                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6},p7={7} {9}'.format(
+                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6},p7={7} {8}'.format(
                     job_name,
-                    single_script,
-                    abs_srcdir,
-                    stripid,
+                    scriptpath,
+                    srcdir,
                     args.res,
-                    '--no-entropy' * args.no_entropy,
-                    '--remask' * args.remask,
-                    '--restrip' * args.restrip,
-                    abs_qsubpath
+                    '"--dst %s"' % dstdir,
+                    '"--stripid %s"' % stripid,
+                    '--noentropy' * args.noentropy,
+                    '--rema2a' * args.rema2a,
+                    qsubpath
                 )
                 print cmd
 
@@ -157,20 +123,161 @@ def main():
             else:
                 cmd = r'{0} {1} {2} {3} {4} {5} {6} {7}'.format(
                     'python',
-                    single_script,
-                    abs_srcdir,
-                    stripid,
+                    scriptpath,
+                    srcdir,
                     args.res,
-                    '--no-entropy' * args.no_entropy,
-                    '--remask' * args.remask,
-                    '--restrip' * args.restrip
+                    '--dst %s' % dstdir,
+                    '--stripid %s' % stripid,
+                    '--noentropy' * args.noentropy,
+                    '--rema2a' * args.rema2a,
                 )
-                print r'{}, {}'.format(i, cmd)
+                print '{}, {}'.format(i, cmd)
 
             if not args.dryrun:
                 # TODO: Switch to the following subprocess call once testing is complete:
                 # subprocess.call(cmd, shell=True)
                 subprocess.call(cmd)
+
+    else:
+        # Process a single strip.
+
+        # TODO: "change this" (?)
+        print "source: %s" % srcdir
+        print "res: %sm" % args.res
+
+        # Find scene dems for this stripid to be merged into strips.
+        scene_dems = glob.glob(os.path.join(srcdir, '*'+args.stripid+'*_dem.tif'))
+        print "merging pair id: {}, {} scenes".format(args.stripid, len(scene_dems))
+        if not scene_dems:
+            print "no scene dems found to merge, skipping"
+            sys.exit(1)
+
+        # Existence check. If output already exists, skip.
+        dst_dems = glob.glob(os.path.join(dstdir, '*'+args.stripid+'_seg*_dem.tif'))
+        if dst_dems:
+            print "output files exist, skipping"
+
+        # Make sure all matchtag and ortho files exist. If missing, skip.
+        missingflag = False
+        for f in scene_dems:
+            if not os.path.isfile(f.replace('dem.tif', 'matchtag.tif')):
+                print "matchtag file for {} missing, skipping ".format(f)
+                missingflag = True
+            if not os.path.isfile(f.replace('dem.tif', 'ortho.tif')):
+                print "ortho file for {} missing, skipping ".format(f)
+                missingflag = True
+            if not os.path.isfile(f.replace('dem.tif', 'meta.txt')):
+                print "meta file for {} missing, skipping ".format(f)
+                missingflag = True
+        if missingflag:
+            sys.exit(1)
+
+        # Filter all scenes in this strip.
+        src_matches = [f.replace('dem.tif', 'matchtag.tif') for f in scene_dems]
+        # TODO: Delete the following line once testing is complete
+        # -t    and it is decided that re-maskng based on timestamps should not be done.
+        filter_list = [f for f in src_matches if shouldDoMasking(f)]
+        filter_total = len(filter_list)
+        i = 0
+        for matchFile in filter_list:
+            i += 1
+            print "filtering {} of {}: {} ".format(i, filter_total, matchFile)
+            generateMasks(matchFile)
+
+        input_list = [os.path.basename(f) for f in scene_dems]
+
+        # Mosaic scenes in this strip together.
+        # Output separate segments if there are breaks in overlap.
+        segnum = 0
+        while len(input_list) > 0:
+            segnum += 1
+            print "building segment {}".format(segnum)
+            X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, output_list = scenes2strips(
+                srcdir, input_list
+            )
+
+            stripid_full = output_list[0][0:47]
+            output_demFile = os.path.join(
+                dstdir, "{}_seg{}_{}m_dem.tif".format(stripid_full, segnum, args.res)
+            )
+            print "DEM: {}".format(output_demFile)
+
+            output_matchFile = output_demFile.replace('dem.tif', 'matchtag.tif')
+            output_orthoFile = output_demFile.replace('dem.tif', 'ortho.tif')
+            output_metaFile  = output_demFile.replace('dem.tif', 'meta.txt')
+
+            saveArrayAsTiff(Z, output_demFile,   X, Y, proj_ref, nodataVal=-9999, dtype_out='float32')
+            saveArrayAsTiff(M, output_matchFile, X, Y, proj_ref, nodataVal=0,     dtype_out='uint8')
+            saveArrayAsTiff(O, output_orthoFile, X, Y, proj_ref, nodataVal=0,     dtype_out='int16')
+
+            time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
+            writeStripMeta(output_metaFile, srcdir, output_list, trans, rmse, proj4, fp_vertices, time)
+
+            input_list = list(set(input_list).difference(set(output_list)))
+
+
+def shouldDoMasking(matchFile, legacy=False):
+    matchFile_date = os.path.getmtime(matchFile)
+    maskFiles = [matchFile.replace('matchtag.tif', 'edgemask.tif'),
+                 matchFile.replace('matchtag.tif', 'datamask.tif')] if legacy \
+        else [matchFile.replace('matchtag.tif', 'mask.tif')]
+    for m in maskFiles:
+        if os.path.isfile(m):
+            # Update Mode - will only reprocess masks older than the matchtag file.
+            maskFile_date = os.path.getmtime(m)
+            if (matchFile_date - maskFile_date) > 6.9444e-04:
+                return True
+        else:
+            return True
+    return False
+
+
+def writeStripMeta(o_metaFile, scenedir, dem_list,
+                   trans, rmse, proj4, fp_vertices, strip_time):
+    strip_info = \
+"""Strip Metadata
+Creation Date: {}
+Strip creation date: {}
+Strip projection (proj4): '{}'
+
+Strip Footprint Vertices
+X: {}
+Y: {}
+
+Mosaicking Alignment Statistics (meters)
+scene, rmse, dz, dx, dy
+""".format(
+        datetime.today().strftime("%d-%b-%Y %H:%M:%S"),
+        strip_time,
+        proj4,
+        str(fp_vertices[0]).replace(',', '')[1:-1],
+        str(fp_vertices[1]).replace(',', '')[1:-1],
+        )
+
+    for i in range(len(dem_list)):
+        line = "{} {:.2f} {:.4f} {:.4f} {:.4f}\n".format(
+            dem_list[i], rmse[i], trans[0, i], trans[1, i], trans[2, i])
+        strip_info += line
+
+    strip_info += "\nScene Metadata \n\n"
+
+    scene_info = ""
+    for i in range(len(dem_list)):
+        scene_info += "scene {} name={}\n".format(i+1, dem_list[i])
+
+        scene_metaFile = os.path.join(scenedir, dem_list[i].replace("dem.tif", "meta.txt"))
+        if os.path.isfile(scene_metaFile):
+            scene_meta = open(scene_metaFile, 'r')
+            scene_info += scene_meta.read()
+            scene_meta.close()
+        else:
+            scene_info += "{} not found".format(scene_metaFile)
+        scene_info += " \n"
+
+    strip_meta = open(o_metaFile, 'w')
+    strip_meta.write(strip_info)
+    strip_meta.write(scene_info)
+    strip_meta.close()
 
 
 

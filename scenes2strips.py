@@ -314,7 +314,7 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
 
         del Xsub, Ysub
 
-        # Remove border 0's introduced by nn interpolation.
+        # Remove border 0's introduced by NaN interpolation.
         M3 = ~np.isnan(zi)
         M3 = ndimage.binary_erosion(M3, structure=np.ones((6, 6)))  # border cutline
 
