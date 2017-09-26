@@ -679,6 +679,27 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
         return x_dem, y_dem, z, m, o, md
 
 
+def applyMasks(x, y, z, m, o, md, me=None):
+    # TODO: Write docstring.
+
+    z[~md] = np.nan
+    m[~md] = 0
+    if me is not None:
+        o[~me] = 0
+
+    # If there is any good data, crop the matrices of bordering NaNs.
+    if np.any(~np.isnan(z)):
+        rowcrop, colcrop = cropnans(z)
+
+        x = x[colcrop[0]:colcrop[1]]
+        y = y[rowcrop[0]:rowcrop[1]]
+        z = z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        m = m[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        o = o[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+
+    return x, y, z, m, o
+
+
 def cropnans(matrix, buff=0):
     """
     Crop matrix of bordering NaNs.
@@ -707,27 +728,6 @@ def cropnans(matrix, buff=0):
         colcrop_j = data.shape[1] - 1
 
     return (rowcrop_i, rowcrop_j+1), (colcrop_i, colcrop_j+1)
-
-
-def applyMasks(x, y, z, m, o, md, me=None):
-    # TODO: Write docstring.
-
-    z[~md] = np.nan
-    m[~md] = 0
-    if me is not None:
-        o[~me] = 0
-
-    # If there is any good data, crop the matrices of bordering NaNs.
-    if np.any(~np.isnan(z)):
-        rowcrop, colcrop = cropnans(z)
-
-        x = x[colcrop[0]:colcrop[1]]
-        y = y[rowcrop[0]:rowcrop[1]]
-        z = z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
-        m = m[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
-        o = o[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
-
-    return x, y, z, m, o
 
 
 def regrid(x, y, z, m, o):
