@@ -5,8 +5,9 @@ from __future__ import division
 import os.path
 import sys
 import warnings
+from traceback import print_exc
 
-import gdal, ogr, osr
+import ogr, osr
 import numpy as np
 from scipy import ndimage, interpolate, misc
 from skimage import morphology
@@ -15,16 +16,24 @@ import raster_array_tools as rat
 import test
 
 
-class DimensionError(Exception):
+# The spatial reference of the strip, set at the beginning of scenes2strips()
+# to the spatial reference of the first scene dem in order and used for
+# comparison to the spatial references of all other source raster files.
+__STRIP_SPAT_REF__ = None
+
+
+class RasterInputError(Exception):
     def __init__(self, msg):
         self.msg = msg
     def __str__(self):
         return repr(self.msg)
 
 
-def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
+def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
     """
-    function [X,Y,Z,M,O,trans,rmse,f]=scenes2strips(demdir,f)
+    From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
+
+    function [X,Y,Z,M,O,trans,rmse,f]=scenes2strips(varargin)
     %SCENES2STRIPS merge scenes into strips
     %
     %   [x,y,z,m,o,trans,rmse,f]=scenes2strips(demdir,f) merges the
@@ -39,24 +48,32 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
     %   output f gives the list of filenames in the mosaic. If a break is
     %   detected, the list of output files will be less than the input.
     %
-    % Version 3.0, Ian Howat, Ohio State University, 2015
+    %   [...]=scenes2strips(...,'maskFileSuffix',value) will apply the mask
+    %   identified as the dem filename with the _dem.tif replaced by
+    %   _maskFileSuffix.tif
+    %   [...]=scenes2strips(...,'max_coreg_rmse',value) will set a new maximum
+    %   coregistration error limit in meters (default=1). Errors above this
+    %   limit will result in a segment break.
+    %
+    % Version 3.1, Ian Howat, Ohio State University, 2015.
 
-    If 'noMask' is True, a mask will not be applied.
-    'max_coreg_rmse' is the maximum coregistration error limit in meters.
-    --Errors above this limit will result in a segment break.
+    If maskFileSuffix='legacy', edge and data masks identified as the dem
+    filename with the _dem.tif replaced by _edgemask.tif and _datamask.tif,
+    respectively, will be applied.
     """
 
     # Order scenes in north-south or east-west direction by aspect ratio.
     print "ordering {} scenes".format(len(demFiles))
     demFiles_ordered = orderPairs(demdir, demFiles)
 
-    # FIXME: Create a systematic way of determining the projection in which
-    # -t     output strips are saved.
-    proj_ref = rat.getProjRef(os.path.join(demdir, demFiles_ordered[0]))
-
     # Initialize output stats.
     trans = np.zeros((3, len(demFiles_ordered)))
     rmse = np.zeros(len(demFiles_ordered))
+
+    # Get projection reference of the first scene to be used in equality checks
+    # with the projection reference of all scenes that follow.
+    global __STRIP_SPAT_REF__
+    __STRIP_SPAT_REF__ = rat.extractRasterParams(os.path.join(demdir, demFiles_ordered[0]), 'spat_ref')
 
     # File loop.
     for i in range(len(demFiles_ordered)):
@@ -65,18 +82,26 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
         demFile = os.path.join(demdir, demFiles_ordered[i])
         matchFile = demFile.replace('dem.tif', 'matchtag.tif')
         orthoFile = demFile.replace('dem.tif', 'ortho.tif')
-        # %shadeFile= demFile.replace('dem.tif','dem_shade.tif')
-        # %maskFile=  demFile.replace('dem.tif','mask.tif')
-
-        maskFile = None if noMask else demFile.replace('dem.tif','mask.tif')
+        maskFile = None
+        if maskFileSuffix is not None:
+            if maskFileSuffix == 'legacy':
+                dataMaskFile = demFile.replace('dem.tif', 'datamask.tif')
+                edgeMaskFile = demFile.replace('dem.tif', 'edgemask.tif')
+            else:
+                maskFile = demFile.replace('dem.tif', maskFileSuffix+'.tif')
+        else:
+            print "no mask applied"
 
         print "scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile)
 
         try:
-            x, y, z, m, o, md = loaddata(demFile, matchFile, orthoFile, maskFile)
-        except Exception as e:
+            if maskFileSuffix == 'legacy':
+                x, y, z, m, o, md, me = loaddata(demFile, matchFile, orthoFile, dataMaskFile, edgeMaskFile)
+            else:
+                x, y, z, m, o, md = loaddata(demFile, matchFile, orthoFile, maskFile)
+        except Exception:
             print "Data read error:"
-            print >>sys.stderr, e.msg
+            print_exc()
             print "...skipping"
             continue
 
@@ -86,6 +111,8 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
             continue
 
         # Apply masks.
+        if maskFileSuffix == 'legacy':
+            x, y, z, m, o = applyMasks(x, y, z, m, o, md, me)
         x, y, z, m, o = applyMasks(x, y, z, m, o, md)
 
         dx = x[1] - x[0]
@@ -164,7 +191,7 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
             rmse = rmse[:i]
             break
 
-        A[np.where(A == 0)] = np.nan
+        A[A == 0] = np.nan
         r, c = cropnans(A, buff)
 
         # Make overlap mask removing isolated pixels.
@@ -219,8 +246,8 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
                          np.array([0, Ar.shape[1]-1, Ar.shape[1]-1,             0]))
         Ar_interp = fn.ev(corner_coords[0], corner_coords[1])
         Ar_interp = np.round(Ar_interp).astype(int)
-        Ar_interp[np.where(Ar_interp < 1)] = 1
-        Ar_interp[np.where(Ar_interp > 2)] = 2
+        Ar_interp[Ar_interp < 1] = 1
+        Ar_interp[Ar_interp > 2] = 2
         Ar[corner_coords] = Ar_interp
 
         # Add the corner coordinates to the list of boundary coordinates,
@@ -236,34 +263,34 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
         Ar[Ar_zero_coords] = Ar_interp
 
         Ar = misc.imresize(Ar, A.shape, 'bilinear', mode='F')
-        Ar[np.where((A == 1) & (Ar != 1))] = 1
-        Ar[np.where((A == 2) & (Ar != 2))] = 2
+        Ar[(A == 1) & (Ar != 1)] = 1
+        Ar[(A == 2) & (Ar != 2)] = 2
         A = Ar - 1
-        A[np.where(A < 0)] = 0
-        A[np.where(A > 1)] = 1
+        A[A < 0] = 0
+        A[A > 1] = 1
 
         W = (~np.isnan(Zsub)).astype(np.float32)
         W[r[0]:r[1], c[0]:c[1]] = A
         del A
-        W[np.where(np.isnan(Zsub) & np.isnan(z))] = np.nan
+        W[np.isnan(Zsub) & np.isnan(z)] = np.nan
 
         # Shift weights so that more of the reference layer is kept.
         f0 = 0.25  # overlap fraction where ref z weight goes to zero
         f1 = 0.55  # overlap fraction where ref z weight goes to one
 
         W = (1/(f1-f0))*W - f0/(f1-f0)
-        W[np.where(W > 1)] = 1
-        W[np.where(W < 0)] = 0
+        W[W > 1] = 1
+        W[W < 0] = 0
 
         # Remove <25% edge of coverage from each in pair.
         # FIXME: Each throws "RuntimeWarning: invalid value encountered in less_equal".
-        Zsub[np.where(W == 0)] = np.nan
-        Msub[np.where(W == 0)] = 0
-        Osub[np.where(W == 0)] = 0
+        Zsub[W == 0] = np.nan
+        Msub[W == 0] = 0
+        Osub[W == 0] = 0
 
-        z[np.where(W >= 1)] = np.nan
-        m[np.where(W >= 1)] = 0
-        o[np.where(W >= 1)] = 0
+        z[W >= 1] = np.nan
+        m[W >= 1] = 0
+        o[W >= 1] = 0
 
         # Coregistration
 
@@ -302,13 +329,13 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
 
         # Interpolate the mask to the same grid.
         mi = rat.interp2_gdal(xi, yi, m.astype(np.float32), Xsub, Ysub, 'nearest')
-        mi[np.where(np.isnan(mi))] = 0  # convert back to uint8
+        mi[np.isnan(mi)] = 0  # convert back to uint8
         mi = mi.astype(np.bool)
         del m
 
         # Interpolate ortho to same grid.
         oi = o.astype(np.float32)
-        oi[np.where(oi == 0)] = np.nan  # Set border to NaN so it won't be interpolated.
+        oi[oi == 0] = np.nan  # Set border to NaN so it won't be interpolated.
         oi = rat.interp2_gdal(xi, yi, oi, Xsub, Ysub, 'cubic')
         del o
 
@@ -330,8 +357,8 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
 
         # Make weighted elevation grid.
         A = Zsub*W + zi*(1-W)
-        A[np.where( np.isnan(Zsub) & ~np.isnan(zi))] =   zi[np.where( np.isnan(Zsub) & ~np.isnan(zi))]
-        A[np.where(~np.isnan(Zsub) &  np.isnan(zi))] = Zsub[np.where(~np.isnan(Zsub) &  np.isnan(zi))]
+        A[ np.isnan(Zsub) & ~np.isnan(zi)] =   zi[ np.isnan(Zsub) & ~np.isnan(zi)]
+        A[~np.isnan(Zsub) &  np.isnan(zi)] = Zsub[~np.isnan(Zsub) &  np.isnan(zi)]
         del zi, Zsub
 
         # Put strip subset back into full array.
@@ -344,22 +371,20 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
 
         # Make weighted ortho grid.
         Osub = Osub.astype(np.float32)
-        Osub[np.where(Osub == 0)] = np.nan
+        Osub[Osub == 0] = np.nan
         A = Osub*W + oi*(1-W)
 
         del W
 
-        A[np.where( np.isnan(Osub) & ~np.isnan(oi))] =   oi[np.where( np.isnan(Osub) & ~np.isnan(oi))]
-        A[np.where(~np.isnan(Osub) &  np.isnan(oi))] = Osub[np.where(~np.isnan(Osub) &  np.isnan(oi))]
+        A[ np.isnan(Osub) & ~np.isnan(oi)] =   oi[ np.isnan(Osub) & ~np.isnan(oi)]
+        A[~np.isnan(Osub) &  np.isnan(oi)] = Osub[~np.isnan(Osub) &  np.isnan(oi)]
         del Osub, oi
 
-        A[np.where(np.isnan(A))] = 0  # convert back to uint16
+        A[np.isnan(A)] = 0  # convert back to uint16
         A = A.astype(np.uint16)
 
         O[r0:r1, c0:c1] = A
         del A
-
-    # print "strip data broken"
 
     # Crop to data.
     if 'Z' in vars() and np.any(~np.isnan(Z)):
@@ -370,22 +395,11 @@ def scenes2strips(demdir, demFiles, noMask=False, max_coreg_rmse=1):
             Z = Z[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             M = M[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             O = O[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
-            Z[np.where(np.isnan(Z))] = -9999
-
-        fp_vertices = rat.getFPvertices(Z, X, Y, nodataVal=-9999)
-        proj_ref = rat.getProjRef(os.path.join(demdir, demFiles_ordered[0]))
-        proj4 = osr.SpatialReference(proj_ref).ExportToProj4()
+            Z[np.isnan(Z)] = -9999
     else:
-        X = np.array([])
-        Y = np.array([])
-        Z = np.array([])
-        M = np.array([])
-        O = np.array([])
-        proj_ref = None
-        proj4 = None
-        fp_vertices = (None, None)
+        X, Y, Z, M, O = None, None, None, None, None
 
-    return X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, demFiles_ordered
+    return X, Y, Z, M, O, trans, rmse, demFiles_ordered, __STRIP_SPAT_REF__
 
 
 def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
@@ -403,7 +417,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     maxp = 15
 
     if len(x1) < 3 or len(y1) < 3 or len(x2) < 3 or len(y2) < 3:
-        raise DimensionError("minimum array dimension is 3")
+        raise RasterInputError("minimum array dimension is 3")
 
     interpflag = True
     if (x1.size == x2.size) and (y1.size == y2.size):
@@ -429,7 +443,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
             if 'm2' in vars():
                 m2n = rat.interp2_gdal(x2 - pn[1], y2 - pn[2], m2.astype(np.float32),
                                        x1, y1, 'nearest')
-                m2n[np.where(np.isnan(m2n))] = 0  # convert back to uint8
+                m2n[np.isnan(m2n)] = 0  # convert back to uint8
                 m2n = m2n.astype(np.bool)
         else:
             z2n = z2 - pn[0]
@@ -524,81 +538,24 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     return np.array([z2out, p, d0])
 
 
-class CornerCoords:
-    """
-    This class is designed to make easily accessible the coordinates of the four
-    corner points of a raster dataset ds, allowing for nonzero rotation factors.
-    """
-    def __init__(self, ds, spatialRef=False):
-        self.coords = self.get_corner_coords(self, ds)
-        self.x = self.coords[:, 0]
-        self.y = self.coords[:, 1]
-        self.sr = osr.SpatialReference(ds.GetProjectionRef()) if spatialRef else None
-
-    @staticmethod
-    def get_corner_coords(self, ds):
-        """
-        Returns a 5x2 matrix of corner coordinate pairs for the raster dataset ds.
-        Ordered with the top left corner first, goes clockwise, ends back at top left.
-        """
-        gt = ds.GetGeoTransform()
-
-        top_left_x = np.full((5, 1), gt[0])
-        top_left_y = np.full((5, 1), gt[3])
-        top_left_mat = np.concatenate((top_left_x, top_left_y), axis=1)
-
-        raster_XY_size_mat = np.array([
-            [0, 0],
-            [ds.RasterXSize, 0],
-            [ds.RasterXSize, ds.RasterYSize],
-            [0, ds.RasterYSize],
-            [0, 0]
-        ])
-
-        gt_mat = np.array([
-            [gt[1], gt[4]],
-            [gt[2], gt[5]]
-        ])
-
-        return top_left_mat + np.dot(raster_XY_size_mat, gt_mat)
-
-    def wkt(self):
-        c = []
-        for i in range(5):
-            c.append([])
-            for j in range(2):
-                c[i].append(str(self.coords[i][j]))
-            c[i] = " ".join(c[i])
-        return 'POLYGON ((' + ','.join(c) + '))'
-
-    def geometry(self):
-        return ogr.Geometry(wkt=self.wkt())
-
-    def geometrySR(self):
-        geom = self.geometry()
-        geom.AssignSpatialReference(self.sr)
-        return geom
-
-
 def rectFootprint(*geoms):
     """
     Returns the smallest rectangular footprint that contains all input polygons,
     all as OGRGeometry objects.
     """
-    minx = float('inf')
-    miny = float('inf')
-    maxx = float('-inf')
-    maxy = float('-inf')
+    minx = np.inf
+    miny = np.inf
+    maxx = -np.inf
+    maxy = -np.inf
 
     for geom in geoms:
-        coords = geom.ExportToWkt().replace('POLYGON ((', '').replace('))', '').split(',')
-        for coord in coords:
-            c = coord.split(' ')
-            x, y = float(c[0]), float(c[1])
-            minx = min(x, minx)
-            miny = min(y, miny)
-            maxx = max(x, maxx)
-            maxy = max(y, maxy)
+        cc = rat.wktToCoords(geom.ExportToWkt())
+        cc_x = cc[:, 0]
+        cc_y = cc[:, 1]
+        minx = min(minx, np.min(cc_x))
+        miny = min(miny, np.min(cc_y))
+        maxx = max(maxx, np.max(cc_x))
+        maxy = max(maxy, np.max(cc_y))
 
     fp_wkt = 'POLYGON (({} {},{} {},{} {},{} {},{} {}))'.format(
         minx, maxy,
@@ -611,100 +568,115 @@ def rectFootprint(*geoms):
     return ogr.Geometry(wkt=fp_wkt)
 
 
-def orderPairs(demdir, files):
+def orderPairs(demdir, fnames):
     """
     Scene order is determined in relation to *grid north* of the common projection
     by comparing total x-extent and y-extent of the scenes as a whole (aspect ratio).
     The larger of these extents determines the coordinate by which to do ordering.
     """
-    R0 = np.zeros((len(files), 4))  # matrix to place rectangular parameters of the images
-    geoms = []                      # list to place OGR geometries of the images (as rectangles)
+    R0 = np.zeros((len(fnames), 4))  # Matrix to place rectangular parameters of the raster images.
+    indexed_geoms = []               # List to place rectangular (footprint) geometries of the rasters
+                                     # as OGR geometries, each tupled with the index corresponding to the
+                                     # filename of the raster it is extracted from.
 
     # Get rectangular parameters and geometries.
-    for i in range(len(files)):
-        ds = gdal.Open(os.path.join(demdir, files[i]), gdal.GA_ReadOnly)
-        ds_CC = CornerCoords(ds)
-        R0[i,:] = [min(ds_CC.x), min(ds_CC.y), max(ds_CC.x)-min(ds_CC.x), max(ds_CC.y)-min(ds_CC.y)]
-        geoms.append((i, ds_CC.geometry()))
-        del ds, ds_CC
+    for i in range(len(fnames)):
+        cc, geom = rat.extractRasterParams(os.path.join(demdir, fnames[i]), 'corner_coords', 'geom')
+        cc_x = cc[:, 0]
+        cc_y = cc[:, 1]
+        R0[i, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]
+        indexed_geoms.append((i, geom))
 
     # Calculate aspect ratio, ar = x-extent/y-extent
-    ar = (  (max(R0[:,0] + R0[:,2]) - min(R0[:,0]))
-          / (max(R0[:,1] + R0[:,3]) - min(R0[:,1])))
+    ar =  (max(R0[:, 0] + R0[:, 2]) - min(R0[:, 0])) \
+        / (max(R0[:, 1] + R0[:, 3]) - min(R0[:, 1]))
 
+    first_fname_index = None
     if ar >= 1:
         # Scenes are in east-west direction; start with scene with minimum x.
-        ordered_file_indices = [np.argmin(R0[:,0])]
+        first_fname_index = np.argmin(R0[:, 0])
     else:
         # Scenes are in north-south direction; start with scene with minimum y.
-        ordered_file_indices = [np.argmin(R0[:,1])]
+        first_fname_index = np.argmin(R0[:, 1])
 
     # Start with the footprint of this scene and let the strip grow from there.
-    footprint_geom = geoms[ordered_file_indices[0]][1]
-    del geoms[ordered_file_indices[0]]
+    footprint_geom = indexed_geoms[first_fname_index][1]
+    ordered_fname_indices = [first_fname_index]
+    del indexed_geoms[first_fname_index]
 
     # Loop through scene pair geometries and sequentially add the
     # next pair with the most overlap to the ordered indices list.
-    for i in range(len(geoms)):
-        overlap_area = [footprint_geom.Intersection(index_geom_tup[1]).GetArea() for index_geom_tup in geoms]
+    for i in range(len(indexed_geoms)):
+        overlap_area = [footprint_geom.Intersection(ind_geom[1]).GetArea() for ind_geom in indexed_geoms]
         if max(overlap_area) > 0:
-            selected_tup = geoms[np.argmax(overlap_area)]
+            selected_tup = indexed_geoms[np.argmax(overlap_area)]
             scene_index, scene_geom = selected_tup
             # Extend the rectangular footprint geometry to include the new scene.
             footprint_geom = rectFootprint(footprint_geom, scene_geom)
             # Add the new scene to the file order at the last position.
-            ordered_file_indices.append(scene_index)
+            ordered_fname_indices.append(scene_index)
             # Remove the geometry of this scene (and its index) from the input list.
-            del geoms[np.argmax(overlap_area)]
+            indexed_geoms.remove(selected_tup)
         else:
             print "Break in overlap detected, returning this segment only"
             break
 
-    demFiles_ordered = [files[i] for i in ordered_file_indices]
-
-    return demFiles_ordered
+    return [fnames[i] for i in ordered_fname_indices]
 
 
-def loaddata(demFile, matchFile, orthoFile, maskFile):
+def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     """
     Load data files and perform basic conversions.
     """
-    z, x_dem, y_dem = rat.oneBandImageToArrayZXY(demFile)
+    global __STRIP_SPAT_REF__
 
-    m = rat.oneBandImageToArray(matchFile)
+    z, x_dem, y_dem, spat_ref = rat.extractRasterParams(demFile, 'z', 'x', 'y', 'spat_ref')
+    if spat_ref.isSame(__STRIP_SPAT_REF__) != 1:
+        raise RasterInputError("demFile '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
+                               demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
+
+    m = rat.extractRasterParams(matchFile, 'z').astype(np.bool)
     if m.shape != z.shape:
-        print "WARNING: matchFile '{}' has wrong dimensions".format(matchFile)
-        print "Interpolating to match associated dem's dimensions"
-        x, y = rat.getXYarrays(matchFile)
+        print "WARNING: matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
+        print "Interpolating to dem dimensions"
+        x, y = rat.extractRasterParams(matchFile, 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
-        m[np.where(np.isnan(m))] = 0  # Convert back to bool.
-    m = m.astype(np.bool)
+        m[np.isnan(m)] = 0  # Convert back to bool.
+        m = m.astype(np.bool)
 
     if os.path.isfile(orthoFile):
-        o = rat.oneBandImageToArray(orthoFile)
+        o = rat.extractRasterParams(orthoFile, 'z').astype(np.uint16)
         if o.shape != z.shape:
-            print "WARNING: orthoFile '{}' has wrong dimensions".format(orthoFile)
-            print "Interpolating to match associated dem's dimensions"
-            x, y = rat.getXYarrays(orthoFile)
-            o[np.where(np.isnan(o))] = np.nan  # Set border to NaN so it won't be interpolated.
+            print "WARNING: orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
+            print "Interpolating to dem dimensions"
+            x, y = rat.extractRasterParams(orthoFile, 'x', 'y')
+            # TODO: Is the following line necessary?
+            o[np.isnan(o)] = np.nan  # Set border to NaN so it won't be interpolated.
             o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
-            o[np.where(np.isnan(o))] = 0  # Convert back to uint16.
+            o[np.isnan(o)] = 0  # Convert back to uint16.
+            o = o.astype(np.uint16)
     else:
-        o = np.zeros(z.shape)
-    o = o.astype(np.uint16)
+        o = np.zeros(z.shape, dtype=np.uint16)
 
     if maskFile is not None:
-        md = rat.oneBandImageToArray(maskFile)
+        md = rat.extractRasterParams(maskFile, 'z').astype(np.bool)
         if md.shape != z.shape:
-            raise DimensionError("maskFile '{}' has wrong dimensions".format(maskFile))
+            raise RasterInputError("maskFile '{}' has wrong dimensions".format(maskFile))
     else:
-        md = np.ones(z.shape, dtype=bool)
-    md = md.astype(np.bool)
+        md = np.ones(z.shape, dtype=np.bool)
+
+    if edgemaskFile is not None:
+        me = rat.extractRasterParams(edgemaskFile, 'z').astype(np.bool)
+        if me.shape != z.shape:
+            raise RasterInputError("edgemaskFile '{}' has wrong dimensions".format(maskFile))
 
     # A pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
-    z[np.where((z < -100) | (z == 0))] = np.nan
+    z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
 
-    return x_dem, y_dem, z, m, o, md
+    if edgemaskFile is not None:
+        return x_dem, y_dem, z, m, o, md, me
+    else:
+        return x_dem, y_dem, z, m, o, md
 
 
 def cropnans(matrix, buff=0):
@@ -737,11 +709,13 @@ def cropnans(matrix, buff=0):
     return (rowcrop_i, rowcrop_j+1), (colcrop_i, colcrop_j+1)
 
 
-def applyMasks(x, y, z, match, ortho, mask):
+def applyMasks(x, y, z, m, o, md, me=None):
     # TODO: Write docstring.
 
-    z[~mask] = np.nan
-    match[~mask] = 0
+    z[~md] = np.nan
+    m[~md] = 0
+    if me is not None:
+        o[~me] = 0
 
     # If there is any good data, crop the matrices of bordering NaNs.
     if np.any(~np.isnan(z)):
@@ -749,14 +723,14 @@ def applyMasks(x, y, z, match, ortho, mask):
 
         x = x[colcrop[0]:colcrop[1]]
         y = y[rowcrop[0]:rowcrop[1]]
-        z =         z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
-        match = match[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
-        ortho = ortho[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        z = z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        m = m[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        o = o[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
 
-    return x, y, z, match, ortho
+    return x, y, z, m, o
 
 
-def regrid(x, y, z, match, ortho):
+def regrid(x, y, z, m, o):
     # TODO: Write docstring.
 
     dx = x[1] - x[0]
@@ -767,18 +741,18 @@ def regrid(x, y, z, match, ortho):
 
     zi = rat.interp2_gdal(x, y, z, xi, yi, 'linear').astype(np.float32)
 
-    match = rat.interp2_gdal(x, y, match.astype(np.float32), xi, yi, 'nearest')
-    match[np.where(np.isnan(match))] = 0  # Convert back to uint8.
-    match = match.astype(np.bool)
+    m = rat.interp2_gdal(x, y, m.astype(np.float32), xi, yi, 'nearest')
+    m[np.isnan(m)] = 0  # Convert back to uint8.
+    m = m.astype(np.bool)
 
     # Interpolate ortho to same grid.
-    ortho = ortho.astype(np.float32)
-    ortho[np.where(np.isnan(z))] = np.nan  # Set border to NaN so it won't be interpolated.
-    ortho = rat.interp2_gdal(x, y, ortho, xi, yi, 'cubic')
-    ortho[np.where(np.isnan(ortho))] = 0  # Convert back to uint16.
-    ortho = ortho.astype(np.uint16)
+    o = o.astype(np.float32)
+    o[np.isnan(z)] = np.nan  # Set border to NaN so it won't be interpolated.
+    o = rat.interp2_gdal(x, y, o, xi, yi, 'cubic')
+    o[np.isnan(o)] = 0  # Convert back to uint16.
+    o = o.astype(np.uint16)
 
-    return xi, yi, zi, match, ortho
+    return xi, yi, zi, m, o
 
 
 def batchConcatenate(pairs, direction, axis_num):

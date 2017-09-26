@@ -17,7 +17,7 @@ from skimage.filters.rank import entropy
 import raster_array_tools as rat
 
 
-def generateMasks(matchFile):
+def generateMasks(matchFile, mask_type):
     # TODO: Write docstring.
 
     # Find SETSM version.

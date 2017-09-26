@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 
 from mask_scene import generateMasks
-from raster_array_tools import saveArrayAsTiff
+from raster_array_tools import saveArrayAsTiff, getFPvertices
 from scenes2strips import scenes2strips
 
 
@@ -140,10 +140,18 @@ def main():
 
     else:
         # Process a single strip.
+        maskFileSuffix = None
+        if args.rema2a:
+            maskFileSuffix = 'mask2a'
+        elif args.noentropy:
+            maskFileSuffix = 'legacy'
+        else:
+            maskFileSuffix = 'mask'
 
         # TODO: "change this" (?)
         print "source: %s" % srcdir
         print "res: %sm" % args.res
+        print "maskFileSuffix: %s" % maskFileSuffix
 
         # Find scene dems for this stripid to be merged into strips.
         scene_dems = glob.glob(os.path.join(srcdir, '*'+args.stripid+'*_dem.tif'))
@@ -173,54 +181,57 @@ def main():
             sys.exit(1)
 
         # Filter all scenes in this strip.
+        # TODO: Change the following once testing is complete
+        # -t    and it is decided whether re-maskng based on timestamps should be done,
+        # -t    or if masking should just be skipped if the mask already exists.
         src_matches = [f.replace('dem.tif', 'matchtag.tif') for f in scene_dems]
-        # TODO: Delete the following line once testing is complete
-        # -t    and it is decided that re-maskng based on timestamps should not be done.
-        filter_list = [f for f in src_matches if shouldDoMasking(f)]
+        filter_list = [f for f in src_matches if shouldDoMasking(f, maskFileSuffix)]
         filter_total = len(filter_list)
         i = 0
         for matchFile in filter_list:
             i += 1
             print "filtering {} of {}: {} ".format(i, filter_total, matchFile)
-            generateMasks(matchFile)
-
-        input_list = [os.path.basename(f) for f in scene_dems]
+            generateMasks(matchFile, maskFileSuffix)
 
         # Mosaic scenes in this strip together.
         # Output separate segments if there are breaks in overlap.
+        input_sceneDemFnames = [os.path.basename(f) for f in scene_dems]
         segnum = 0
-        while len(input_list) > 0:
+        while len(input_sceneDemFnames) > 0:
             segnum += 1
             print "building segment {}".format(segnum)
-            X, Y, Z, M, O, trans, rmse, proj_ref, proj4, fp_vertices, output_list = scenes2strips(
-                srcdir, input_list
+            X, Y, Z, M, O, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
+                srcdir, input_sceneDemFnames, maskFileSuffix=maskFileSuffix
             )
+            input_sceneDemFnames = list(set(input_sceneDemFnames).difference(set(mosaicked_sceneDemFnames)))
+            if X is None:
+                continue
 
-            stripid_full = output_list[0][0:47]
-            output_demFile = os.path.join(
+            stripid_full = mosaicked_sceneDemFnames[0][0:47]
+            strip_demFile = os.path.join(
                 dstdir, "{}_seg{}_{}m_dem.tif".format(stripid_full, segnum, args.res)
             )
-            print "DEM: {}".format(output_demFile)
+            print "DEM: {}".format(strip_demFile)
 
-            output_matchFile = output_demFile.replace('dem.tif', 'matchtag.tif')
-            output_orthoFile = output_demFile.replace('dem.tif', 'ortho.tif')
-            output_metaFile  = output_demFile.replace('dem.tif', 'meta.txt')
+            strip_matchFile = strip_demFile.replace('dem.tif', 'matchtag.tif')
+            strip_orthoFile = strip_demFile.replace('dem.tif', 'ortho.tif')
+            strip_metaFile  = strip_demFile.replace('dem.tif', 'meta.txt')
 
-            saveArrayAsTiff(Z, output_demFile,   X, Y, proj_ref, nodataVal=-9999, dtype_out='float32')
-            saveArrayAsTiff(M, output_matchFile, X, Y, proj_ref, nodataVal=0,     dtype_out='uint8')
-            saveArrayAsTiff(O, output_orthoFile, X, Y, proj_ref, nodataVal=0,     dtype_out='int16')
+            saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodataVal=-9999, dtype_out='float32')
+            saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodataVal=0,     dtype_out='uint8')
+            saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodataVal=0,     dtype_out='int16')
 
+            proj4 = spat_ref.ExportToProj4()
+            fp_vertices = getFPvertices(Z, X, Y, nodataVal=-9999)
             time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
-            writeStripMeta(output_metaFile, srcdir, output_list, trans, rmse, proj4, fp_vertices, time)
-
-            input_list = list(set(input_list).difference(set(output_list)))
+            writeStripMeta(strip_metaFile, srcdir, mosaicked_sceneDemFnames, trans, rmse, proj4, fp_vertices, time)
 
 
-def shouldDoMasking(matchFile, legacy=False):
+def shouldDoMasking(matchFile, maskFileSuffix='mask'):
     matchFile_date = os.path.getmtime(matchFile)
     maskFiles = [matchFile.replace('matchtag.tif', 'edgemask.tif'),
-                 matchFile.replace('matchtag.tif', 'datamask.tif')] if legacy \
-        else [matchFile.replace('matchtag.tif', 'mask.tif')]
+                 matchFile.replace('matchtag.tif', 'datamask.tif')] if maskFileSuffix == 'legacy' \
+        else [matchFile.replace('matchtag.tif', maskFileSuffix+'.tif')]
     for m in maskFiles:
         if os.path.isfile(m):
             # Update Mode - will only reprocess masks older than the matchtag file.
