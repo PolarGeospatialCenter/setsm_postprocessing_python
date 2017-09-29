@@ -58,7 +58,7 @@ def main():
         if split_ind == -1:
             parser.error("src path does not contain 'tif_results', so default dst cannot be set")
         dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
-        print "dst dir set to: %s" % dstdir
+        print "dst dir set to: {}".format(dstdir)
     qsubpath = os.path.abspath(args.qsubscript) if args.qsubscript is not None \
         else os.path.abspath(os.path.join(scriptdir, 'qsub_scenes2strips.sh'))
 
@@ -66,9 +66,9 @@ def main():
     if not os.path.isdir(srcdir):
         parser.error("src must be a directory")
     if dstdir == srcdir:
-        parser.error("src dir is the same as the dst dir: %s" % dstdir)
+        parser.error("src dir is the same as the dst dir: {}".format(dstdir))
     if not os.path.isfile(qsubpath):
-        parser.error("qsubscript path is not valid: %s" % qsubpath)
+        parser.error("qsubscript path is not valid: {}".format(qsubpath))
     if args.noentropy and args.rema2a:
         parser.error("noentropy and rema2a filters are incompatible")
 
@@ -111,8 +111,8 @@ def main():
                     scriptpath,
                     srcdir,
                     args.res,
-                    '"--dst %s"' % dstdir,
-                    '"--stripid %s"' % stripid,
+                    '"--dst {}"'.format(dstdir),
+                    '"--stripid {}"'.format(stripid),
                     '--noentropy' * args.noentropy,
                     '--rema2a' * args.rema2a,
                     qsubpath
@@ -126,8 +126,8 @@ def main():
                     scriptpath,
                     srcdir,
                     args.res,
-                    '--dst %s' % dstdir,
-                    '--stripid %s' % stripid,
+                    '--dst {}'.format(dstdir),
+                    '--stripid {}'.format(stripid),
                     '--noentropy' * args.noentropy,
                     '--rema2a' * args.rema2a,
                 )
@@ -149,9 +149,9 @@ def main():
             maskFileSuffix = 'mask'
 
         # TODO: "change this" (?)
-        print "source: %s" % srcdir
-        print "res: %sm" % args.res
-        print "maskFileSuffix: %s" % maskFileSuffix
+        print "source: {}".format(srcdir)
+        print "res: {}m".format(args.res)
+        print "maskFileSuffix: {}".format(maskFileSuffix)
 
         # Find scene dems for this stripid to be merged into strips.
         scene_dems = glob.glob(os.path.join(srcdir, '*'+args.stripid+'*_dem.tif'))

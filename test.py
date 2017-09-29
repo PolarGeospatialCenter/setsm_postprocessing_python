@@ -39,87 +39,145 @@ class TestingError(Exception):
         return repr(self.msg)
 
 
-def stringifyThisFunctionForExec():
+def stringifyThisFunctionForExec(*args):
     exec_script = ''
 
     this_funcName = inspect.stack()[0][3]
-    this_funcReturn = 'return {}()'.format(this_funcName)
+    this_funcReturn = 'return {}('.format(this_funcName)
     caller_funcName = inspect.stack()[1][3]
     caller_funcDef = 'def {}('.format(caller_funcName)
 
-    this_file = open(__file__, 'r')
-    line = this_file.readline()
+    this_file_FP = open(__file__, 'r')
+    line = this_file_FP.readline()
     indent = ''
 
     # Find the function definition in this file.
     found = False
-    while line != '' and not found:
+    while not found and line != '':
         if line.startswith(caller_funcDef):
             found = True
-        line = this_file.readline()
+        line = this_file_FP.readline()
     if not found:
-        raise TestingError("Could not find function definition matching '{}'".format(caller_funcName))
+        raise TestingError("Could not find function definition matching '{}'".format(caller_funcDef))
 
     # Find the return statement that called this function.
     found = False
-    while line != '' and not found:
+    while not found and line != '':
         if line.lstrip().startswith(this_funcReturn):
             found = True
             # Assuming the return statement is indented once beyond the function definition,
             # capture the indentation schema so that one indent may be removed from every line of
             # the string of code that is returned.
             indent = line[:line.find(this_funcReturn)]
-        line = this_file.readline()
+        line = this_file_FP.readline()
     if not found:
         raise TestingError("Could not find return statement matching '{}' within function '{}'".format(
-                           this_funcReturn, caller_funcDef))
+                           this_funcReturn, this_funcName))
 
     # Add all code that follows that first return statement to a string variable,
     # stopping when the next function definition is read or EOF is reached.
     done = False
-    while line != '' and not done:
+    while not done and line != '':
         if line.startswith('def '):
             done = True
         else:
             exec_script += line.replace(indent, '', 1)
-            line = this_file.readline()
+            line = this_file_FP.readline()
+
+    this_file_FP.close()
+
+    # Place all arguments into their proper places in the script.
+    # NOTE: Arguments must be evaluated to perform these substitutions, SO BE CAREFUL!!
+    for i, arg in enumerate(args):
+        exec_script = exec_script.replace('__arg{}__'.format(i), arg)
 
     return exec_script
 
 
-def checkVars():
+# cv() :: checkVars()
+def cv():
     return stringifyThisFunctionForExec()
 
-    array_vars = (
+    print
+
+    cv_test_vars = None
+    cv_test_var = None
+    cv_test_var_shape = None
+    cv_test_expr = None
+
+    cv_test_vars = (
         'x', 'y', 'z', 'm', 'o', 'md', '-',
         'X', 'Y', 'Z', 'M', 'O', '-',
         'Xsub', 'Ysub', 'Zsub', 'Msub', 'Osub'
     )
 
-    print
-    for i in range(len(array_vars)):
-        var = array_vars[i]
-        if var in vars():
+    for cv_test_var in cv_test_vars:
+        if cv_test_var in vars():
 
-            expr = 'str({}.dtype)'.format(var)
-            print '> {}.dtype = {}'.format(var, eval(expr))
+            cv_test_expr = 'str({}.dtype)'.format(cv_test_var)
+            print '> {}.dtype = {}'.format(cv_test_var, eval(cv_test_expr))
 
-            expr = '{}.shape'.format(var)
-            shape = eval(expr)
-            if len(shape) == 1:
-                shape = (1, shape[0])
-            print '    shape = {}'.format(str(shape).replace('L', ''))
+            cv_test_expr = '{}.shape'.format(cv_test_var)
+            cv_test_var_shape = eval(cv_test_expr)
+            if len(cv_test_var_shape) == 1:
+                cv_test_var_shape = (1, cv_test_var_shape[0])
+            print '    shape = {}'.format(str(cv_test_var_shape).replace('L', ''))
 
-            expr = 'np.nanmin({})'.format(var)
-            print '    min = {}'.format(eval(expr))
+            cv_test_expr = 'np.nanmin({})'.format(cv_test_var)
+            print '    min = {}'.format(eval(cv_test_expr))
 
-            expr = 'np.nanmax({})'.format(var)
-            print '    max = {}'.format(eval(expr))
+            cv_test_expr = 'np.nanmax({})'.format(cv_test_var)
+            print '    max = {}'.format(eval(cv_test_expr))
 
-        elif var == '-':
+        elif cv_test_var == '-':
             print '------------------'
 
     print
+
+    del cv_test_vars, cv_test_var, cv_test_var_shape, cv_test_expr
+
+
+# sg() :: setGlobals()
+def sg(varNames_csv):
+    # varNames_csv must be a comma-delimited string of variable names
+    # accessible in the current namespace.
+    if type(varNames_csv) != str:
+        raise InvalidArgumentError("varNames_csv must be a string")
+    return stringifyThisFunctionForExec('"{}"'.format(varNames_csv))
+
+    sg_varNames_list = None
+    sg_testVname = None
+    sg_i = None
+    sg_v = None
+
+    if 'sg_testVnames_list' in vars():
+        for sg_v in sg_testVnames_list:
+            exec('del {}'.format(sg_v))
+    sg_testVnames_list = []
+
+    sg_varNames_list = __arg0__.split(',')
+    for sg_i, sg_v in enumerate(sg_varNames_list):
+        sg_testVname = '{}{}_{}'.format('sg_testVar_', sg_i, sg_v)
+        exec('global {}'.format(sg_testVname))
+        exec('{} = {}'.format(sg_testVname, sg_v))
+        sg_testVnames_list.append(sg_testVname)
+
+    del sg_varNames_list, sg_testVname, sg_i, sg_v
+
+
+def getTestVarsFromGlobals(debug_globals):
+    testVname_pattern_str = "{}\d+_(.+)".format('sg_testVar_')
+    testVname_pattern = re.compile(testVname_pattern_str)
+    testVar_names = []
+    testVar_values = []
+    g_keys = debug_globals.keys()
+    g_keys.sort()
+    for varName in g_keys:
+        m = re.match(testVname_pattern, varName)
+        if m is not None:
+            testVar_names.append(m.group(1))
+            testVar_values.append(debug_globals[varName])
+    return testVar_names, testVar_values
 
 
 def splitTupleString(tup_string):
@@ -168,6 +226,7 @@ def splitArgsString(args_string):
     return tuple(a.strip() for a in args)
 
 
+# Doesn't work correctly in newest release of Python2.7... :'(
 def getCalledFunctionArgs(depth=1, funcName=None):
     stack = inspect.stack()
     func_frame_record = None
@@ -194,13 +253,14 @@ def getCalledFunctionArgs(depth=1, funcName=None):
             if funcName is not None and stack[depth][3] != funcName:
                 raise InvalidArgumentError("Function name '{}' could not be found in the stack"
                                            " at index {}".format(funcName, depth))
-    except InvalidArgumentError:
+
+            funcCall = ''.join([str(line).strip() for line in func_frame_record[4]])
+
+    except:
         print "STACK AT ERROR:"
         for fr in stack:
             print fr
         raise
-
-    funcCall = ''.join([str(line).strip() for line in func_frame_record[4]])
 
     args_pattern_str = "\w" if funcName is None else funcName
     args_pattern_str += "\s*\((.+)\)"
@@ -340,8 +400,18 @@ def interpretImageRasterFlavor(flavor):
             image_PILmode = 'I'
             raster_format = 'int16'
             raster_nodata = 0
-        elif flavor in ('mask', 'md', 'd'):
+        elif flavor == 'mask':
             flavor_name = 'mask'
+            image_PILmode = 'L'
+            raster_format = 'uint8'
+            raster_nodata = 0
+        elif flavor in ('data', 'md', 'd'):
+            flavor_name = 'data'
+            image_PILmode = 'L'
+            raster_format = 'uint8'
+            raster_nodata = 0
+        elif flavor in ('edge', 'me', 'e'):
+            flavor_name = 'edge'
             image_PILmode = 'L'
             raster_format = 'uint8'
             raster_nodata = 0
@@ -352,41 +422,55 @@ def interpretImageRasterFlavor(flavor):
 
 
 def handleBatchImageRasterAuto(arrays, flavor, matchkey, descr, compare, concurrent, *X_Y_pref):
-    array_names_tuple = splitTupleString(getCalledFunctionArgs(2)[0])
+    # array_names = splitTupleString(getCalledFunctionArgs(2)[0])
+    array_names = None
+    if type(arrays) == dict:
+        # Assume 'arrays' is a dictionary of global variables that contains test array variables.
+        array_names, arrays = getTestVarsFromGlobals(arrays)
+        if arrays is None:
+            raise TestingError("No global variables with accepted test variable names to be found")
+
+    if flavor == 'auto' and array_names is None:
+        flavor = None
+    if matchkey in ('auto', 'flavor') and array_names is None:
+        matchkey = None
 
     flavor_order = None
-    if flavor is None:
-        flavor_order = [None]*len(arrays)
-    elif flavor == 'auto':
-        flavor_order = array_names_tuple
-    elif flavor.startswith('-'):
-        if len(flavor) != (1+len(arrays)):
-            raise InvalidArgumentError("'flavor' argument starting with '-' must be followed by"
-                                       " a number of characters (flavor abbreviations) equal to"
-                                       " the number of input 'arrays'")
-        flavor_order = flavor[1:len(flavor)]
+    if flavor is not None:
+        if flavor == 'auto':
+            flavor_order = array_names
+        elif flavor.startswith('-'):
+            if len(flavor) != (1+len(arrays)):
+                raise InvalidArgumentError("'flavor' argument starting with '-' must be followed by"
+                                           " a number of characters (flavor abbreviations) equal to"
+                                           " the number of input 'arrays'")
+            flavor_order = flavor[1:len(flavor)]
     else:
+        raise TestingError("Cannot determine unique flavors for batch image save")
+    if flavor_order is None:
         flavor_order = [flavor]*len(arrays)
 
     key_order = None
-    if matchkey is None:
-        key_order = [None]*len(arrays)
-    elif matchkey == 'auto':
-        key_order = array_names_tuple
-    elif matchkey == 'flavor':
-        key_order = [interpretImageRasterFlavor(f)[0] for f in array_names_tuple]
-    else:
+    if matchkey is not None:
+        if matchkey == 'auto':
+            key_order = array_names
+        elif matchkey == 'flavor':
+            key_order = [interpretImageRasterFlavor(n)[0] for n in array_names]
+    if key_order is None:
         key_order = [matchkey]*len(arrays)
 
+    if array_names is None:
+        array_names = [None]*len(arrays)
+
     if not X_Y_pref:
-        saveImageAuto(arrays[0], flavor_order[0], key_order[0], descr, compare, concurrent)
+        saveImageAuto(arrays[0], flavor_order[0], key_order[0], descr, compare, concurrent, array_names[0])
         for i in range(1, len(arrays)):
-            saveImageAuto(arrays[i], flavor_order[i], key_order[i], descr, True, concurrent)
+            saveImageAuto(arrays[i], flavor_order[i], key_order[i], descr, True, concurrent, array_names[i])
     else:
         X, Y, proj_ref = X_Y_pref
-        saveRasterAuto(arrays[0], X, Y, flavor_order[0], key_order[0], descr, compare, concurrent, proj_ref)
+        saveRasterAuto(arrays[0], X, Y, flavor_order[0], key_order[0], descr, compare, concurrent, proj_ref, array_names[0])
         for i in range(1, len(arrays)):
-            saveRasterAuto(arrays[i], X, Y, flavor_order[i], key_order[i], descr, True, concurrent, proj_ref)
+            saveRasterAuto(arrays[i], X, Y, flavor_order[i], key_order[i], descr, True, concurrent, proj_ref, array_names[i])
     return
 
 
@@ -399,9 +483,9 @@ def getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, com
     filetype = 'ras' if isRaster else 'img'
     key = ''
     if matchkey is not None:
-        if matchkey == 'auto':
+        if matchkey == 'auto' and array_name is not None:
             key = array_name
-        elif matchkey == 'flavor':
+        elif matchkey == 'flavor' and array_name is not None:
             key = interpretImageRasterFlavor(array_name)[0]
         else:
             key = matchkey
@@ -423,11 +507,12 @@ def saveImage(array, PILmode='F', fname='testImage_py.tif'):
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
-def saveImageAuto(array, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False):
-    if type(array) in (tuple, list):
+def saveImageAuto(array, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, array_name=None):
+    if type(array) in (tuple, list, dict):
+        # If 'array' is a dictionary, assume it is one of global variables that contains test array variables.
         handleBatchImageRasterAuto(array, flavor, matchkey, descr, compare, concurrent)
         return
-    array_name = getCalledFunctionArgs()[0]
+    # array_name = getCalledFunctionArgs()[0]
 
     # Determine the correct data type for saving the raster data.
     flavor_name = ''
@@ -469,11 +554,12 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
-def saveRasterAuto(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, proj_ref=None):
-    if type(Z) in (tuple, list):
+def saveRasterAuto(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, proj_ref=None, array_name=None):
+    if type(Z) in (tuple, list, dict):
+        # If 'Z' is a dictionary, assume it is one of global variables that contains test array variables.
         handleBatchImageRasterAuto(Z, flavor, matchkey, descr, compare, concurrent, X, Y, proj_ref)
         return
-    array_name = getCalledFunctionArgs()[0]
+    # array_name = getCalledFunctionArgs()[0]
 
     # Determine the correct data type for saving the raster data.
     if flavor == 'auto':
@@ -511,26 +597,21 @@ def waitForComparison(expected_imgnum):
 
 
 def readImage(imgFile='testImage_ml.tif'):
-    imgFile = findFile(imgFile)
-    array = scipy.misc.imread(imgFile)
-    return array
+    return scipy.misc.imread(findFile(imgFile))
 
 
 def readRasterZ(rasterFile='testRaster_ml.tif'):
-    rasterFile = findFile(rasterFile)
-    Z, _, _ = rat.oneBandImageToArrayZXY(rasterFile)
-    return Z
+    return rat.extractRasterParams(findFile(rasterFile), 'z')
 
 
 def doMasking(matchFile):
-    matchFile = findFile(matchFile)
-    generateMasks(matchFile)
+    generateMasks(findFile(matchFile))
 
 
 def getFP(demFile):
     demFile = findFile(demFile)
 
-    Z, X, Y = rat.oneBandImageToArrayZXY(demFile)
+    Z, X, Y = rat.extractRasterParams(demFile, 'z', 'x', 'y')
     fp_vertices = rat.getFPvertices(Z, X, Y, nodataVal=-9999)
     num = len(fp_vertices[0])
 
@@ -552,7 +633,7 @@ def saveDBP(demFile):
     demFile = findFile(demFile)
     shapefileFile = demFile.replace('dem.tif', 'dem_boundary.shp')
 
-    Z, X, Y, proj_ref = rat.oneBandImageToArrayZXY_projRef(demFile)
+    Z, X, Y, proj_ref = rat.extractRasterParams(demFile, 'z', 'x', 'y', 'proj_ref')
     poly = rat.getDataBoundariesPoly(Z, X, Y, nodataVal=-9999)
     if not poly:
         raise TestingError("Failed to create data cluster boundaries polygon")

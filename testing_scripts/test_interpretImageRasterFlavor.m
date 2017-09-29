@@ -17,8 +17,16 @@ if ~isempty(char(flavor))
         flavor_name = 'ortho';
         raster_format = 2;
         raster_nodata = 0;
-    elseif any(strcmp(flavor, ["mask", "md", "d"]))
+    elseif strcmp(flavor, 'mask')
         flavor_name = 'mask';
+        raster_format = 1;
+        raster_nodata = 0;
+    elseif any(strcmp(flavor, ["data", "md", "d"]))
+        flavor_name = 'data';
+        raster_format = 1;
+        raster_nodata = 0;
+    elseif any(strcmp(flavor, ["edge", "me", "e"]))
+        flavor_name = 'edge';
         raster_format = 1;
         raster_nodata = 0;
     else

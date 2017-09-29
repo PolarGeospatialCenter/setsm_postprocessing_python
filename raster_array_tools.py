@@ -1,11 +1,9 @@
 # Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2017
 
 from __future__ import division
-import numbers
 import os
 import sys
 from collections import deque
-from operator import itemgetter
 from subprocess import check_call
 
 import gdal, ogr, osr
@@ -17,9 +15,8 @@ _outline = open("outline.c", "r").read()
 _outline_every1 = open("outline_every1.c", "r").read()
 
 
-PROJREF_POLAR_STEREO = """PROJCS["unnamed",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-70],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]"""
-RASTER_DEFAULT_PROJREF = PROJREF_POLAR_STEREO
 RASTER_PARAMS = ['ds', 'shape', 'z', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
+
 
 gdal.UseExceptions()
 
@@ -54,7 +51,7 @@ class UnsupportedMethodError(Exception):
 #############
 
 
-# Legacy
+# Legacy; For quick instruction of useful GDAL raster information extraction methods.
 def oneBandImageToArrayZXY_projRef(rasterFile):
     """
     Opens a single-band raster image as a NumPy 2D array [Z] and returns it along
@@ -150,6 +147,7 @@ def extractRasterParams(rasterFile_or_ds, *params):
 
     value_list = []
     for pname in params:
+        pname = pname.lower()
         value = None
         if pname == 'ds':
             value = ds
@@ -226,25 +224,20 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
     try:
         dtype_tup = dtype_dict[str(dtype_in).lower()]
     except KeyError:
-        raise UnsupportedDataTypeError(
-            "No such NumPy data type in lookup table: '{}'".format(dtype_in)
-        )
+        raise UnsupportedDataTypeError("No such NumPy data type in lookup table: '{}'".format(dtype_in))
 
     if form_out.lower() == 'gdal':
         if dtype_tup[2] == 1 or force_conversion:
             dtype_out = dtype_tup[1]
         else:
-            raise UnsupportedDataTypeError(
-                "Conversion of NumPy data type '{}' to GDAL is not supported".format(dtype_in)
-            )
+            raise UnsupportedDataTypeError("Conversion of NumPy data type '{}' to GDAL"
+                                           " is not supported".format(dtype_in))
 
     elif form_out.lower() == 'numpy':
         dtype_out = dtype_tup[0]
 
     else:
-        raise UnsupportedMethodError(
-            "The following output data type format is not supported: '{}'".format(form_out)
-        )
+        raise UnsupportedMethodError("The following output data type format is not supported: '{}'".format(form_out))
 
     return dtype_out
 
@@ -292,10 +285,8 @@ def saveArrayAsTiff(array, dest,
             else:
                 ds_out.SetProjection(ds_like.GetProjectionRef())
         else:
-            raise InvalidArgumentError(
-                "Shape of like_rasterFile '{}' does not match the shape of 'array' to be saved".format(
-                like_rasterFile)
-            )
+            raise InvalidArgumentError("Shape of like_rasterFile '{}' does not match"
+                                       " the shape of 'array' to be saved".format(like_rasterFile))
 
     else:
         if array.shape[1] == X.size and array.shape[0] == Y.size:
@@ -309,9 +300,8 @@ def saveArrayAsTiff(array, dest,
             else:
                 print "WARNING: Missing projection reference for saved raster '{}'".format(dest)
         else:
-            raise InvalidArgumentError(
-                "Lengths of [X, Y] grid coordinates do not match the shape of 'array' to be saved"
-            )
+            raise InvalidArgumentError("Lengths of [X, Y] grid coordinates do not match"
+                                       " the shape of 'array' to be saved")
 
     ds_out.GetRasterBand(1).WriteArray(array_out)
     ds_out = None  # Dereference dataset to initiate write to disk of intermediate image.
@@ -319,17 +309,17 @@ def saveArrayAsTiff(array, dest,
     ###################################################
     # Run gdal_translate with the following arguments #
     ###################################################
-    args = ["gdal_translate", dest_temp, dest]
+    args = [r'C:\OSGeo4W64\bin\gdal_translate', dest_temp, dest]
 
     if nodataVal is not None:
-        args.extend(["-a_nodata", str(nodataVal)])  # Create internal nodata mask.
+        args.extend(['-a_nodata', str(nodataVal)])  # Create internal nodata mask.
 
-    args.extend(["-co", "BIGTIFF=IF_SAFER"])        # Will create BigTIFF
+    args.extend(['-co', 'BIGTIFF=IF_SAFER'])        # Will create BigTIFF
                                                     # :: if the resulting file *might* exceed 4GB.
-    args.extend(["-co", "COMPRESS=LZW"])            # Do LZW compression on output image.
-    args.extend(["-co", "TILED=YES"])               # Force creation of tiled TIFF files.
+    args.extend(['-co', 'COMPRESS=LZW'])            # Do LZW compression on output image.
+    args.extend(['-co', 'TILED=YES'])               # Force creation of tiled TIFF files.
 
-    print "Calling gdal_translate:"
+    print "Running: {}".format(' '.join(args))
     check_call(args)
     os.remove(dest_temp)  # Delete the intermediate image.
 

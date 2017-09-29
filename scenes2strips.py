@@ -7,7 +7,7 @@ import sys
 import warnings
 from traceback import print_exc
 
-import ogr, osr
+import ogr
 import numpy as np
 from scipy import ndimage, interpolate, misc
 from skimage import morphology
@@ -99,7 +99,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
                 x, y, z, m, o, md, me = loaddata(demFile, matchFile, orthoFile, dataMaskFile, edgeMaskFile)
             else:
                 x, y, z, m, o, md = loaddata(demFile, matchFile, orthoFile, maskFile)
-        except Exception:
+        except:
             print "Data read error:"
             print_exc()
             print "...skipping"
@@ -631,7 +631,7 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     global __STRIP_SPAT_REF__
 
     z, x_dem, y_dem, spat_ref = rat.extractRasterParams(demFile, 'z', 'x', 'y', 'spat_ref')
-    if spat_ref.isSame(__STRIP_SPAT_REF__) != 1:
+    if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
         raise RasterInputError("demFile '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
                                demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
 

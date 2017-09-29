@@ -5,7 +5,7 @@ if ~exist('flavor', 'var') || isempty(flavor)
     flavor = 'auto';
 end
 if ~exist('matchkey', 'var') || isempty(matchkey)
-    matchkey = 'auto';
+    matchkey = [];
 end
 if ~exist('descr', 'var') || isempty(descr)
     descr = '';
