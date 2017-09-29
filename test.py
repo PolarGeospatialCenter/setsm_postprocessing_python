@@ -544,7 +544,7 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
 
     if proj_ref is None:
         print "WARNING: No proj_ref argument given to saveRaster()"
-        print "-> Using default global PROJREF_POLAR_STEREO."
+        print "-> Using default global PROJREF_POLAR_STEREO"
         proj_ref = PROJREF_POLAR_STEREO
 
     rat.saveArrayAsTiff(Z, testFile,

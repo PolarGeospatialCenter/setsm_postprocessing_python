@@ -30,6 +30,11 @@ if exist('expected_num', 'var')
         error('Argument expected_num must be greater than or equal to 1.');
     end
 end
+if ~exist('imgnum', 'var')
+    runnum = '[]';
+    imgnum = '[]';
+    command_args = [command_args, runnum, imgnum];
+end
 command = strjoin(command_args);
 
 test_setGlobals();
@@ -56,7 +61,8 @@ fprintf(['' ...
         'view [selection_1] [selection_2] ... [selection_n]\n' ...
         'compare [selection_1 selection_2]\n' ...
         'auto\n' ...
-        'force (view/compare/auto)\n' ...
+        'noimg [compare/auto]'...
+        'force [noimg] (view/compare/auto)\n' ...
         'figclose\n' ...
         'quit\n' ...
         'close\n']);
@@ -67,6 +73,7 @@ browse = [];
 selection = [];
 view = [];
 compare = [];
+display = true;
 force = false;
 errmsg = '';
 
@@ -75,14 +82,6 @@ while ~ready
     arg_nums = cell2mat(arrayfun(@(x) str2double(char(x)), command_args, 'UniformOutput', false));
     arg_nums(isnan(arg_nums)) = [];
     try
-        
-        if strcmp(command_args(1), 'force')
-            force = true;
-            
-            command_args(1) = [];
-        else
-            force = false;
-        end
         
         if strcmp(command_args(1), 'figclose')
             close all;
@@ -184,6 +183,22 @@ while ~ready
             command_args(1) = [];
         end
         
+        if strcmp(command_args(1), 'force')
+            force = true;
+            
+            command_args(1) = [];
+        else
+            force = false;
+        end
+        
+        if strcmp(command_args(1), 'noimg')
+            display = false;
+            
+            command_args(1) = [];
+        else
+            display = true;
+        end
+        
         if strcmp(command_args(1), 'view') || strcmp(command_args(1), 'compare') || strcmp(command_args(1), 'auto')
             view = [];
             compare = [];
@@ -279,7 +294,7 @@ while ~ready
                     fprintf("Running %s test_compareImages('%s', '%s', '%s', %d);\n", ...
                         progress, compare_args(i,1), compare_args(i,2), figtitle, image_type);
                     try
-                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type);
+                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, display);
                     catch ME
                         if force
                             fprintf(2, "--> CAUGHT ERROR: %s\n", ME.message);
@@ -405,8 +420,8 @@ while ~ready
     end
     command = next_command;
     
-    if ~isempty(selection) && strcmp(command, '')
-        command = 'auto';
+    if ~isempty(selection) && (strcmp(command, '') || strcmp(command, 'noimg'))
+         command = [command, ' auto'];
     end
     
     command_args = string(strsplit(strtrim(command), ' '));

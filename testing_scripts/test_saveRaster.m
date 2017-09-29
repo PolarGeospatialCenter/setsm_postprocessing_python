@@ -2,7 +2,7 @@ function test_saveRaster(Z, X, Y, fmt, nodata, projstr, fname)
 
 if ~exist('projstr', 'var') || isempty(projstr)
     fprintf("WARNING: No proj_ref argument given to test_saveRaster()\n");
-    fprintf("-> Using default 'polar stereo north'.\n");
+    fprintf("-> Using default 'polar stereo north'\n");
     projstr = 'polar stereo north';
 end
 if ~exist('fname', 'var') || isempty(fname)
