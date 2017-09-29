@@ -98,12 +98,10 @@ def stringifyThisFunctionForExec(*args):
 def cv():
     return stringifyThisFunctionForExec()
 
-    print
-
     cv_test_vars = None
     cv_test_var = None
-    cv_test_var_shape = None
     cv_test_expr = None
+    cv_test_var_shape = None
 
     cv_test_vars = (
         'x', 'y', 'z', 'm', 'o', 'md', '-',
@@ -111,6 +109,7 @@ def cv():
         'Xsub', 'Ysub', 'Zsub', 'Msub', 'Osub'
     )
 
+    print
     for cv_test_var in cv_test_vars:
         if cv_test_var in vars():
 
