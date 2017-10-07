@@ -5,15 +5,15 @@ raster_format = [];
 raster_nodata = [];
 
 if ~isempty(char(flavor))
-    if any(strcmp(flavor, ["dem", "z"]))
+    if any(strcmp(flavor, ["dem", "z", "Z", "Zsub"]))
         flavor_name = 'dem';
         raster_format = 4;
         raster_nodata = -9999;
-    elseif any(strcmp(flavor, ["match", "m"]))
+    elseif any(strcmp(flavor, ["match", "m", "M", "Msub"]))
         flavor_name = 'match';
         raster_format = 1;
         raster_nodata = 0;
-    elseif any(strcmp(flavor, ["ortho", "o", "or"]))
+    elseif any(strcmp(flavor, ["ortho", "o", "or", "O", "Osub"]))
         flavor_name = 'ortho';
         raster_format = 2;
         raster_nodata = 0;

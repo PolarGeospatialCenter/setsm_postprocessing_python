@@ -181,6 +181,7 @@ while ~ready
             browse = setdiff({browseFiles.name}, selection);
             
             command_args(1) = [];
+            arg_nums = [];
         end
         
         if strcmp(command_args(1), 'force')
@@ -279,7 +280,7 @@ while ~ready
                     if strcmp(compare_args(i,2), "")
                         figtitle = compare_args(i,1);
                     else
-                        figtitle = test_normalizeTestFname(compare_args(i,1));
+                        figtitle = sprintf('(%s - %s)', compare_args(i,2), compare_args(i,1));
                     end
                     
                     if ~set_image_type
@@ -291,8 +292,8 @@ while ~ready
                     end
                     
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
-                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %d);\n", ...
-                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type);
+                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i);\n", ...
+                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, display);
                     try
                         test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, display);
                     catch ME
