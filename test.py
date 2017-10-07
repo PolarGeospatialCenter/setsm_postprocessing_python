@@ -28,15 +28,11 @@ PROJREF_POLAR_STEREO = """PROJCS["unnamed",GEOGCS["WGS 84",DATUM["WGS_1984",SPHE
 
 class InvalidArgumentError(Exception):
     def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return repr(self.msg)
+        super(Exception, self).__init__(msg)
 
 class TestingError(Exception):
     def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return repr(self.msg)
+        super(Exception, self).__init__(msg)
 
 
 def stringifyThisFunctionForExec(*args):
@@ -94,8 +90,11 @@ def stringifyThisFunctionForExec(*args):
     return exec_script
 
 
-# cv() :: checkVars()
 def cv():
+    """
+    Check Vars
+    *** to be executed while debugging ***
+    """
     return stringifyThisFunctionForExec()
 
     cv_test_vars = None
@@ -136,10 +135,14 @@ def cv():
     del cv_test_vars, cv_test_var, cv_test_var_shape, cv_test_expr
 
 
-# sg() :: setGlobals()
 def sg(varNames_csv):
-    # varNames_csv must be a comma-delimited string of variable names
-    # accessible in the current namespace.
+    """
+    Set Globals
+    *** to be executed while debugging ***
+    ::
+    varNames_csv must be a comma-delimited string of variable names
+    accessible in the current namespace.
+    """
     if type(varNames_csv) != str:
         raise InvalidArgumentError("varNames_csv must be a string")
     return stringifyThisFunctionForExec('"{}"'.format(varNames_csv))
@@ -384,17 +387,17 @@ def interpretImageRasterFlavor(flavor):
     raster_nodata = None
 
     if flavor is not None and flavor != '':
-        if flavor in ('dem', 'z'):
+        if flavor in ('dem', 'z', 'Z', 'Zsub'):
             flavor_name = 'dem'
             image_PILmode = 'F'
             raster_format = 'float32'
             raster_nodata = -9999
-        elif flavor in ('match', 'm'):
+        elif flavor in ('match', 'm', 'M', 'Msub'):
             flavor_name = 'match'
             image_PILmode = 'L'
             raster_format = 'uint8'
             raster_nodata = 0
-        elif flavor in ('ortho', 'o', 'or'):
+        elif flavor in ('ortho', 'o', 'or', 'O', 'Osub'):
             flavor_name = 'ortho'
             image_PILmode = 'I'
             raster_format = 'int16'
@@ -428,76 +431,55 @@ def handleBatchImageRasterAuto(arrays, flavor, matchkey, descr, compare, concurr
         array_names, arrays = getTestVarsFromGlobals(arrays)
         if arrays is None:
             raise TestingError("No global variables with accepted test variable names to be found")
-
-    if flavor == 'auto' and array_names is None:
-        flavor = None
-    if matchkey in ('auto', 'flavor') and array_names is None:
-        matchkey = None
+    if (flavor == 'auto' or matchkey == 'auto') and array_names is None:
+        raise InvalidArgumentError("Global variables with accepted test variable names must be set"
+                                   " in order to automatically determine image/raster flavor or matchkey")
 
     flavor_order = None
-    if flavor is not None:
-        if flavor == 'auto':
-            flavor_order = array_names
-        elif flavor.startswith('-'):
-            if len(flavor) != (1+len(arrays)):
-                raise InvalidArgumentError("'flavor' argument starting with '-' must be followed by"
-                                           " a number of characters (flavor abbreviations) equal to"
-                                           " the number of input 'arrays'")
-            flavor_order = flavor[1:len(flavor)]
+    if flavor.startswith('-'):
+        if len(flavor) != (1+len(arrays)):
+            raise InvalidArgumentError("'flavor' argument starting with '-' must be followed by"
+                                       " a number of characters (flavor abbreviations) equal to"
+                                       " the number of input 'arrays'")
+        flavor_order = flavor[1:len(flavor)]
     else:
-        raise TestingError("Cannot determine unique flavors for batch image save")
-    if flavor_order is None:
         flavor_order = [flavor]*len(arrays)
 
-    key_order = None
-    if matchkey is not None:
-        if matchkey == 'auto':
-            key_order = array_names
-        elif matchkey == 'flavor':
-            key_order = [interpretImageRasterFlavor(n)[0] for n in array_names]
-    if key_order is None:
-        key_order = [matchkey]*len(arrays)
+    key_order = [matchkey]*len(arrays)
 
     if array_names is None:
         array_names = [None]*len(arrays)
 
     if not X_Y_pref:
-        saveImageAuto(arrays[0], flavor_order[0], key_order[0], descr, compare, concurrent, array_names[0])
+        sia(arrays[0], flavor_order[0], key_order[0], descr, compare, concurrent, array_names[0])
         for i in range(1, len(arrays)):
-            saveImageAuto(arrays[i], flavor_order[i], key_order[i], descr, True, concurrent, array_names[i])
+            sia(arrays[i], flavor_order[i], key_order[i], descr, True, concurrent, array_names[i])
     else:
         X, Y, proj_ref = X_Y_pref
-        saveRasterAuto(arrays[0], X, Y, flavor_order[0], key_order[0], descr, compare, concurrent, proj_ref, array_names[0])
+        sra(arrays[0], X, Y, flavor_order[0], key_order[0], descr, compare, concurrent, proj_ref, array_names[0])
         for i in range(1, len(arrays)):
-            saveRasterAuto(arrays[i], X, Y, flavor_order[i], key_order[i], descr, True, concurrent, proj_ref, array_names[i])
+            sra(arrays[i], X, Y, flavor_order[i], key_order[i], descr, True, concurrent, proj_ref, array_names[i])
     return
 
 
-def getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, compare, concurrent, isRaster):
+def getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concurrent, isRaster):
     runnum = getRunnum()
     imgnum = getNextImgnum(runnum, compare, concurrent)
     if imgnum is None:
         imgnum = 1
-    flavor = '{:_<5}'.format(flavor_name)
     filetype = 'ras' if isRaster else 'img'
-    key = ''
-    if matchkey is not None:
-        if matchkey == 'auto' and array_name is not None:
-            key = array_name
-        elif matchkey == 'flavor' and array_name is not None:
-            key = interpretImageRasterFlavor(array_name)[0]
-        else:
-            key = matchkey
-        key = key.replace(' ', '-').replace('~', '-')
-    description = '~'+descr.replace(' ', '-') if descr != '' else ''
+    flavor_name = '{:_<5}'.format(flavor_name)
+    matchkey = matchkey.replace(' ', '-').replace('~', '-')
+    if descr != '':
+        descr = '~'+descr.replace(' ', '-')
 
     testFname = 'run{:03d}_{:03d}_py_{}_{}_{}_{}x{}{}.tif'.format(
-        runnum, imgnum, filetype, flavor, key, array.shape[0], array.shape[1], description
+        runnum, imgnum, filetype, flavor_name, matchkey, array.shape[0], array.shape[1], descr
     )
     return testFname
 
 
-def saveImage(array, PILmode='F', fname='testImage_py.tif'):
+def saveImage(array, fname='testImage_py.tif', PILmode='F'):
     testFile = getTestFileFromFname(fname)
     if testFile is None:
         return
@@ -506,31 +488,48 @@ def saveImage(array, PILmode='F', fname='testImage_py.tif'):
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
-def saveImageAuto(array, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, array_name=None):
+def sia(array, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, array_name=None):
+    """
+    Save Image Auto
+    ::
+    Saves an indexed image in the test file directory specified by global TESTDIR.
+    """
     if type(array) in (tuple, list, dict):
         # If 'array' is a dictionary, assume it is one of global variables that contains test array variables.
         handleBatchImageRasterAuto(array, flavor, matchkey, descr, compare, concurrent)
         return
     # array_name = getCalledFunctionArgs()[0]
+    if (flavor == 'auto' or matchkey == 'auto') and array_name is None:
+        raise InvalidArgumentError("'array_name' must be provided to automatically"
+                                   " determine image flavor or matchkey for a single array")
 
-    # Determine the correct data type for saving the raster data.
+    # Determine the correct data type for saving the image data.
     flavor_name = ''
     PILmode = ''
     if flavor.upper() in ('F', 'I', 'L'):
         PILmode = flavor
     else:
         if flavor == 'auto':
-            try:
-                flavor_name, PILmode, _, _ = interpretImageRasterFlavor(array_name)
-            except InvalidArgumentError:
-                print "WARNING: Unable to automatically determine flavor for array with name '{}'".format(array_name)
-                print "-> Saving image in default format with PILmode 'F' (float)"
-                PILmode = 'F'
-        else:
-            flavor_name, PILmode, _, _ = interpretImageRasterFlavor(flavor)
+            flavor = array_name
+        flavor_name, PILmode, _, _ = interpretImageRasterFlavor(flavor)
 
-    testFname = getImageRasterAutoFname(array, array_name, flavor_name, matchkey, descr, compare, concurrent, False)
-    saveImage(array, PILmode, fname=testFname)
+    if matchkey is not None:
+        if matchkey == 'auto':
+            matchkey = array_name
+    else:
+        matchkey = ''
+
+    testFname = getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concurrent, False)
+    saveImage(array, testFname, PILmode)
+
+
+def sia_one(array, flavor='F', matchkey=None, descr='', compare=False, concurrent=False, array_name=None):
+    """
+    Save Image Auto -- (For) One (Image)
+    ::
+    Saves an indexed image in the test file directory specified by global TESTDIR.
+    """
+    sia(array, flavor, matchkey, descr, compare, concurrent, array_name)
 
 
 def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
@@ -553,19 +552,35 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
-def saveRasterAuto(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, proj_ref=None, array_name=None):
-    if type(Z) in (tuple, list, dict):
+def sra(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, proj_ref=None, array_name=None):
+    """
+    Save Raster Auto
+    ::
+    Saves an indexed raster image in the test file directory specified by global TESTDIR.
+    """
+    if type(Z) in (tuple, list):
+        raise InvalidArgumentError("tuple/list argument for 'Z' is not supported")
+    elif type(Z) == dict:
         # If 'Z' is a dictionary, assume it is one of global variables that contains test array variables.
         handleBatchImageRasterAuto(Z, flavor, matchkey, descr, compare, concurrent, X, Y, proj_ref)
         return
     # array_name = getCalledFunctionArgs()[0]
+    if (flavor == 'auto' or matchkey == 'auto') and array_name is None:
+        raise InvalidArgumentError("'array_name' must be provided to automatically"
+                                   " determine raster flavor or matchkey for a single Z")
 
     # Determine the correct data type for saving the raster data.
     if flavor == 'auto':
         flavor = array_name
     flavor_name, _, fmt, nodata = interpretImageRasterFlavor(flavor)
 
-    testFname = getImageRasterAutoFname(Z, array_name, flavor_name, matchkey, descr, compare, concurrent, True)
+    if matchkey is not None:
+        if matchkey == 'auto':
+            matchkey = array_name
+    else:
+        matchkey = ''
+
+    testFname = getImageRasterAutoFname(Z, flavor_name, matchkey, descr, compare, concurrent, True)
     if nodata is not None:
         Z_copy = np.copy(Z)
         Z_copy[np.where(np.isnan(Z_copy))] = nodata

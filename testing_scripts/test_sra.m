@@ -1,27 +1,27 @@
-function test_saveRasterAuto(Z, X, Y, flavor, matchkey, descr, compare, concurrent, projstr)
-% Saves an indexed raster image in a test file directory speicifed by test_setGlobals.m.
+function test_sra(Z, X, Y, flavor, matchkey, descr, compare, concurrent, projstr)
+% Save Raster Auto :: Saves an indexed raster image in the test file directory specified by test_setGlobals.m.
 
-if ~exist('flavor', 'var') || isempty(flavor)
+if ~exist('flavor', 'var')
     flavor = 'auto';
 end
 if ~exist('matchkey', 'var')
-    matchkey = [];
+    matchkey = 'auto';
 end
-if ~exist('descr', 'var') || isempty(descr)
+if ~exist('descr', 'var')
     descr = '';
 end
-if ~exist('compare', 'var') || isempty(compare)
+if ~exist('compare', 'var')
     compare = false;
 end
-if ~exist('concurrent', 'var') || isempty(concurrent)
+if ~exist('concurrent', 'var')
     concurrent = false;
 end
-if ~exist('projstr', 'var') || isempty(projstr)
+if ~exist('projstr', 'var')
     projstr = [];
 end
-
-
 array_name = [];
+
+
 if isstruct(Z)
     if length(fieldnames(Z)) > 1
         test_handleBatchImageRasterAuto(Z, flavor, matchkey, descr, compare, concurrent, X, Y, projstr);
@@ -39,13 +39,26 @@ else
     array_name = inputname(1);
 end
 
+if (strcmp(flavor, 'auto') || (~isempty(matchkey) && strcmp(matchkey, 'auto'))) && isempty(array_name)
+    error(['"array_name" must be provided to automatically determine' ...
+           ' image flavor or matchkey for a single array']);
+end
+
 % Determine the correct data type for saving the raster data.
 if strcmp(flavor, 'auto')
     flavor = array_name;
 end
 [flavor_name, fmt, nodata] = test_interpretImageRasterFlavor(flavor);
 
-testFname = test_getImageRasterAutoFname(Z, array_name, flavor_name, matchkey, descr, compare, concurrent, true);
+if ~isempty(matchkey)
+    if strcmp(matchkey, 'auto')
+        matchkey = array_name;
+    end
+else
+    matchkey = '';
+end
+
+testFname = test_getImageRasterAutoFname(Z, flavor_name, matchkey, descr, compare, concurrent, true);
 if ~isempty(nodata)
     Z_copy = Z;
     Z_copy(isnan(Z_copy)) = nodata;

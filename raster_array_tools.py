@@ -2,9 +2,9 @@
 
 from __future__ import division
 import os
-import sys
 from collections import deque
 from subprocess import check_call
+from traceback import print_exc
 
 import gdal, ogr, osr
 import numpy as np
@@ -22,27 +22,19 @@ gdal.UseExceptions()
 
 class RasterIOError(Exception):
     def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return repr(self.msg)
+        super(Exception, self).__init__(msg)
 
 class UnsupportedDataTypeError(Exception):
     def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return repr(self.msg)
+        super(Exception, self).__init__(msg)
 
 class InvalidArgumentError(Exception):
     def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return repr(self.msg)
+        super(Exception, self).__init__(msg)
 
 class UnsupportedMethodError(Exception):
     def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return repr(self.msg)
+        super(Exception, self).__init__(msg)
 
 
 
@@ -326,7 +318,7 @@ def saveArrayAsTiff(array, dest,
 
 
 ######################
-# Grid Interpolation #
+# Array Calculations #
 ######################
 
 
@@ -499,8 +491,6 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
     return Zi
 
 
-# TODO: Compare the results of different interpolation methods with those
-# -t    of MATLAB's imresize method.
 def my_imresize(array, size, method, PILmode=None):
     """
     Resizes a NumPy 2D array using either SciPy's scipy.misc.imresize function
@@ -512,28 +502,37 @@ def my_imresize(array, size, method, PILmode=None):
     the input array's data type ('I' for integer, 'F' for floating, etc.)
     WARNING: INPUT PIL IMAGE MODES OTHER THAN 'F' WILL CAUSE ARRAY DATA TO
       TO BE SCALED TO UINT8 BEFORE RESIZING, POTENTIALLY DESTROYING DATA.
+
+    This function attempts to reproduce results of MATLAB's imresize fuction.
+    The results of the SciPy methods are off by a slight amount, and post-processing
+    corrections are in place for some methods (currently only for 'nearest') that attempt
+    to line up the results of these methods with what the equivalent MATLAB method would return.
+    For particular sets of input/output array shapes (dependent on resizing scale factor),
+    the GDAL method can produce results for nearest neighbor interpolation that matches MATLAB's
+    imresize function pixel-for-pixel, with the exception of the last row and last column which
+    currently can't be interpolated through the GDAL method (and are instead set to zeros).
     """
     # If a percentage or fraction is given for size, round up the x, y pixel
     # sizes for the output array to match MATLAB's imresize function.
-    if type(size) == int:
-        new_shape = np.ceil(np.dot(size/100, array.shape)).astype(int)
-    elif type(size) == float:
+    if type(size) in (float, int):
         new_shape = np.ceil(np.dot(size, array.shape)).astype(int)
-    else:
+    elif type(size) == tuple:
         new_shape = size
+    else:
+        raise InvalidArgumentError("Invalid type for input 'size': {}".format(type(size)))
 
     if PILmode is not None:
         array_r = scipy.misc.imresize(array, new_shape, method, mode=PILmode.upper())
         # NOTE: scipy.misc.imresize 'nearest' has slightly different results compared to
         #   MATLAB's imresize 'nearest'. Most significant is a 1-pixel SE shift.
-        if method == 'nearest':
-            # Correct for 1-pixel SE shift by concatenating a copy of
-            # the last row and column to the last row and column,
-            # then delete the first row and column.
-            array_r = np.row_stack((array_r, array_r[-1, :]))
-            array_r = np.column_stack((array_r, array_r[:, -1]))
-            array_r = np.delete(array_r, 0, 0)
-            array_r = np.delete(array_r, 0, 1)
+        # if method == 'nearest':
+        #     # Correct for 1-pixel SE shift by concatenating a copy of
+        #     # the last row and column to the last row and column,
+        #     # then delete the first row and column.
+        #     array_r = np.row_stack((array_r, array_r[-1, :]))
+        #     array_r = np.column_stack((array_r, array_r[:, -1]))
+        #     array_r = np.delete(array_r, 0, 0)
+        #     array_r = np.delete(array_r, 0, 1)
 
     else:
         X = np.arange(array.shape[1]) + 1
@@ -541,14 +540,68 @@ def my_imresize(array, size, method, PILmode=None):
         Xi = np.linspace(X[0], X[-1], num=new_shape[1])
         Yi = np.linspace(Y[0], Y[-1], num=new_shape[0])
         array_r = interp2_gdal(X, Y, array, Xi, Yi, method, borderNaNs=False)
+        # NOTE: Using gdal.ReprojectImage for array resizing leaves a single row and column
+        # of bad values (zeros) at the right and bottom edges (last row and column) of the array.
+        # Correct for this by rotating the array 180 degrees and interpolating it again
+        # to retrieve good values for all but the upper-right and lower-left corner pixels.
+        array_r_180 = interp2_gdal(X, Y, np.rot90(array, 2), Xi, Yi, method, borderNaNs=False)
+        array_r_360 = np.rot90(array_r_180, 2)
+        array_r[-1, :] = array_r_360[-1, :]
+        array_r[:, -1] = array_r_360[:, -1]
 
     return array_r
 
 
+def imerode_binary(array, structure):
+    """
+    This function is meant to copy the binary erosion functionality of MATLAB's imerode function.
+    When at least one of the structuring array's sides has an even length, we rotate the input array
+    180 degrees before performing erosion, then rotate it back into place before returning the result.
+    This correction works because imerode, like most MATLAB functions that work on arrays, slides the
+    structuring window first down a column, then moves from left to right across rows -- this is
+    opposite of most Python functions, which move first left to right across a row, then down columns.
+    """
+    for s in structure.shape:
+        if s % 2 == 0:
+            return np.rot90(ndimage.binary_erosion(np.rot90(array, 2), structure=structure, border_value=1), 2)
+    return ndimage.binary_erosion(array, structure=structure, border_value=1)
 
-######################
-# Array Calculations #
-######################
+
+def bwboundaries_array(array, side='inner', connectivity=8, noholes=False, matlab=True):
+    """
+    This function is meant to replicate MATLAB's bwboundaries function.
+    Returns a boolean array of the same shape as the input array
+    with pixels on the boundary of [nonzero values in the input array] set to 1.
+    """
+    side_choices = ('inner', 'outer')
+    connectivity_duo = {4, 8}
+    if side not in side_choices:
+        raise InvalidArgumentError("'side' must be 'inner' or 'outer'")
+    if connectivity not in connectivity_duo:
+        raise InvalidArgumentError("connectivity must be 4 or 8")
+
+    fn = ndimage.binary_erosion if side == 'inner' else ndimage.binary_dilation
+
+    structure = np.zeros((3, 3), dtype=np.bool)
+    if connectivity == 8:
+        structure[:, 1] = 1
+        structure[1, :] = 1
+    elif connectivity == 4:
+        structure[:, :] = 1
+
+    if noholes or matlab:
+        array_filled = ndimage.binary_fill_holes(array)
+
+    if noholes:
+        return (array_filled != fn(array_filled, structure=structure))
+    else:
+        if matlab:
+            return bwboundaries_array((array != fn(array_filled, structure=structure)),
+                                      side=side,
+                                      connectivity=list(connectivity_duo.difference({connectivity}))[0],
+                                      noholes=False, matlab=False)
+        else:
+            return (array != fn(array, structure=structure))
 
 
 def getDataDensityMap(array, n=11):
@@ -589,10 +642,10 @@ def getFPvertices(array, X, Y,
         array_filled = ndimage.morphology.binary_fill_holes(array_data)
         try:
             ring = getFPring_nonzero(array_filled, X, Y)
-        except MemoryError as err:
-            print >>sys.stderr, repr(err)
-            print "MemoryError on call to getFPring_convhull in raster_array_tools"
-            print "Defaulting to getFPring_nonzero"
+        except MemoryError:
+            print "MemoryError on call to getFPring_convhull in raster_array_tools:"
+            print_exc()
+            print "-> Defaulting to getFPring_nonzero"
             del array_filled
             ring = getFPring_nonzero(array_data, X, Y)
 

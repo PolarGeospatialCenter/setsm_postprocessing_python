@@ -1,4 +1,4 @@
-% test_cv :: test_checkVars
+% Check Vars ***to be executed while debugging ***
 
 cv_test_vars = [];
 cv_test_var = [];

@@ -29,24 +29,24 @@ else
 end
 
 key_order = [];
-if isempty(matchkey)
-    key_order = strings(1, length(array_names));
-else
+if ~isempty(matchkey)
     key_order = repmat(string(matchkey), 1, length(array_names));
+else
+    key_order = strings(1, length(array_names));
 end
 
 if isempty(X)
     array_struct = test_namedStruct(char(array_names(1)), arrays.(array_names{1}));
-    test_saveImageAuto(array_struct, flavor_order(1), key_order(1), descr, compare, concurrent);
+    test_sia(array_struct, flavor_order(1), key_order(1), descr, compare, concurrent);
     for i = 2:length(array_names)
         array_struct = test_namedStruct(char(array_names(i)), arrays.(array_names{i}));
-        test_saveImageAuto(array_struct, flavor_order(i), key_order(i), descr, true, concurrent);
+        test_sia(array_struct, flavor_order(i), key_order(i), descr, true, concurrent);
     end
 else
     array_struct = test_namedStruct(char(array_names(1)), arrays.(array_names{1}));
-    test_saveRasterAuto(array_struct, X, Y, flavor_order(1), key_order(1), descr, compare, concurrent, projstr);
+    test_sra(array_struct, X, Y, flavor_order(1), key_order(1), descr, compare, concurrent, projstr);
     for i = 2:length(array_names)
         array_struct = test_namedStruct(char(array_names(i)), arrays.(array_names{i}));
-        test_saveRasterAuto(array_struct, X, Y, flavor_order(i), key_order(i), descr, true, concurrent, projstr);
+        test_sra(array_struct, X, Y, flavor_order(i), key_order(i), descr, true, concurrent, projstr);
     end
 end

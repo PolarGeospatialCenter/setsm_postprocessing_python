@@ -9,7 +9,7 @@ from traceback import print_exc
 
 import ogr
 import numpy as np
-from scipy import ndimage, interpolate, misc
+from scipy import interpolate, misc
 from skimage import morphology
 
 import raster_array_tools as rat
@@ -24,9 +24,7 @@ __STRIP_SPAT_REF__ = None
 
 class RasterInputError(Exception):
     def __init__(self, msg):
-        self.msg = msg
-    def __str__(self):
-        return repr(self.msg)
+        super(Exception, self).__init__(msg)
 
 
 def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
@@ -165,10 +163,10 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Map new dem pixels to swath. These must return integers. If not,
         # interpolation will be required, which is currently not supported.
-        c0 = np.where(X == x[0])[0][0]
-        c1 = np.where(X == x[-1])[0][0] + 1
-        r0 = np.where(Y == y[0])[0][0]
-        r1 = np.where(Y == y[-1])[0][0] + 1
+        c0 = np.where(x[0]  == X)[0][0]
+        c1 = np.where(x[-1] == X)[0][0] + 1
+        r0 = np.where(y[0]  == Y)[0][0]
+        r1 = np.where(y[-1] == Y)[0][0] + 1
 
         # Crop to overlap.
         Xsub = X[c0:c1]
@@ -217,6 +215,8 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             rmse = rmse[:i]
             break
 
+        del z_cropped_data, Z_cropped_nodata
+
         # FIXME: What does the following commented out code
         # -f     (taken from Ian's scenes2strips.m) do?
         # %     tic
@@ -224,37 +224,44 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # %     A = regionfill(A,A==0) -1;
         # %     toc
 
-        Ar = rat.my_imresize(A, 0.1, 'nearest', PILmode='F')
+        Ar = misc.imresize(A, 0.1, 'nearest', mode='F')
 
         # Locate pixels on outside of boundary of overlap region.
         Ar_nonzero = (Ar != 0)
-        B = (Ar_nonzero != ndimage.binary_erosion(Ar_nonzero))
+        B = rat.bwboundaries_array(Ar_nonzero, noholes=True)
         B = np.where(B)
 
-        # TODO: The following method of extrapolation uses a cheap trick
-        # -t    in an attempt to get as close as possible to replicating
-        # -t    the results of MATLAB's "scatteredInterpolant" function.
-        # -t    Decide if this is really okay to do.
-        # Pixels outside of the convex hull of input points for interpolate.griddata
-        # currently can't be extrapolated (by default they are filled with NaN),
-        # so I do a trick here where I use interpolate.SmoothBivariateSpline to assign
-        # a value of 1 or 2 to every corner of Ar before doing the main interpolation.
-        fn = interpolate.SmoothBivariateSpline(B[0], B[1], Ar[B].astype(np.float64), kx=1, ky=1)
-                                                                # kx, ky = 1 since first order
-                                                                # spline interpolation is linear.
-        corner_coords = (np.array([0,             0, Ar.shape[0]-1, Ar.shape[0]-1]),
-                         np.array([0, Ar.shape[1]-1, Ar.shape[1]-1,             0]))
-        Ar_interp = fn.ev(corner_coords[0], corner_coords[1])
-        Ar_interp = np.round(Ar_interp).astype(int)
-        Ar_interp[Ar_interp < 1] = 1
-        Ar_interp[Ar_interp > 2] = 2
-        Ar[corner_coords] = Ar_interp
+        cz_rows, cz_cols = [], []
+        for cc in [
+            [0,             0            ],
+            [0,             Ar.shape[1]-1],
+            [Ar.shape[0]-1, Ar.shape[1]-1],
+            [Ar.shape[0]-1, 0            ]]:
+            if Ar[tuple(cc)] == 0:
+                cz_rows.append(cc[0])
+                cz_cols.append(cc[1])
 
-        # Add the corner coordinates to the list of boundary coordinates,
-        # which will be used for interpolation.
-        By = np.concatenate((B[0], corner_coords[0]))
-        Bx = np.concatenate((B[1], corner_coords[1]))
-        B = (By, Bx)
+        if len(cz_rows) > 0:
+            # Pixels outside of the convex hull of input points for interpolate.griddata
+            # currently can't be extrapolated (by default they are filled with NaN),
+            # so I do a trick here where I use interpolate.SmoothBivariateSpline to interpolate
+            # from the boundary coordinates a value between 1 and 2 for every zero corner in Ar
+            # (there are usually two) before doing the main interpolation.
+            corner_zeros = (np.array(cz_rows), np.array(cz_cols))
+            fn = interpolate.SmoothBivariateSpline(B[0], B[1], Ar[B].astype(np.float64), kx=2, ky=2)
+            Ar_interp = fn.ev(corner_zeros[0], corner_zeros[1])
+            Ar_interp[Ar_interp < 1] = 1
+            Ar_interp[Ar_interp > 2] = 2
+            Ar[corner_zeros] = Ar_interp
+
+            # Add the corner coordinates to the list of boundary coordinates,
+            # which will be used for interpolation.
+            By = np.concatenate((B[0], corner_zeros[0]))
+            Bx = np.concatenate((B[1], corner_zeros[1]))
+            B = (By, Bx)
+
+            del corner_zeros, fn, By, Bx
+        del cz_rows, cz_cols
 
         # Use the coordinates and values of boundary pixels
         # to interpolate values for pixels with value zero.
@@ -262,12 +269,15 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         Ar_interp = interpolate.griddata(B, Ar[B].astype(np.float64), Ar_zero_coords, 'linear')
         Ar[Ar_zero_coords] = Ar_interp
 
+        del Ar_interp, Ar_nonzero, Ar_zero_coords
+
         Ar = misc.imresize(Ar, A.shape, 'bilinear', mode='F')
         Ar[(A == 1) & (Ar != 1)] = 1
         Ar[(A == 2) & (Ar != 2)] = 2
         A = Ar - 1
         A[A < 0] = 0
         A[A > 1] = 1
+        del Ar
 
         W = (~np.isnan(Zsub)).astype(np.float32)
         W[r[0]:r[1], c[0]:c[1]] = A
@@ -295,14 +305,13 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # Coregistration
 
         P0 = rat.getDataDensityMap(Msub[r[0]:r[1], c[0]:c[1]]) > 0.9
-        P1 = rat.getDataDensityMap(m[r[0]:r[1], c[0]:c[1]])    > 0.9
+        P1 = rat.getDataDensityMap(   m[r[0]:r[1], c[0]:c[1]]) > 0.9
 
         # Coregister this scene to the strip mosaic.
         trans[:, i], rmse[i] = coregisterdems(
             Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
                x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
-            Msub[r[0]:r[1], c[0]:c[1]],
-               m[r[0]:r[1], c[0]:c[1]]
+            P0, P1
         )[[1, 2]]
 
         # Check for segment break.
@@ -333,6 +342,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         mi = mi.astype(np.bool)
         del m
 
+        # TODO: Investigate ortho interpolation.
         # Interpolate ortho to same grid.
         oi = o.astype(np.float32)
         oi[oi == 0] = np.nan  # Set border to NaN so it won't be interpolated.
@@ -343,7 +353,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border 0's introduced by NaN interpolation.
         M3 = ~np.isnan(zi)
-        M3 = ndimage.binary_erosion(M3, structure=np.ones((6, 6)))  # border cutline
+        M3 = rat.imerode_binary(M3, structure=np.ones((6, 6)))  # border cutline
 
         zi[~M3] = np.nan
         mi[~M3] = 0
@@ -351,7 +361,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border on orthos separately.
         M4 = (oi != 0)
-        M4 = ndimage.binary_erosion(M4, structure=np.ones((6, 6)))
+        M4 = rat.imerode_binary(M4, structure=np.ones((6, 6)))
         oi[~M4] = 0
         del M4
 
@@ -420,8 +430,8 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         raise RasterInputError("minimum array dimension is 3")
 
     interpflag = True
-    if (x1.size == x2.size) and (y1.size == y2.size):
-        if ~np.any(x2 - x1) and ~np.any(y2 - y1):
+    if (len(x1) == len(x2)) and (len(y1) == len(y2)):
+        if not np.any(x2 - x1) and not np.any(y2 - y1):
             interpflag = False
 
     if len(varargin) == 2:
@@ -464,7 +474,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         if 'm1' in vars() and 'm2' in vars():
             dz[~m2n | ~m1] = np.nan
 
-        if ~np.any(~np.isnan(dz)):
+        if not np.any(~np.isnan(dz)):
             print "No overlap"
             z2out = z2
             p = np.full(3, np.nan)
@@ -476,7 +486,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         n = ~np.isnan(sx) & ~np.isnan(sy) & \
             (abs(dz - np.nanmedian(dz)) <= np.nanstd(dz))
 
-        if ~np.any(n):
+        if not np.any(n):
             sys.stdout.write("regression failure, all overlap filtered\n")
             p = np.full(3, np.nan)  # initial trans variable
             d0 = np.nan
