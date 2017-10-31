@@ -1,4 +1,7 @@
+#!/usr/bin/env python2
+
 # Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2017
+
 
 from __future__ import division
 import os
@@ -10,12 +13,16 @@ import gdal, ogr, osr
 import numpy as np
 import scipy
 from scipy import ndimage
+from skimage import morphology as sk_morphology
+from skimage.filters.rank import entropy
+
+import test
 
 _outline = open("outline.c", "r").read()
 _outline_every1 = open("outline_every1.c", "r").read()
 
 
-RASTER_PARAMS = ['ds', 'shape', 'z', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
+RASTER_PARAMS = ['ds', 'shape', 'z', 'array', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
 
 
 gdal.UseExceptions()
@@ -124,8 +131,10 @@ def extractRasterParams(rasterFile_or_ds, *params):
     if invalid_pnames:
         raise InvalidArgumentError("Invalid parameter(s) for extraction: {}".format(invalid_pnames))
 
+    if pset.intersection({'z', 'array'}):
+        array_data = ds.GetRasterBand(1).ReadAsArray()
     if pset.intersection({'shape', 'x', 'y', 'corner_coords', 'geom', 'geom_sr'}):
-        shape = (ds.RasterYSize, ds.RasterXSize)
+        shape = (ds.RasterYSize, ds.RasterXSize) if 'array_data' not in vars() else array_data.shape
     if pset.intersection({'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'geom', 'geom_sr'}):
         geo_trans = ds.GetGeoTransform()
     if pset.intersection({'proj_ref', 'spat_ref', 'geom_sr'}):
@@ -145,8 +154,8 @@ def extractRasterParams(rasterFile_or_ds, *params):
             value = ds
         elif pname == 'shape':
             value = shape
-        elif pname == 'z':
-            value = ds.GetRasterBand(1).ReadAsArray()
+        elif pname in ('z', 'array'):
+            value = array_data
         elif pname == 'x':
             value = geo_trans[0] + np.arange(shape[1]) * geo_trans[1]
         elif pname == 'y':
@@ -199,11 +208,11 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
         'int8'      : (np.int8,       gdal.GDT_Byte,     1),  # **GDAL byte is unsigned**
         'int16'     : (np.int16,      gdal.GDT_Int16,    1),
         'int32'     : (np.int32,      gdal.GDT_Int32,    1),
-        'int64'     : (np.int64,      gdal.GDT_Int32,    1),  # No int64
+        'int64'     : (np.int64,      gdal.GDT_Int32,    0),  # No int64
         'uint8'     : (np.uint8,      gdal.GDT_Byte,     1),
         'uint16'    : (np.uint16,     gdal.GDT_UInt16,   1),
         'uint32'    : (np.uint32,     gdal.GDT_UInt32,   1),
-        'uint64'    : (np.uint64,     gdal.GDT_UInt32,   1),  # No uint64
+        'uint64'    : (np.uint64,     gdal.GDT_UInt32,   0),  # No uint64
         'float'     : (np.float,      gdal.GDT_Float64,  1),
         'float16'   : (np.float16,    gdal.GDT_Float32,  1),  # No float16
         'float32'   : (np.float32,    gdal.GDT_Float32,  1),
@@ -212,6 +221,7 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
         'complex64' : (np.complex64,  gdal.GDT_CFloat32, 1),  # :: complex lookups
         'complex128': (np.complex128, gdal.GDT_CFloat64, 1),  # :: are correct.
     }
+    errmsg_unsupported_dtype = "Conversion of NumPy data type '{}' to GDAL is not supported".format(dtype_in)
 
     try:
         dtype_tup = dtype_dict[str(dtype_in).lower()]
@@ -219,15 +229,14 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
         raise UnsupportedDataTypeError("No such NumPy data type in lookup table: '{}'".format(dtype_in))
 
     if form_out.lower() == 'gdal':
-        if dtype_tup[2] == 1 or force_conversion:
-            dtype_out = dtype_tup[1]
-        else:
-            raise UnsupportedDataTypeError("Conversion of NumPy data type '{}' to GDAL"
-                                           " is not supported".format(dtype_in))
-
+        if dtype_tup[2] == 0:
+            if force_conversion:
+                print errmsg_unsupported_dtype
+            else:
+                raise UnsupportedDataTypeError(errmsg_unsupported_dtype)
+        dtype_out = dtype_tup[1]
     elif form_out.lower() == 'numpy':
         dtype_out = dtype_tup[0]
-
     else:
         raise UnsupportedMethodError("The following output data type format is not supported: '{}'".format(form_out))
 
@@ -263,38 +272,36 @@ def saveArrayAsTiff(array, dest,
     else:
         dtype = dtype_np2gdal(dtype_in, force_conversion=force_dtype)
 
-    driver = gdal.GetDriverByName('GTiff')
+    if proj_ref is not None and type(proj_ref) == osr.SpatialReference:
+        proj_ref = proj_ref.ExportToWkt()
 
+    shape = array.shape
+    geo_trans = None
     if like_rasterFile is not None:
         ds_like = gdal.Open(like_rasterFile, gdal.GA_ReadOnly)
-        if array.shape[1] == ds_like.RasterXSize and array.shape[0] == ds_like.RasterYSize:
-            ds_out = driver.Create(dest_temp, ds_like.RasterXSize, ds_like.RasterYSize, 1, dtype)
-            ds_out.SetGeoTransform(ds_like.GetGeoTransform())
-            if proj_ref is not None:
-                if type(proj_ref) == osr.SpatialReference:
-                    proj_ref = proj_ref.ExportToWkt()
-                ds_out.SetProjection(proj_ref)
-            else:
-                ds_out.SetProjection(ds_like.GetProjectionRef())
-        else:
-            raise InvalidArgumentError("Shape of like_rasterFile '{}' does not match"
-                                       " the shape of 'array' to be saved".format(like_rasterFile))
-
+        if shape[0] != ds_like.RasterYSize or shape[1] != ds_like.RasterXSize:
+            raise InvalidArgumentError("Shape of like_rasterFile '{}' ({}, {}) does not match"
+                                       " the shape of 'array' to be saved ({})".format(
+                like_rasterFile, ds_like.RasterYSize, ds_like.RasterXSize, shape)
+            )
+        geo_trans = ds_like.GetGeoTransform()
+        if proj_ref is None:
+            proj_ref = ds_like.GetProjectionRef()
     else:
-        if array.shape[1] == X.size and array.shape[0] == Y.size:
-            ds_out = driver.Create(dest_temp, X.size, Y.size, 1, dtype)
-            ds_out.SetGeoTransform((X[0], X[1]-X[0], geotrans_rot_tup[0],
-                                    Y[0], geotrans_rot_tup[1], Y[1]-Y[0]))
-            if proj_ref is not None:
-                if type(proj_ref) == osr.SpatialReference:
-                    proj_ref = proj_ref.ExportToWkt()
-                ds_out.SetProjection(proj_ref)
-            else:
-                print "WARNING: Missing projection reference for saved raster '{}'".format(dest)
-        else:
-            raise InvalidArgumentError("Lengths of [X, Y] grid coordinates do not match"
-                                       " the shape of 'array' to be saved")
+        if shape[0] != Y.size or shape[1] != X.size:
+            raise InvalidArgumentError("Lengths of [Y, X] grid coordinates ({}, {}) do not match"
+                                       " the shape of 'array' to be saved ({})".format(Y.size, X.size, shape))
+        geo_trans = (X[0], X[1]-X[0], geotrans_rot_tup[0],
+                     Y[0], geotrans_rot_tup[1], Y[1]-Y[0])
 
+    # Create and write the output dataset to a temporary file.
+    driver = gdal.GetDriverByName('GTiff')
+    ds_out = driver.Create(dest_temp, shape[1], shape[0], 1, dtype)
+    ds_out.SetGeoTransform(geo_trans)
+    if proj_ref is not None:
+        ds_out.SetProjection(proj_ref)
+    else:
+        print "WARNING: Missing projection reference for saved raster '{}'".format(dest)
     ds_out.GetRasterBand(1).WriteArray(array_out)
     ds_out = None  # Dereference dataset to initiate write to disk of intermediate image.
 
@@ -322,6 +329,19 @@ def saveArrayAsTiff(array, dest,
 ######################
 
 
+def rotate_array_if_kernel_has_even_sidelength(array, kernel):
+    # TODO: Write docstring.
+    for s in kernel.shape:
+        if s % 2 == 0:
+            return np.rot90(array, 2), np.rot90(kernel, 2), True
+    return array, kernel, False
+
+
+def fix_array_if_rotation_was_applied(array, rotation_flag):
+    # TODO: Write docstring.
+    return np.rot90(array, 2) if rotation_flag else array
+
+
 def interp2_gdal(X, Y, Z, Xi, Yi, method, borderNaNs=True):
     """
     Performs a resampling of the input NumPy 2D array [Z],
@@ -332,10 +352,15 @@ def interp2_gdal(X, Y, Z, Xi, Yi, method, borderNaNs=True):
     is manually wiped away and set to NaN by default when borderNaNs=True.
     """
     method_dict = {
-        'nearest'  : gdal.GRA_NearestNeighbour,
-        'linear'   : gdal.GRA_Bilinear,
-        'bilinear' : gdal.GRA_Bilinear,
-        'cubic'    : gdal.GRA_Cubic,
+        'nearest'   : gdal.GRA_NearestNeighbour,
+        'linear'    : gdal.GRA_Bilinear,
+        'bilinear'  : gdal.GRA_Bilinear,
+        'cubic'     : gdal.GRA_Cubic,
+        'bicubic'   : gdal.GRA_Cubic,
+        'spline'    : gdal.GRA_CubicSpline,
+        'lanczos'   : gdal.GRA_Lanczos,
+        'average'   : gdal.GRA_Average,
+        'mode'      : gdal.GRA_Mode,
     }
     try:
         method_gdal = method_dict[method]
@@ -491,80 +516,186 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
     return Zi
 
 
-def my_imresize(array, size, method, PILmode=None):
+def imresize(array, size, method, PILmode=None, gdal_fix='scipy'):
     """
-    Resizes a NumPy 2D array using either SciPy's scipy.misc.imresize function
-    or GDAL's gdal.ReprojectImage (through a call of local interp2_gdal).
-    Specify the size of the resized array as an int (percent of current size),
-    float (fraction of current size), or tuple ([col, row] size of output array).
-    Interpolation method for resampling must also be specified.
-    To use SciPy's function, specify the necessary PIL image mode based on
-    the input array's data type ('I' for integer, 'F' for floating, etc.)
-    WARNING: INPUT PIL IMAGE MODES OTHER THAN 'F' WILL CAUSE ARRAY DATA TO
-      TO BE SCALED TO UINT8 BEFORE RESIZING, POTENTIALLY DESTROYING DATA.
+    This function is meant to replicate MATLAB's imresize function.
+    Uses either SciPy's scipy.misc.imresize function or GDAL's gdal.ReprojectImage function
+    (through a call of the local interp2_gdal method). To use SciPy's function, specify the
+    PIL image mode based on the input array's data type ('F' for float32, 'L' for 8-bit, etc.)
+    and set gdal_fix=None.
+    WARNING: INPUT PIL IMAGE MODES OTHER THAN 'F' WILL CAUSE ARRAY DATA TO BE SCALED TO UINT8
+    BEFORE RESIZING, POTENTIALLY DESTROYING ARRAY DATA IN THE PROCESS.
 
-    This function attempts to reproduce results of MATLAB's imresize fuction.
-    The results of the SciPy methods are off by a slight amount, and post-processing
-    corrections are in place for some methods (currently only for 'nearest') that attempt
-    to line up the results of these methods with what the equivalent MATLAB method would return.
     For particular sets of input/output array shapes (dependent on resizing scale factor),
-    the GDAL method can produce results for nearest neighbor interpolation that matches MATLAB's
+    the GDAL method can produce results for some interpolation methods that match MATLAB's
     imresize function pixel-for-pixel, with the exception of the last row and last column which
-    currently can't be interpolated through the GDAL method (and are instead set to zeros).
+    currently can't be interpolated through the GDAL method (and are instead set to zeros) without
+    applying some sort of fix.
     """
+    if gdal_fix not in (None, 'pad', 'pad_merge', 'rotate', 'scipy'):
+        raise InvalidArgumentError("gdal_fix must be 'pad', 'pad_merge', 'rotate', 'scipy', or None")
+    if gdal_fix == 'scipy' and PILmode is None:
+        PILmode = 'F'
+
     # If a percentage or fraction is given for size, round up the x, y pixel
     # sizes for the output array to match MATLAB's imresize function.
-    if type(size) in (float, int):
-        new_shape = np.ceil(np.dot(size, array.shape)).astype(int)
-    elif type(size) == tuple:
-        new_shape = size
-    else:
-        raise InvalidArgumentError("Invalid type for input 'size': {}".format(type(size)))
+    new_shape = size if type(size) == tuple else np.ceil(np.dot(size, array.shape)).astype(int)
+    old_array = array
+    new_array = None
 
     if PILmode is not None:
-        array_r = scipy.misc.imresize(array, new_shape, method, mode=PILmode.upper())
-        # NOTE: scipy.misc.imresize 'nearest' has slightly different results compared to
-        #   MATLAB's imresize 'nearest'. Most significant is a 1-pixel SE shift.
-        # if method == 'nearest':
-        #     # Correct for 1-pixel SE shift by concatenating a copy of
-        #     # the last row and column to the last row and column,
-        #     # then delete the first row and column.
-        #     array_r = np.row_stack((array_r, array_r[-1, :]))
-        #     array_r = np.column_stack((array_r, array_r[:, -1]))
-        #     array_r = np.delete(array_r, 0, 0)
-        #     array_r = np.delete(array_r, 0, 1)
+        new_array = scipy.misc.imresize(old_array, new_shape, method, PILmode)
+        if 'uint' in str(array.dtype):
+            new_array[new_array < 0] = 0
 
-    else:
-        X = np.arange(array.shape[1]) + 1
-        Y = np.arange(array.shape[0]) + 1
+    if PILmode is None or gdal_fix == 'scipy':
+        if gdal_fix == 'scipy':
+            new_array_edgefix = new_array.astype(array.dtype)
+
+        if gdal_fix in ('pad', 'pad_merge'):
+            # Fix Method 1: Pad the right and bottom sides of the array with zeros before resizing,
+            # then cut them off in the resized array before returning.
+            pad = 1
+            cur_array = old_array
+            cur_shape = cur_array.shape
+            res_shape = [s + pad for s in new_shape]
+            pad_shape = map(lambda new_size, old_size: int((new_size+pad)*(old_size/new_size)), new_shape, cur_shape)
+            pad_array = np.concatenate((cur_array, np.zeros((cur_shape[0], pad_shape[1]-cur_shape[1]))), axis=1)
+            pad_array = np.concatenate((pad_array, np.zeros((pad_shape[0]-cur_shape[0], pad_shape[1]))), axis=0)
+            old_array = pad_array
+            new_shape = res_shape
+
+        # Set up grid coordinate arrays, then run interp2_gdal.
+        X = np.arange(old_array.shape[1]) + 1
+        Y = np.arange(old_array.shape[0]) + 1
         Xi = np.linspace(X[0], X[-1], num=new_shape[1])
         Yi = np.linspace(Y[0], Y[-1], num=new_shape[0])
-        array_r = interp2_gdal(X, Y, array, Xi, Yi, method, borderNaNs=False)
-        # NOTE: Using gdal.ReprojectImage for array resizing leaves a single row and column
-        # of bad values (zeros) at the right and bottom edges (last row and column) of the array.
-        # Correct for this by rotating the array 180 degrees and interpolating it again
-        # to retrieve good values for all but the upper-right and lower-left corner pixels.
-        array_r_180 = interp2_gdal(X, Y, np.rot90(array, 2), Xi, Yi, method, borderNaNs=False)
-        array_r_360 = np.rot90(array_r_180, 2)
-        array_r[-1, :] = array_r_360[-1, :]
-        array_r[:, -1] = array_r_360[:, -1]
+        new_array = interp2_gdal(X, Y, old_array, Xi, Yi, method, borderNaNs=False)
 
-    return array_r
+        if gdal_fix in ('pad', 'pad_merge'):
+            new_array = new_array[0:-pad, 0:-pad]
+            if gdal_fix == 'pad_merge':
+                new_array_edgefix = new_array
+                new_array = imresize(array, size, method, PILmode=None, gdal_fix=None)
+
+        if gdal_fix == 'rotate':
+            # Rotate the input array 180 degrees and interpolate it again to retrieve
+            # good values for all but the upper-right and lower-left corner pixels.
+            new_array_edgefix = np.rot90(interp2_gdal(X, Y, np.rot90(old_array, 2), Xi, Yi, method, borderNaNs=False), 2)
+
+        if 'new_array_edgefix' in vars():
+            new_array[-1, :] = new_array_edgefix[-1, :]
+            new_array[:, -1] = new_array_edgefix[:, -1]
+
+        if 'uint' in str(array.dtype):
+            new_array[new_array < 0] = 0
+
+    return new_array.astype(array.dtype)
 
 
-def imerode_binary(array, structure):
+def conv2(array, kernel, mode='full', method='auto', allow_flipped_processing=True):
+    """
+    This function is meant to replicate MATLAB's conv2 function.
+    Scipy's fftconvolve funciton cannot handle NaN input (it results in all NaN output),
+    so we must set all NaN values to zero before performing convolution. In comparison, MATLAB's
+    conv2 function takes a sensible approach by letting NaN win out in all calculations involving
+    pixels with NaN values in the input array. This results in masking our result array with NaNs
+    according to a binary dilation (with a structure of ones, same shape as the provided 'kernel')
+    of NaN locations in the input array.
+    The larger the kernel size, the closer this function can reproduce MATLAB results.
+    """
+    rotation_flag = False
+    if allow_flipped_processing:
+        array, kernel, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, kernel)
+
+    fixnans_flag = False
+    array_nans = np.isnan(array)
+    if np.any(array_nans):
+        fixnans_flag = True
+        array[array_nans] = 0
+    else:
+        del array_nans
+
+    if method == 'auto':
+        method = scipy.signal.choose_conv_method(array, kernel, mode)
+    result = scipy.signal.convolve(array, kernel, mode, method)
+    if method != 'direct':
+        result[(-1.0e-12 < result) & (result < 10.0e-12)] = 0
+
+    if fixnans_flag:
+        result[imdilate_binary(array_nans, np.ones(kernel.shape), allow_flipped_processing=False)] = np.nan
+        # Return the input array to its original state.
+        array[array_nans] = np.nan
+
+    return fix_array_if_rotation_was_applied(result, rotation_flag)
+
+
+def moving_average(array, kernel_size, kernel_binary=None, mode='same', allow_flipped_processing=True):
+    """
+    Given an input array of any type, returns an array of the same size with each pixel containing
+    the average of the surrounding [kernel_size x kernel_size] neighborhood (or a that of a custom
+    boolean neighborhood specified through input "kernel").
+    Arguments "mode" and allow_rotation are forwarded through to the convolution function.
+    """
+    if kernel_binary is None:
+        return conv2(array, np.ones((kernel_size, kernel_size))/(kernel_size**2),
+                     mode=mode, allow_flipped_processing=allow_flipped_processing)
+    else:
+        return conv2(array, kernel_binary/np.sum(kernel_binary),
+                     mode=mode, allow_flipped_processing=allow_flipped_processing)
+
+
+def imerode_binary(array, structure, allow_flipped_processing=True):
     """
     This function is meant to copy the binary erosion functionality of MATLAB's imerode function.
+    It is assumed that both inputs 'array' and 'structure' are binary arrays.
+
+    NOTE: The following applies when one of the commented-out SciPy/scikit-image "binary_erosion"
+    methods are in use, but NOT when the SciPy convolution method is in use.
+
     When at least one of the structuring array's sides has an even length, we rotate the input array
     180 degrees before performing erosion, then rotate it back into place before returning the result.
     This correction works because imerode, like most MATLAB functions that work on arrays, slides the
     structuring window first down a column, then moves from left to right across rows -- this is
     opposite of most Python functions, which move first left to right across a row, then down columns.
     """
-    for s in structure.shape:
-        if s % 2 == 0:
-            return np.rot90(ndimage.binary_erosion(np.rot90(array, 2), structure=structure, border_value=1), 2)
-    return ndimage.binary_erosion(array, structure=structure, border_value=1)
+    rotation_flag = False
+    # if allow_flipped_processing:
+    #     array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
+    # result = ndimage.binary_erosion(array, structure, border_value=1)
+    # result = sk_morphology.binary_erosion(array, structure)
+    result = (scipy.signal.convolve(array, structure, mode='same', method='auto')
+              > (np.count_nonzero(structure) - 0.5))
+    return fix_array_if_rotation_was_applied(result, rotation_flag)
+
+
+def imdilate_binary(array, structure, allow_flipped_processing=True):
+    """
+    This function is meant to copy the binary dilation functionality of MATLAB's imdilate function.
+    It is assumed that both inputs 'array' and 'structure' are binary arrays.
+
+    NOTE: The following applies when one of the commented-out SciPy/scikit-image "binary_dilation"
+    methods are in use, but NOT when the SciPy convolution method is in use.
+
+    When at least one of the structuring array's sides has an even length, we rotate the input array
+    180 degrees before performing dilation, then rotate it back into place before returning the result.
+    This correction works because imdilate, like most MATLAB functions that work on arrays, slides the
+    structuring window first down a column, then moves from left to right across rows -- this is
+    opposite of most Python functions, which move first left to right across a row, then down columns.
+    """
+    rotation_flag = False
+    # if allow_flipped_processing:
+    #     array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
+    # result = ndimage.binary_dilation(array, structure, border_value=0)
+    # result = sk_morphology.binary_dilation(array, structure)
+    result = (scipy.signal.convolve(array, np.rot90(structure, 2), mode='same', method='auto')
+              > 0.5)
+    return fix_array_if_rotation_was_applied(result, rotation_flag)
+
+
+def bwareaopen(binary_array, size_tolerance, connectivity=8, in_place=False):
+    # TODO: Write docstring.
+    return sk_morphology.remove_small_objects(binary_array, size_tolerance, connectivity/4, in_place)
 
 
 def bwboundaries_array(array, side='inner', connectivity=8, noholes=False, matlab=True):
@@ -604,16 +735,35 @@ def bwboundaries_array(array, side='inner', connectivity=8, noholes=False, matla
             return (array != fn(array, structure=structure))
 
 
-def getDataDensityMap(array, n=11):
-    """
-    Given a NumPy 2D boolean array, returns an array of the same size
-    with each node describing the fraction of nodes containing ones
-    within a [n x n]-size kernel (or "window") of the input array.
-    """
-    P = scipy.signal.fftconvolve(array, np.ones((n, n)), mode='same')
-    P = P / n**2
+def entropyfilt(array, kernel):
+    # TODO: Write docstring.
+    reduced_array = None
+    if array.dtype in (np.uint8, np.int8, np.bool):
+        reduced_array = array
+    else:
+        array_dtype_float = True if 'float' in str(array.dtype) else False
+        array_dtype_max = np.finfo(array.dtype) if array_dtype_float else np.iinfo(array.dtype)
+        if not array_dtype_float:
+            reduced_array = array.astype(np.float32)
+        reduced_array = np.round(reduced_array / array_dtype_max * np.iinfo(np.uint8).max).astype(np.uint8)
+    return entropy(reduced_array, kernel)
 
-    return P
+
+def getDataDensityMap(array, kernel_size=11):
+    # TODO: Write docstring.
+    return moving_average(array, kernel_size)
+
+
+def getWindow(array, window_shape, x_y_tup, one_based_index=True):
+    # TODO: Write docstring.
+    # FIXME: Do error checking.
+    window_ysize, window_xsize = window_shape
+    colNum, rowNum = x_y_tup
+    if one_based_index:
+        rowNum -= 1
+        colNum -= 1
+    return array[int(rowNum-np.floor((window_ysize-1)/2)):int(rowNum+np.ceil((window_ysize-1)/2)+1),
+                 int(colNum-np.floor((window_xsize-1)/2)):int(colNum+np.ceil((window_xsize-1)/2)+1)]
 
 
 

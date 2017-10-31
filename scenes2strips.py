@@ -1,5 +1,8 @@
+#!/usr/bin/env python2
+
 # Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2016
 # Translated from MATLAB code written by Ian Howat, Ohio State University, 2017
+
 
 from __future__ import division
 import os.path
@@ -9,8 +12,7 @@ from traceback import print_exc
 
 import ogr
 import numpy as np
-from scipy import interpolate, misc
-from skimage import morphology
+from scipy import interpolate
 
 import raster_array_tools as rat
 import test
@@ -22,7 +24,11 @@ import test
 __STRIP_SPAT_REF__ = None
 
 
-class RasterInputError(Exception):
+class SpatialRefError(Exception):
+    def __init__(self, msg):
+        super(Exception, self).__init__(msg)
+
+class RasterDimensionError(Exception):
     def __init__(self, msg):
         super(Exception, self).__init__(msg)
 
@@ -196,8 +202,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         Z_cropped_nodata =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
         z_cropped_data   = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
         # Nodata in strip and data in scene is a one.
-        A = morphology.remove_small_objects(
-            Z_cropped_nodata & z_cropped_data, min_size=cmin, connectivity=2).astype(np.float32)
+        A = rat.bwareaopen(Z_cropped_nodata & z_cropped_data, cmin, in_place=True).astype(np.float32)
 
         # Check for redundant scene.
         if np.sum(A) <= cmin:
@@ -205,8 +210,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             continue
 
         # Data in strip and nodata in scene is a two.
-        A[morphology.remove_small_objects(
-            ~Z_cropped_nodata & ~z_cropped_data, min_size=cmin, connectivity=2)] = 2
+        A[rat.bwareaopen(~Z_cropped_nodata & ~z_cropped_data, cmin, in_place=True)] = 2
 
         # Check for segment break.
         if np.sum(A) <= cmin:
@@ -224,7 +228,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # %     A = regionfill(A,A==0) -1;
         # %     toc
 
-        Ar = misc.imresize(A, 0.1, 'nearest', mode='F')
+        Ar = rat.imresize(A, 0.1, 'nearest')
 
         # Locate pixels on outside of boundary of overlap region.
         Ar_nonzero = (Ar != 0)
@@ -271,7 +275,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         del Ar_interp, Ar_nonzero, Ar_zero_coords
 
-        Ar = misc.imresize(Ar, A.shape, 'bilinear', mode='F')
+        Ar = rat.imresize(Ar, A.shape, 'bilinear')
         Ar[(A == 1) & (Ar != 1)] = 1
         Ar[(A == 2) & (Ar != 2)] = 2
         A = Ar - 1
@@ -427,7 +431,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     maxp = 15
 
     if len(x1) < 3 or len(y1) < 3 or len(x2) < 3 or len(y2) < 3:
-        raise RasterInputError("minimum array dimension is 3")
+        raise RasterDimensionError("minimum array dimension is 3")
 
     interpflag = True
     if (len(x1) == len(x2)) and (len(y1) == len(y2)):
@@ -483,8 +487,8 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
 
         # Filter NaNs and outliers.
         # FIXME: The following throws "RuntimeWarning: invalid value encountered in less_equal".
-        n = ~np.isnan(sx) & ~np.isnan(sy) & \
-            (abs(dz - np.nanmedian(dz)) <= np.nanstd(dz))
+        n = ~np.isnan(sx) & ~np.isnan(sy) \
+            & (abs(dz - np.nanmedian(dz)) <= np.nanstd(dz))
 
         if not np.any(n):
             sys.stdout.write("regression failure, all overlap filtered\n")
@@ -640,12 +644,12 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     """
     global __STRIP_SPAT_REF__
 
-    z, x_dem, y_dem, spat_ref = rat.extractRasterParams(demFile, 'z', 'x', 'y', 'spat_ref')
+    z, x_dem, y_dem, spat_ref = rat.extractRasterParams(demFile, 'array', 'x', 'y', 'spat_ref')
     if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
-        raise RasterInputError("demFile '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
-                               demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
+        raise SpatialRefError("demFile '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
+                              demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
 
-    m = rat.extractRasterParams(matchFile, 'z').astype(np.bool)
+    m = rat.extractRasterParams(matchFile, 'array').astype(np.bool)
     if m.shape != z.shape:
         print "WARNING: matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
         print "Interpolating to dem dimensions"
@@ -655,7 +659,7 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
         m = m.astype(np.bool)
 
     if os.path.isfile(orthoFile):
-        o = rat.extractRasterParams(orthoFile, 'z').astype(np.uint16)
+        o = rat.extractRasterParams(orthoFile, 'array').astype(np.uint16)
         if o.shape != z.shape:
             print "WARNING: orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
             print "Interpolating to dem dimensions"
@@ -669,16 +673,18 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
         o = np.zeros(z.shape, dtype=np.uint16)
 
     if maskFile is not None:
-        md = rat.extractRasterParams(maskFile, 'z').astype(np.bool)
+        md = rat.extractRasterParams(maskFile, 'array').astype(np.bool)
         if md.shape != z.shape:
-            raise RasterInputError("maskFile '{}' has wrong dimensions".format(maskFile))
+            raise RasterDimensionError("maskFile '{}' dimensions {} do not match dem dimensions {}".format(
+                                       maskFile, md.shape, z.shape))
     else:
         md = np.ones(z.shape, dtype=np.bool)
 
     if edgemaskFile is not None:
-        me = rat.extractRasterParams(edgemaskFile, 'z').astype(np.bool)
+        me = rat.extractRasterParams(edgemaskFile, 'array').astype(np.bool)
         if me.shape != z.shape:
-            raise RasterInputError("edgemaskFile '{}' has wrong dimensions".format(maskFile))
+            raise RasterDimensionError("edgemaskFile '{}' dimensions {} do not match dem dimensions {}".format(
+                                       maskFile, me.shape, z.shape))
 
     # A pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
     z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan

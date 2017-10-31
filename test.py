@@ -1,4 +1,7 @@
+#!/usr/bin/env python2
+
 # Version 1.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2017
+
 
 from __future__ import division
 import inspect
@@ -11,7 +14,7 @@ import ogr, osr
 import numpy as np
 import scipy
 
-from mask_scene import generateMasks
+import mask_scene
 import raster_array_tools as rat
 
 
@@ -43,8 +46,8 @@ def stringifyThisFunctionForExec(*args):
     caller_funcName = inspect.stack()[1][3]
     caller_funcDef = 'def {}('.format(caller_funcName)
 
-    this_file_FP = open(__file__, 'r')
-    line = this_file_FP.readline()
+    this_file_fp = open(__file__, 'r')
+    line = this_file_fp.readline()
     indent = ''
 
     # Find the function definition in this file.
@@ -52,7 +55,7 @@ def stringifyThisFunctionForExec(*args):
     while not found and line != '':
         if line.startswith(caller_funcDef):
             found = True
-        line = this_file_FP.readline()
+        line = this_file_fp.readline()
     if not found:
         raise TestingError("Could not find function definition matching '{}'".format(caller_funcDef))
 
@@ -65,7 +68,7 @@ def stringifyThisFunctionForExec(*args):
             # capture the indentation schema so that one indent may be removed from every line of
             # the string of code that is returned.
             indent = line[:line.find(this_funcReturn)]
-        line = this_file_FP.readline()
+        line = this_file_fp.readline()
     if not found:
         raise TestingError("Could not find return statement matching '{}' within function '{}'".format(
                            this_funcReturn, this_funcName))
@@ -78,9 +81,9 @@ def stringifyThisFunctionForExec(*args):
             done = True
         else:
             exec_script += line.replace(indent, '', 1)
-            line = this_file_FP.readline()
+            line = this_file_fp.readline()
 
-    this_file_FP.close()
+    this_file_fp.close()
 
     # Place all arguments into their proper places in the script.
     # NOTE: Arguments must be evaluated to perform these substitutions, SO BE CAREFUL!!
@@ -328,8 +331,8 @@ def setRunnum(new_runnum=None, increment=False, concurrent=False):
 
     runnumFiles = glob(os.path.join(TESTDIR, PREFIX_RUNNUM+'*'))
     if len(runnumFiles) == 0:
-        runnum_file = open(runnumFile_new, 'w')
-        runnum_file.close()
+        runnumFile_fp = open(runnumFile_new, 'w')
+        runnumFile_fp.close()
     elif len(runnumFiles) == 1:
         runnumFile_current = runnumFiles[0]
         if concurrent:
@@ -619,7 +622,7 @@ def readRasterZ(rasterFile='testRaster_ml.tif'):
 
 
 def doMasking(matchFile):
-    generateMasks(findFile(matchFile))
+    mask_scene.generateMasks(findFile(matchFile))
 
 
 def getFP(demFile):

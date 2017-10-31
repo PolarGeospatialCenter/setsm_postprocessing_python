@@ -1,4 +1,7 @@
+#!/usr/bin/env python2
+
 # Version 3.0; Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2017
+
 
 import argparse
 import glob
@@ -29,10 +32,12 @@ def main():
         help="Path to destination directory for output mosaicked strip data"
              " (default is src.(reverse)replace('tif_results', 'strips')).")
 
-    parser.add_argument('--rema2a', action='store_true', default=False,
-        help="Use filter rema2a.")
+    parser.add_argument('--edgemask', action='store_true', default=False,
+        help="Use two-mask filter with edgemask and datamask.")
     parser.add_argument('--noentropy', action='store_true', default=False,
         help="Use filter without entropy protection.")
+    parser.add_argument('--rema2a', action='store_true', default=False,
+        help="Use filter rema2a.")
 
     parser.add_argument('--pbs', action='store_true', default=False,
         help="Submit tasks to PBS.")
@@ -69,8 +74,8 @@ def main():
         parser.error("src dir is the same as the dst dir: {}".format(dstdir))
     if not os.path.isfile(qsubpath):
         parser.error("qsubscript path is not valid: {}".format(qsubpath))
-    if args.noentropy and args.rema2a:
-        parser.error("noentropy and rema2a filters are incompatible")
+    if args.rema2a and (args.edgemask or args.noentropy):
+        parser.error("rema2a and (edgemask, noentropy) filters are incompatible")
 
     # Create strip output directory if it doesn't already exist.
     if not os.path.isdir(dstdir):
@@ -106,13 +111,14 @@ def main():
             # If PBS, submit to scheduler.
             if args.pbs:
                 job_name = 's2s{:04g}'.format(i)
-                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6},p7={7} {8}'.format(
+                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6},p7={7},p8={8} {9}'.format(
                     job_name,
                     scriptpath,
                     srcdir,
                     args.res,
                     '"--dst {}"'.format(dstdir),
                     '"--stripid {}"'.format(stripid),
+                    '--edgemask' * args.edgemask,
                     '--noentropy' * args.noentropy,
                     '--rema2a' * args.rema2a,
                     qsubpath
@@ -121,13 +127,14 @@ def main():
 
             # ...else run Python.
             else:
-                cmd = r'{0} {1} {2} {3} {4} {5} {6} {7}'.format(
+                cmd = r'{0} {1} {2} {3} {4} {5} {6} {7} {8}'.format(
                     'python',
                     scriptpath,
                     srcdir,
                     args.res,
                     '--dst {}'.format(dstdir),
                     '--stripid {}'.format(stripid),
+                    '--edgemask' * args.edgemask,
                     '--noentropy' * args.noentropy,
                     '--rema2a' * args.rema2a,
                 )
@@ -141,10 +148,10 @@ def main():
     else:
         # Process a single strip.
         maskFileSuffix = None
-        if args.rema2a:
+        if args.edgemask:
+            maskFileSuffix = 'edgemask/datamask'
+        elif args.rema2a:
             maskFileSuffix = 'mask2a'
-        elif args.noentropy:
-            maskFileSuffix = 'legacy'
         else:
             maskFileSuffix = 'mask'
 
@@ -169,13 +176,13 @@ def main():
         missingflag = False
         for f in scene_dems:
             if not os.path.isfile(f.replace('dem.tif', 'matchtag.tif')):
-                print "matchtag file for {} missing, skipping ".format(f)
+                print "matchtag file for {} missing, skippin ".format(f)
                 missingflag = True
             if not os.path.isfile(f.replace('dem.tif', 'ortho.tif')):
-                print "ortho file for {} missing, skipping ".format(f)
+                print "ortho file for {} missing, skipping".format(f)
                 missingflag = True
             if not os.path.isfile(f.replace('dem.tif', 'meta.txt')):
-                print "meta file for {} missing, skipping ".format(f)
+                print "meta file for {} missing, skipping".format(f)
                 missingflag = True
         if missingflag:
             sys.exit(1)
@@ -184,14 +191,13 @@ def main():
         # TODO: Change the following once testing is complete
         # -t    and it is decided whether re-maskng based on timestamps should be done,
         # -t    or if masking should just be skipped if the mask already exists.
-        src_matches = [f.replace('dem.tif', 'matchtag.tif') for f in scene_dems]
-        filter_list = [f for f in src_matches if shouldDoMasking(f, maskFileSuffix)]
+        filter_list = [f for f in scene_dems if shouldDoMasking(f.replace('dem.tif', 'matchtag.tif'), maskFileSuffix)]
         filter_total = len(filter_list)
         i = 0
-        for matchFile in filter_list:
+        for demFile in filter_list:
             i += 1
-            print "filtering {} of {}: {} ".format(i, filter_total, matchFile)
-            generateMasks(matchFile, maskFileSuffix)
+            sys.stdout.write("filtering {} of {}: ".format(i, filter_total))
+            generateMasks(demFile, maskFileSuffix, noentropy=args.noentropy)
 
         # Mosaic scenes in this strip together.
         # Output separate segments if there are breaks in overlap.
@@ -230,7 +236,7 @@ def main():
 def shouldDoMasking(matchFile, maskFileSuffix='mask'):
     matchFile_date = os.path.getmtime(matchFile)
     maskFiles = [matchFile.replace('matchtag.tif', 'edgemask.tif'),
-                 matchFile.replace('matchtag.tif', 'datamask.tif')] if maskFileSuffix == 'legacy' \
+                 matchFile.replace('matchtag.tif', 'datamask.tif')] if maskFileSuffix == 'edgemask/datamask' \
         else [matchFile.replace('matchtag.tif', maskFileSuffix+'.tif')]
     for m in maskFiles:
         if os.path.isfile(m):
@@ -278,17 +284,17 @@ scene, rmse, dz, dx, dy
 
         scene_metaFile = os.path.join(scenedir, dem_list[i].replace("dem.tif", "meta.txt"))
         if os.path.isfile(scene_metaFile):
-            scene_meta = open(scene_metaFile, 'r')
-            scene_info += scene_meta.read()
-            scene_meta.close()
+            scene_metaFile_fp = open(scene_metaFile, 'r')
+            scene_info += scene_metaFile_fp.read()
+            scene_metaFile_fp.close()
         else:
             scene_info += "{} not found".format(scene_metaFile)
         scene_info += " \n"
 
-    strip_meta = open(o_metaFile, 'w')
-    strip_meta.write(strip_info)
-    strip_meta.write(scene_info)
-    strip_meta.close()
+    strip_metaFile_fp = open(o_metaFile, 'w')
+    strip_metaFile_fp.write(strip_info)
+    strip_metaFile_fp.write(scene_info)
+    strip_metaFile_fp.close()
 
 
 

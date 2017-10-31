@@ -62,6 +62,7 @@ fprintf(['' ...
         'compare [selection_1 selection_2]\n' ...
         'auto\n' ...
         'noimg [compare/auto]'...
+        'nohist [compare/auto]'...
         'force [noimg] (view/compare/auto)\n' ...
         'figclose\n' ...
         'quit\n' ...
@@ -73,7 +74,8 @@ browse = [];
 selection = [];
 view = [];
 compare = [];
-display = true;
+display_image = true;
+display_histogram = true;
 force = false;
 errmsg = '';
 
@@ -193,11 +195,19 @@ while ~ready
         end
         
         if strcmp(command_args(1), 'noimg')
-            display = false;
+            display_image = false;
             
             command_args(1) = [];
         else
-            display = true;
+            display_image = true;
+        end
+        
+        if strcmp(command_args(1), 'nohist')
+            display_histogram = false;
+            
+            command_args(1) = [];
+        else
+            display_histogram = true;
         end
         
         if strcmp(command_args(1), 'view') || strcmp(command_args(1), 'compare') || strcmp(command_args(1), 'auto')
@@ -219,34 +229,38 @@ while ~ready
                     view(:,1) = view_list;
                     
                 elseif strcmp(command_args(1), 'compare')
+                    select_num_a = [];
+                    select_num_b = [];
+                    
                     if isempty(arg_nums)
                         [~, compare] = test_matchFnames(selection);
                         if isempty(compare)
-                            if length(selection) == 2
-                                arr1 = test_readImage(selection(1));
-                                arr2 = test_readImage(selection(2));
-                                if isequal(size(arr1), size(arr2))
-                                    compare = repmat("", [1, 2]);
-                                    compare(1,1) = selection(1);
-                                    compare(1,2) = selection(2);
-                                else
-                                    errmsg = 'Selected pair of images differ in array shape.\n';
-                                end
-                            else
+                            if length(selection) ~= 2
                                 errmsg = 'No images could be automatically matched for comparison.\n';
+                                error('CUSTOM MESSAGE');
                             end
+                            arr1 = test_readImage(selection(1));
+                            arr2 = test_readImage(selection(2));
+                            if ~isequal(size(arr1), size(arr2))
+                                errmsg = 'Selected pair of images differ in array shape.\n';
+                                error('CUSTOM MESSAGE');
+                            end
+                            clear('arr1', 'arr2');
+                            select_num_a = 1;
+                            select_num_b = 2;
                         end
-                            
-                    elseif length(arg_nums) == 1
+                    elseif length(arg_nums) ~= 2
                         errmsg = "Zero or two number arguments must be given to 'compare' command.\n";
                         error('CUSTOM MESSAGE');
                     else
+                        select_num_a = arg_nums(1);
+                        select_num_b = arg_nums(2);
+                    end
+                    
+                    if isempty(compare)
                         compare = repmat("", [1, 2]);
-                        compare(1,1) = selection(arg_nums(1));
-                        compare(1,2) = selection(arg_nums(2));
-                        if length(arg_nums) > 2
-                            fprintf("Ignoring excess number arguments to 'compare' command.\n");
-                        end
+                        compare(1,1) = selection(select_num_a);
+                        compare(1,2) = selection(select_num_b);
                     end
                     
                 elseif strcmp(command_args(1), 'auto')
@@ -292,10 +306,10 @@ while ~ready
                     end
                     
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
-                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i);\n", ...
-                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, display);
+                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i, %i);\n", ...
+                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram);
                     try
-                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, display);
+                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram);
                     catch ME
                         if force
                             fprintf(2, "--> CAUGHT ERROR: %s\n", ME.message);

@@ -1,4 +1,4 @@
-function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, display)
+function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, display_image, display_histogram)
 % Computes difference maps between two input image arrays and displays them with the original images. To better allow for comparison of nodata (NaN) pixel locations, all NaN values in both input arrays are converted to -Inf before differencing (arr2 - arr1).
 
 if ~exist('title1', 'var') || isempty(title1)
@@ -10,8 +10,11 @@ end
 if ~exist('figtitle', 'var') || isempty(figtitle)
     figtitle = '';
 end
-if ~exist('display', 'var') || isempty(display)
-    display = true;
+if ~exist('display_image', 'var') || isempty(display_image)
+    display_image = true;
+end
+if ~exist('display_histogram', 'var') || isempty(display_histogram)
+    display_histogram = true;
 end
 
 
@@ -21,7 +24,14 @@ end
 
 arr1(isnan(arr1)) = -inf;
 arr2(isnan(arr2)) = -inf;
-diff = arr2 - arr1;
+try
+    diff = arr2 - arr1;
+catch ME
+    fprintf(2, '*** Caught the following error during array differencing step ***\n');
+    fprintf(2, '%s\n', getReport(ME));
+    fprintf(2, '--> Casting both arrays to single and re-attempting differencing...\n');
+    diff = single(arr2) - single(arr1);
+end
 diff(isnan(diff)) = 0;
 UL_nans = sum(diff(:) == inf);
 UR_nans = sum(diff(:) == -inf);
@@ -30,7 +40,7 @@ diff_bool = (diff ~= 0);
 vals_diff_bool = unique(diff_bool);
 cnts_diff_bool = histcounts(diff_bool);
 
-if display || length(vals_diff_bool) > 1
+if display_image
     figure('Name', figtitle);
     subplot(2,2,1);
     test_showArray(arr1, title1);
@@ -42,7 +52,7 @@ if display || length(vals_diff_bool) > 1
     test_showArray(diff_bool, 'Boolean Difference');
 end
 
-if length(vals_diff_bool) > 1
+if display_histogram && length(vals_diff_bool) > 1
     figure('Name', figtitle);
     test_histArray(diff);
     title('Difference (UR-UL)');

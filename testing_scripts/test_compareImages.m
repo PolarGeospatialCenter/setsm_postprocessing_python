@@ -1,4 +1,4 @@
-function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, display)
+function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, display_image, display_histogram)
 % test_compareImages Reads two input image files into arrays and compares them. If only one image file is given, the image is displayed.
 
 if ~exist('figtitle', 'var') || isempty(figtitle)
@@ -53,7 +53,7 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
             arr2 = imread(imgFile2);
         end
         
-        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFile1, imgFile2, figtitle, display);
+        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFile1, imgFile2, figtitle, display_image, display_histogram);
     end    
 end
 

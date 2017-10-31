@@ -3,6 +3,9 @@
 *.pyc
 *.asv
 
-.idea/*
-testing_scripts/link_new_files_from_main.bat
+.idea
+
+link_new_files_from_matlab.bat
+link_new_files_to_googledrive_from_mega.bat
+
 Raster.py
