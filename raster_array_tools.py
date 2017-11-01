@@ -16,8 +16,6 @@ from scipy import ndimage
 from skimage import morphology as sk_morphology
 from skimage.filters.rank import entropy
 
-import test
-
 _outline = open("outline.c", "r").read()
 _outline_every1 = open("outline_every1.c", "r").read()
 

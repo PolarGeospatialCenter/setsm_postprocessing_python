@@ -306,9 +306,8 @@ def getEntropyMask(orthoFile,
         ortho_array = rat.imresize(ortho_array, image_res/processing_res, 'bicubic')
 
     # Subtraction image
-    # FIXME: Should the following really be using the 1d versions of max and min filter?
-    ortho_subtraction =   ndimage.maximum_filter1d(ortho_array, kernel_size, axis=0) \
-                        - ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0)
+    ortho_subtraction = (  ndimage.maximum_filter1d(ortho_array, kernel_size, axis=0)
+                         - ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0))
 
     # Entropy image
     # TODO: Move the following computations to one line once testing is complete?
@@ -377,8 +376,8 @@ def getSlopeMask(dem_array,
         - Removal of edge masking.
         To replicate functionality of edgeSlopeMask.m, pass the result of this function to maskEdges().
     """
-    if    (res is None and (x_dem is None or y_dem is None)) \
-       or (res is not None and (x_dem is not None or y_dem is not None)):
+    if (   (res is None and (x_dem is None or y_dem is None))
+        or (res is not None and (x_dem is not None or y_dem is not None))):
         raise InvalidArgumentError("One type of pixel spacing inputs (coordinate vectors [x, y], res) must be provided")
     if res is not None:
         res = abs(x_dem[1] - x_dem[0])
@@ -386,8 +385,8 @@ def getSlopeMask(dem_array,
         avg_kernel_size = int(math.floor(21*2/res))
 
     # Get elevation grade at each pixel.
-    dy, dx = np.gradient(dem_array, y_dem, x_dem) if (x_dem is not None and y_dem is not None) \
-        else np.gradient(dem_array, res)
+    dy, dx = (np.gradient(dem_array, y_dem, x_dem) if (x_dem is not None and y_dem is not None)
+         else np.gradient(dem_array, res))
     grade = np.sqrt(np.square(dx) + np.square(dy))
 
     # Mean slope
@@ -419,8 +418,8 @@ def getWaterMask(ortho_array, meanSunElevation, data_density_map,
 
     # Subtraction image
     # FIXME: Should the following really be using the 1d versions of max and min filter?
-    ortho_subtraction =   ndimage.maximum_filter1d(ortho_array, kernel_size, axis=0) \
-                        - ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0)
+    ortho_subtraction = (  ndimage.maximum_filter1d(ortho_array, kernel_size, axis=0)
+                         - ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0))
 
     # Entropy image
     entropy_array = entropy(ortho_subtraction.astype(np.uint8), np.ones((kernel_size, kernel_size)))
@@ -490,8 +489,8 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     stdev_elevation_array = np.real(stdev_elevation_array)
 
     # Calculate elevation percentile difference.
-    percentile_diff =   np.percentile(dem_array, elevation_percentile_split) \
-                      - np.percentile(dem_array, 100 - elevation_percentile_split)
+    percentile_diff = (  np.percentile(dem_array, elevation_percentile_split)
+                       - np.percentile(dem_array, 100 - elevation_percentile_split))
 
     # Set standard deviation difference based on percentile difference.
     stdev_thresh = None
@@ -579,12 +578,10 @@ def maskEdges(data_array, hull_concavity=0.5, crop=None,
     if res is None and min_data_cluster is None:
         raise InvalidArgumentError("Resolution 'res' argument must be provided to set default values"
                                    " of other parameters")
-    if min_data_cluster is None:
-        min_data_cluster = int(math.floor(1000*2/res))
-
-    # TODO: Test if the following check is necessary.
     if not np.any(data_array):
         return data_array.astype(np.bool)
+    if min_data_cluster is None:
+        min_data_cluster = int(math.floor(1000*2/res))
 
     # Fill interior holes since we're just looking for edges here.
     mask = ndimage.morphology.binary_fill_holes(data_array)

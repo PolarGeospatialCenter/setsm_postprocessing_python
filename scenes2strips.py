@@ -487,8 +487,8 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
 
         # Filter NaNs and outliers.
         # FIXME: The following throws "RuntimeWarning: invalid value encountered in less_equal".
-        n = ~np.isnan(sx) & ~np.isnan(sy) \
-            & (abs(dz - np.nanmedian(dz)) <= np.nanstd(dz))
+        n = (~np.isnan(sx) & ~np.isnan(sy)
+             & (abs(dz - np.nanmedian(dz)) <= np.nanstd(dz)))
 
         if not np.any(n):
             sys.stdout.write("regression failure, all overlap filtered\n")
@@ -602,8 +602,8 @@ def orderPairs(demdir, fnames):
         indexed_geoms.append((i, geom))
 
     # Calculate aspect ratio, ar = x-extent/y-extent
-    ar =  (max(R0[:, 0] + R0[:, 2]) - min(R0[:, 0])) \
-        / (max(R0[:, 1] + R0[:, 3]) - min(R0[:, 1]))
+    ar = (  (max(R0[:, 0] + R0[:, 2]) - min(R0[:, 0]))
+          / (max(R0[:, 1] + R0[:, 3]) - min(R0[:, 1])))
 
     first_fname_index = None
     if ar >= 1:

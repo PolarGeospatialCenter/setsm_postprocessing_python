@@ -64,8 +64,8 @@ def main():
             parser.error("src path does not contain 'tif_results', so default dst cannot be set")
         dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
         print "dst dir set to: {}".format(dstdir)
-    qsubpath = os.path.abspath(args.qsubscript) if args.qsubscript is not None \
-        else os.path.abspath(os.path.join(scriptdir, 'qsub_scenes2strips.sh'))
+    qsubpath = (os.path.abspath(args.qsubscript) if args.qsubscript is not None
+           else os.path.abspath(os.path.join(scriptdir, 'qsub_scenes2strips.sh')))
 
     # Validate arguments.
     if not os.path.isdir(srcdir):
@@ -176,7 +176,7 @@ def main():
         missingflag = False
         for f in scene_dems:
             if not os.path.isfile(f.replace('dem.tif', 'matchtag.tif')):
-                print "matchtag file for {} missing, skippin ".format(f)
+                print "matchtag file for {} missing, skipping".format(f)
                 missingflag = True
             if not os.path.isfile(f.replace('dem.tif', 'ortho.tif')):
                 print "ortho file for {} missing, skipping".format(f)
@@ -235,9 +235,9 @@ def main():
 
 def shouldDoMasking(matchFile, maskFileSuffix='mask'):
     matchFile_date = os.path.getmtime(matchFile)
-    maskFiles = [matchFile.replace('matchtag.tif', 'edgemask.tif'),
-                 matchFile.replace('matchtag.tif', 'datamask.tif')] if maskFileSuffix == 'edgemask/datamask' \
-        else [matchFile.replace('matchtag.tif', maskFileSuffix+'.tif')]
+    maskFiles = ([matchFile.replace('matchtag.tif', 'edgemask.tif'),
+                  matchFile.replace('matchtag.tif', 'datamask.tif')] if maskFileSuffix == 'edgemask/datamask'
+            else [matchFile.replace('matchtag.tif', maskFileSuffix+'.tif')])
     for m in maskFiles:
         if os.path.isfile(m):
             # Update Mode - will only reprocess masks older than the matchtag file.
@@ -251,7 +251,7 @@ def shouldDoMasking(matchFile, maskFileSuffix='mask'):
 
 def writeStripMeta(o_metaFile, scenedir, dem_list,
                    trans, rmse, proj4, fp_vertices, strip_time):
-    strip_info = \
+    strip_info = (
 """Strip Metadata
 Creation Date: {}
 Strip creation date: {}
@@ -270,6 +270,7 @@ scene, rmse, dz, dx, dy
         str(fp_vertices[0]).replace(',', '')[1:-1],
         str(fp_vertices[1]).replace(',', '')[1:-1],
         )
+    )
 
     for i in range(len(dem_list)):
         line = "{} {:.2f} {:.4f} {:.4f} {:.4f}\n".format(

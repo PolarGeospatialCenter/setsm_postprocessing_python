@@ -632,7 +632,7 @@ def getFP(demFile):
     fp_vertices = rat.getFPvertices(Z, X, Y, nodataVal=-9999)
     num = len(fp_vertices[0])
 
-    test_str = \
+    test_str = (
 """demFile: {}
 Strip Footprint Vertices
 X: {}
@@ -641,7 +641,9 @@ Y: {}
         demFile,
         str(fp_vertices[0]).replace(',', '')[1:-1],
         str(fp_vertices[1]).replace(',', '')[1:-1],
+        )
     )
+
 
     return num, test_str
 
