@@ -43,13 +43,13 @@ cnts_diff_bool = histcounts(diff_bool);
 if display_image
     figure('Name', figtitle);
     subplot(2,2,1);
-    test_showArray(arr1, title1);
+    test_viewArray(arr1, title1);
     subplot(2,2,2);
-    test_showArray(arr2, title2);
+    test_viewArray(arr2, title2);
     subplot(2,2,3);
-    test_showArray(diff, 'Difference (UR-UL)');
+    test_viewArray(diff, 'Difference (UR-UL)');
     subplot(2,2,4);
-    test_showArray(diff_bool, 'Boolean Difference');
+    test_viewArray(diff_bool, 'Boolean Difference');
 end
 
 if display_histogram && length(vals_diff_bool) > 1

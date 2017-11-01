@@ -59,5 +59,5 @@ end
 
 if single
     figure('Name', figtitle);
-    test_showArray(arr1, imgFile1);
+    test_viewArray(arr1, imgFile1);
 end

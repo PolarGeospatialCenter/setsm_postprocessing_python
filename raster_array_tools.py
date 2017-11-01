@@ -740,7 +740,7 @@ def entropyfilt(array, kernel):
         reduced_array = array
     else:
         array_dtype_float = True if 'float' in str(array.dtype) else False
-        array_dtype_max = np.finfo(array.dtype) if array_dtype_float else np.iinfo(array.dtype)
+        array_dtype_max = np.finfo(array.dtype).max if array_dtype_float else np.iinfo(array.dtype).max
         if not array_dtype_float:
             reduced_array = array.astype(np.float32)
         reduced_array = np.round(reduced_array / array_dtype_max * np.iinfo(np.uint8).max).astype(np.uint8)

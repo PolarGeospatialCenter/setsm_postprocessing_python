@@ -310,7 +310,6 @@ def getEntropyMask(orthoFile,
                          - ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0))
 
     # Entropy image
-    # TODO: Move the following computations to one line once testing is complete?
     entropy_array = rat.entropyfilt(ortho_subtraction, np.ones((kernel_size, kernel_size)))
     mask = (entropy_array < entropy_thresh)
     del entropy_array

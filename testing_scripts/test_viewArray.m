@@ -1,4 +1,4 @@
-function test_showArray(array, TITLE)
+function test_viewArray(array, TITLE)
 % Displays a 2D array as a scaled image.
 
 if ~exist('TITLE', 'var') || isempty(TITLE)
