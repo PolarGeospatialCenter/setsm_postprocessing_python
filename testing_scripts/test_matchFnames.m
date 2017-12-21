@@ -1,21 +1,36 @@
-function [singles, pairs] = test_matchFnames(full_fnames)
+function [singles, pairs] = test_matchFnames(full_fnames, auto)
+
+if ~exist('auto', 'var') || isempty(auto)
+    auto = false;
+end
+
 
 norm_fnames = arrayfun(@(fname) test_normalizeTestFname(fname), full_fnames, 'UniformOutput', false);
-    
-match_markers = zeros(1, length(norm_fnames));
-matchnum = 1;
-for i = 1:length(norm_fnames)
-    if ~isempty(cell2mat(norm_fnames(i)))
-        for j = (i-1):-1:1
-            if strcmp(norm_fnames(i), norm_fnames(j))
-                match_markers(i) = match_markers(j);
-                break;
+made_a_match = false;
+while ~isempty(norm_fnames)
+    match_markers = zeros(1, length(norm_fnames));
+    matchnum = 1;
+    for i = 1:length(norm_fnames)
+        if ~isempty(cell2mat(norm_fnames(i)))
+            for j = (i-1):-1:1
+                if strcmp(norm_fnames(i), norm_fnames(j))
+                    match_markers(i) = match_markers(j);
+                    made_a_match = true;
+                    break;
+                end
+            end
+            if match_markers(i) == 0
+                match_markers(i) = matchnum;
+                matchnum = matchnum + 1;
             end
         end
-        if match_markers(i) == 0
-            match_markers(i) = matchnum;
-            matchnum = matchnum + 1;
-        end
+    end
+    
+    if ~auto || made_a_match
+        norm_fnames = [];
+    else
+        norm_fnames = arrayfun(@(fname) test_normalizeTestFname(fname, true), full_fnames, 'UniformOutput', false);
+        auto = false;
     end
 end
 

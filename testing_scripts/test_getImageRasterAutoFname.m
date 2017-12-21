@@ -11,11 +11,13 @@ else
     filetype = 'img';
 end
 flavor_name = pad(flavor_name(1:min(5, length(flavor_name))), 5, '_');
-matchkey = strrep(strrep(matchkey, '~', '-'), '_', '-');
+if ~strcmp(matchkey, '')
+    matchkey = ['_',strrep(strrep(matchkey, '~', '-'), '_', '-')];
+end
 if ~strcmp(descr, '')
     descr = ['~',strrep(descr, ' ', '-')];
 end
 
 sz = size(array);
-testFname = sprintf('run%03d_%03d_ml_%s_%s_%s_%dx%d%s.tif', ...
-    runnum, imgnum, filetype, flavor_name, matchkey, sz(1), sz(2), descr);
+testFname = sprintf('run%03d_%03d_ml_%s_%s_%dx%d%s%s.tif', ...
+    runnum, imgnum, filetype, flavor_name, sz(1), sz(2), matchkey, descr);

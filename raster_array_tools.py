@@ -5,16 +5,28 @@
 
 from __future__ import division
 import os
+import copy
+import math
+import warnings
 from collections import deque
+from itertools import product
 from subprocess import check_call
 from traceback import print_exc
+from warnings import warn
 
 import gdal, ogr, osr
 import numpy as np
 import scipy
-from scipy import ndimage
+import shapely.geometry
+import shapely.ops
+from scipy import ndimage as sp_ndimage
+from scipy.spatial import ConvexHull
+from skimage.draw import polygon_perimeter
 from skimage import morphology as sk_morphology
 from skimage.filters.rank import entropy
+from skimage.util import unique_rows
+
+import test
 
 _outline = open("outline.c", "r").read()
 _outline_every1 = open("outline_every1.c", "r").read()
@@ -23,6 +35,7 @@ _outline_every1 = open("outline_every1.c", "r").read()
 RASTER_PARAMS = ['ds', 'shape', 'z', 'array', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
 
 
+warnings.simplefilter('always', UserWarning)
 gdal.UseExceptions()
 
 class RasterIOError(Exception):
@@ -48,7 +61,7 @@ class UnsupportedMethodError(Exception):
 #############
 
 
-# Legacy; For quick instruction of useful GDAL raster information extraction methods.
+# Legacy; Retained for quick instruction of useful GDAL raster information extraction methods.
 def oneBandImageToArrayZXY_projRef(rasterFile):
     """
     Opens a single-band raster image as a NumPy 2D array [Z] and returns it along
@@ -179,8 +192,8 @@ def extractRasterParams(rasterFile_or_ds, *params):
             if spat_ref is not None:
                 value.AssignSpatialReference(spat_ref)
             else:
-                print ("WARNING: Spatial reference could not be extracted from raster dataset,"
-                       " so extracted geometry has not been assigned a spatial reference.")
+                warn("Spatial reference could not be extracted from raster dataset,"
+                     " so extracted geometry has not been assigned a spatial reference.")
         value_list.append(value)
 
     if len(value_list) == 1:
@@ -199,20 +212,20 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
     the conversion may be forced with the argument force_conversion=True.
     """
     dtype_dict = {                                            # ---GDAL LIMITATIONS---
-        'bool'      : (np.bool,       gdal.GDT_Byte,     1),  # **GDAL byte is unsigned**
-        'int'       : (np.int,        gdal.GDT_Int32,    1),  # :: GDAL doesn't have int64,
-        'intc'      : (np.intc,       gdal.GDT_Int32,    1),  # :: so I assume int32
-        'intp'      : (np.intp,       gdal.GDT_Int32,    1),  # :: works for these.
-        'int8'      : (np.int8,       gdal.GDT_Byte,     1),  # **GDAL byte is unsigned**
+        'bool'      : (np.bool,       gdal.GDT_Byte,     1),
+        'int8'      : (np.int8,       gdal.GDT_Byte,     1),  # GDAL byte is unsigned
         'int16'     : (np.int16,      gdal.GDT_Int16,    1),
         'int32'     : (np.int32,      gdal.GDT_Int32,    1),
-        'int64'     : (np.int64,      gdal.GDT_Int32,    0),  # No int64
+        'int'       : (np.int,        gdal.GDT_Int32,    1),  # Comparable to np.int32
+        'intc'      : (np.intc,       gdal.GDT_Int32,    1),  # Comparable to np.int32
+        'int64'     : (np.int64,      gdal.GDT_Int32,    0),  # GDAL no int64
+        'intp'      : (np.intp,       gdal.GDT_Int32,    1),  # Comparable to np.int64
         'uint8'     : (np.uint8,      gdal.GDT_Byte,     1),
         'uint16'    : (np.uint16,     gdal.GDT_UInt16,   1),
         'uint32'    : (np.uint32,     gdal.GDT_UInt32,   1),
-        'uint64'    : (np.uint64,     gdal.GDT_UInt32,   0),  # No uint64
+        'uint64'    : (np.uint64,     gdal.GDT_UInt32,   0),  # GDAL no uint64
         'float'     : (np.float,      gdal.GDT_Float64,  1),
-        'float16'   : (np.float16,    gdal.GDT_Float32,  1),  # No float16
+        'float16'   : (np.float16,    gdal.GDT_Float32,  1),  # GDAL no float16
         'float32'   : (np.float32,    gdal.GDT_Float32,  1),
         'float64'   : (np.float64,    gdal.GDT_Float64,  1),
         'complex'   : (np.complex,    gdal.GDT_CFloat64, 1),  # :: Not sure if these
@@ -236,7 +249,7 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
     elif form_out.lower() == 'numpy':
         dtype_out = dtype_tup[0]
     else:
-        raise UnsupportedMethodError("The following output data type format is not supported: '{}'".format(form_out))
+        raise UnsupportedDataTypeError("The following output data type format is not supported: '{}'".format(form_out))
 
     return dtype_out
 
@@ -261,8 +274,7 @@ def saveArrayAsTiff(array, dest,
     array_out = array
     if dtype_out is not None:
         if dtype_in != dtype_out:
-            print "WARNING: Input array data type ({}) differs from output raster data type ({})".format(
-                dtype_in, dtype_out)
+            warn("Input array data type ({}) differs from output raster data type ({})".format(dtype_in, dtype_out))
             if not skip_casting:
                 print "Casting array to output data type"
                 array_out = array.astype(dtype_np2gdal(dtype_out, form_out='numpy'))
@@ -299,7 +311,7 @@ def saveArrayAsTiff(array, dest,
     if proj_ref is not None:
         ds_out.SetProjection(proj_ref)
     else:
-        print "WARNING: Missing projection reference for saved raster '{}'".format(dest)
+        warn("Missing projection reference for saved raster '{}'".format(dest))
     ds_out.GetRasterBand(1).WriteArray(array_out)
     ds_out = None  # Dereference dataset to initiate write to disk of intermediate image.
 
@@ -338,6 +350,17 @@ def rotate_array_if_kernel_has_even_sidelength(array, kernel):
 def fix_array_if_rotation_was_applied(array, rotation_flag):
     # TODO: Write docstring.
     return np.rot90(array, 2) if rotation_flag else array
+
+
+def round_half_up(array):
+    return np.floor(array + 0.5)
+
+
+def astype_matlab(array, np_dtype):
+    if 'float' in str(array.dtype):
+        return round_half_up(array).astype(np_dtype)
+    else:
+        return array.astype(np_dtype)
 
 
 def interp2_gdal(X, Y, Z, Xi, Yi, method, borderNaNs=True):
@@ -514,15 +537,12 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
     return Zi
 
 
-def imresize(array, size, method, PILmode=None, gdal_fix='scipy'):
+def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
     """
     This function is meant to replicate MATLAB's imresize function.
-    Uses either SciPy's scipy.misc.imresize function or GDAL's gdal.ReprojectImage function
-    (through a call of the local interp2_gdal method). To use SciPy's function, specify the
-    PIL image mode based on the input array's data type ('F' for float32, 'L' for 8-bit, etc.)
-    and set gdal_fix=None.
-    WARNING: INPUT PIL IMAGE MODES OTHER THAN 'F' WILL CAUSE ARRAY DATA TO BE SCALED TO UINT8
-    BEFORE RESIZING, POTENTIALLY DESTROYING ARRAY DATA IN THE PROCESS.
+
+    Uses SciPy's scipy.misc.imresize function, GDAL's gdal.ReprojectImage function
+    (through a call of the local interp2_gdal method), or a combination of both.
 
     For particular sets of input/output array shapes (dependent on resizing scale factor),
     the GDAL method can produce results for some interpolation methods that match MATLAB's
@@ -530,28 +550,31 @@ def imresize(array, size, method, PILmode=None, gdal_fix='scipy'):
     currently can't be interpolated through the GDAL method (and are instead set to zeros) without
     applying some sort of fix.
     """
-    if gdal_fix not in (None, 'pad', 'pad_merge', 'rotate', 'scipy'):
-        raise InvalidArgumentError("gdal_fix must be 'pad', 'pad_merge', 'rotate', 'scipy', or None")
-    if gdal_fix == 'scipy' and PILmode is None:
-        PILmode = 'F'
-
-    # If a percentage or fraction is given for size, round up the x, y pixel
+    # If a resize factor is provided for size, round up the x, y pixel
     # sizes for the output array to match MATLAB's imresize function.
     new_shape = size if type(size) == tuple else np.ceil(np.dot(size, array.shape)).astype(int)
+    if use_gdal == 'auto':
+        use_gdal = False if np.any((np.array(new_shape) - np.array(array.shape)) >= 0) else True
+    if gdal_fix not in (None, 'pad', 'pad_merge', 'rotate', 'scipy'):
+        raise InvalidArgumentError("gdal_fix must be 'pad', 'pad_merge', 'rotate', 'scipy', or None")
+
     old_array = array
     new_array = None
 
-    if PILmode is not None:
+    if not use_gdal or gdal_fix == 'scipy':
+        PILmode = 'L' if array.dtype in (np.bool, np.uint8) else 'F'
+        if PILmode == 'L' and old_array.dtype != np.uint8:
+            old_array = old_array.astype(np.uint8)
         new_array = scipy.misc.imresize(old_array, new_shape, method, PILmode)
         if 'uint' in str(array.dtype):
             new_array[new_array < 0] = 0
 
-    if PILmode is None or gdal_fix == 'scipy':
+    if use_gdal:
         if gdal_fix == 'scipy':
             new_array_edgefix = new_array.astype(array.dtype)
 
         if gdal_fix in ('pad', 'pad_merge'):
-            # Fix Method 1: Pad the right and bottom sides of the array with zeros before resizing,
+            # Pad the right and bottom sides of the array with zeros before resizing,
             # then cut them off in the resized array before returning.
             pad = 1
             cur_array = old_array
@@ -574,7 +597,7 @@ def imresize(array, size, method, PILmode=None, gdal_fix='scipy'):
             new_array = new_array[0:-pad, 0:-pad]
             if gdal_fix == 'pad_merge':
                 new_array_edgefix = new_array
-                new_array = imresize(array, size, method, PILmode=None, gdal_fix=None)
+                new_array = imresize(array, size, method, use_gdal=True, gdal_fix=None)
 
         if gdal_fix == 'rotate':
             # Rotate the input array 180 degrees and interpolate it again to retrieve
@@ -591,170 +614,951 @@ def imresize(array, size, method, PILmode=None, gdal_fix='scipy'):
     return new_array.astype(array.dtype)
 
 
-def conv2(array, kernel, mode='full', method='auto', allow_flipped_processing=True):
+def conv2(array, kernel, shape='full', method='auto', allow_flipped_processing=True):
     """
-    This function is meant to replicate MATLAB's conv2 function.
-    Scipy's fftconvolve funciton cannot handle NaN input (it results in all NaN output),
-    so we must set all NaN values to zero before performing convolution. In comparison, MATLAB's
-    conv2 function takes a sensible approach by letting NaN win out in all calculations involving
-    pixels with NaN values in the input array. This results in masking our result array with NaNs
-    according to a binary dilation (with a structure of ones, same shape as the provided 'kernel')
-    of NaN locations in the input array.
-    The larger the kernel size, the closer this function can reproduce MATLAB results.
+    Convolve two 2D arrays.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Primary array to convolve.
+    kernel : ndarray, 2D
+        Secondary array to convolve with the primary array.
+    shape : str; 'full', 'same', or 'valid'
+        See documentation for scipy.signal.convolve. [1]
+    method : str; 'direct', 'fft', or 'auto'
+        See documentation for scipy.signal.convolve. [1]
+    allow_flipped_processing : bool
+        If True and at least one of the kernel array's sides
+        has an even length, rotate both input array and kernel
+        180 degrees before performing convolution, then rotate
+        the result array 180 degrees before returning.
+        The sole purpose of this option is to allow this function
+        to most closely replicate the corresponding MATLAB array method. [2]
+
+    Returns
+    -------
+    conv2 : ndarray, 2D
+        A 2D array containing the convolution of input array and kernel.
+
+    NOTES
+    -----
+    This function is meant to replicate MATLAB's conv2 function. [2]
+
+    Scipy's convolution functionS cannot handle NaN input as it results in all NaN output.
+    In comparison, MATLAB's conv2 function takes a sensible approach by letting NaN win out
+    in all calculations involving pixels with NaN values in the input array.
+    To replicate this, we set all NaN values to zero before performing convolution,
+    then mask our result array with NaNs according to a binary dilation of ALL NaN locations
+    in the input array, dilating using a structure of ones with same shape as the provided 'kernel'.
+
+    For large arrays, this function will use an FFT method for convolution that results in
+    FLOP errors on the order of 10^-12.
+
+    References
+    ----------
+    .. [1] https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.convolve.html
+    .. [2] https://www.mathworks.com/help/matlab/ref/conv2.html
+
     """
     rotation_flag = False
     if allow_flipped_processing:
         array, kernel, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, kernel)
 
     fixnans_flag = False
-    array_nans = np.isnan(array)
-    if np.any(array_nans):
-        fixnans_flag = True
-        array[array_nans] = 0
-    else:
-        del array_nans
+    if isinstance(array.dtype.type(1), np.floating):
+        array_nans = np.isnan(array)
+        if np.any(array_nans):
+            fixnans_flag = True
+            array[array_nans] = 0
+        else:
+            del array_nans
 
     if method == 'auto':
-        method = scipy.signal.choose_conv_method(array, kernel, mode)
-    result = scipy.signal.convolve(array, kernel, mode, method)
-    if method != 'direct':
+        method = scipy.signal.choose_conv_method(array, kernel, shape)
+    result = scipy.signal.convolve(array, kernel, shape, method)
+    if method != 'direct' and isinstance(result.dtype.type(1), np.floating):
+        # Fix FLOP error from FFT method where we assume zero was the desired result.
         result[(-1.0e-12 < result) & (result < 10.0e-12)] = 0
 
     if fixnans_flag:
-        result[imdilate_binary(array_nans, np.ones(kernel.shape), allow_flipped_processing=False)] = np.nan
+        result[imdilate(array_nans, np.ones(kernel.shape), shape)] = np.nan
         # Return the input array to its original state.
         array[array_nans] = np.nan
 
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def moving_average(array, kernel_size, kernel_binary=None, mode='same', allow_flipped_processing=True):
+def moving_average(array, kernel_size=None, kernel=None, shape='same', method='auto', allow_flipped_processing=True):
     """
     Given an input array of any type, returns an array of the same size with each pixel containing
     the average of the surrounding [kernel_size x kernel_size] neighborhood (or a that of a custom
-    boolean neighborhood specified through input "kernel").
-    Arguments "mode" and allow_rotation are forwarded through to the convolution function.
+    boolean neighborhood specified through input 'kernel').
+    Arguments 'mode' and allow_rotation are forwarded through to the convolution function.
     """
-    if kernel_binary is None:
-        return conv2(array, np.ones((kernel_size, kernel_size))/(kernel_size**2),
-                     mode=mode, allow_flipped_processing=allow_flipped_processing)
+    if kernel_size is None and kernel is None:
+        raise InvalidArgumentError("Either kernel_size or kernel must be provided")
+    if kernel is not None:
+        if np.any(~np.logical_or(kernel == 0, kernel == 1)):
+            raise InvalidArgumentError("kernel may only contain zeros and ones")
+        conv_kernel = np.rot90(kernel / np.sum(kernel), 2)
     else:
-        return conv2(array, kernel_binary/np.sum(kernel_binary),
-                     mode=mode, allow_flipped_processing=allow_flipped_processing)
+        conv_kernel = np.ones((kernel_size, kernel_size)) / (kernel_size**2)
+
+    return conv2(array, conv_kernel, shape, method, allow_flipped_processing=allow_flipped_processing)
 
 
-def imerode_binary(array, structure, allow_flipped_processing=True):
-    """
-    This function is meant to copy the binary erosion functionality of MATLAB's imerode function.
-    It is assumed that both inputs 'array' and 'structure' are binary arrays.
-
-    NOTE: The following applies when one of the commented-out SciPy/scikit-image "binary_erosion"
-    methods are in use, but NOT when the SciPy convolution method is in use.
-
-    When at least one of the structuring array's sides has an even length, we rotate the input array
-    180 degrees before performing erosion, then rotate it back into place before returning the result.
-    This correction works because imerode, like most MATLAB functions that work on arrays, slides the
-    structuring window first down a column, then moves from left to right across rows -- this is
-    opposite of most Python functions, which move first left to right across a row, then down columns.
-    """
-    rotation_flag = False
-    # if allow_flipped_processing:
-    #     array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
-    # result = ndimage.binary_erosion(array, structure, border_value=1)
-    # result = sk_morphology.binary_erosion(array, structure)
-    result = (scipy.signal.convolve(array, structure, mode='same', method='auto')
-              > (np.count_nonzero(structure) - 0.5))
-    return fix_array_if_rotation_was_applied(result, rotation_flag)
-
-
-def imdilate_binary(array, structure, allow_flipped_processing=True):
-    """
-    This function is meant to copy the binary dilation functionality of MATLAB's imdilate function.
-    It is assumed that both inputs 'array' and 'structure' are binary arrays.
-
-    NOTE: The following applies when one of the commented-out SciPy/scikit-image "binary_dilation"
-    methods are in use, but NOT when the SciPy convolution method is in use.
-
-    When at least one of the structuring array's sides has an even length, we rotate the input array
-    180 degrees before performing dilation, then rotate it back into place before returning the result.
-    This correction works because imdilate, like most MATLAB functions that work on arrays, slides the
-    structuring window first down a column, then moves from left to right across rows -- this is
-    opposite of most Python functions, which move first left to right across a row, then down columns.
-    """
-    rotation_flag = False
-    # if allow_flipped_processing:
-    #     array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
-    # result = ndimage.binary_dilation(array, structure, border_value=0)
-    # result = sk_morphology.binary_dilation(array, structure)
-    result = (scipy.signal.convolve(array, np.rot90(structure, 2), mode='same', method='auto')
-              > 0.5)
-    return fix_array_if_rotation_was_applied(result, rotation_flag)
-
-
-def bwareaopen(binary_array, size_tolerance, connectivity=8, in_place=False):
+def imerode(array, structure, shape='same', allow_flipped_processing=True):
     # TODO: Write docstring.
+    """
+    This function is meant to replicate MATLAB's imerode function.
+    """
+    if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+        raise InvalidArgumentError("structure contains values other than 0 and 1")
+
+    if not isinstance(array.dtype.type(1), np.floating):
+        prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
+        dtype_bitdepths = (1, 8, 16, 32, 64)
+        conv_bitdepth = None
+        for b in dtype_bitdepths:
+            if prod_bitdepth <= b:
+                conv_bitdepth = b
+                break
+        if conv_bitdepth == 1:
+            structure = structure.astype(np.bool)
+        else:
+            structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
+
+    structure = np.rot90(structure, 2)
+
+    rotation_flag = False
+    if allow_flipped_processing:
+        array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
+
+    if array.dtype == np.bool:
+        result = (conv2(~array, structure, shape, method='auto', allow_flipped_processing=False) == 0)
+    else:
+        array_vals = np.unique(array)[::-1]
+        result = np.full_like(array, array_vals[0])
+        for val in array_vals[1:]:
+            val_mask = (array == val) if not np.isnan(val) else np.isnan(array)
+            result[conv2(val_mask, structure, shape, method='auto', allow_flipped_processing=False) > 0] = val
+
+    return fix_array_if_rotation_was_applied(result, rotation_flag)
+
+
+def imdilate(array, structure, shape='same'):
+    # TODO: Write docstring.
+    """
+    This function is meant to replicate MATLAB's imdilate function.
+    """
+    if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+        raise InvalidArgumentError("structure contains values other than 0 and 1")
+
+    if not isinstance(array.dtype.type(1), np.floating):
+        prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
+        dtype_bitdepths = (1, 8, 16, 32, 64)
+        conv_bitdepth = None
+        for b in dtype_bitdepths:
+            if prod_bitdepth <= b:
+                conv_bitdepth = b
+                break
+        if conv_bitdepth == 1:
+            structure = structure.astype(np.bool)
+        else:
+            structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
+
+    structure = np.rot90(structure, 2)
+
+    if array.dtype == np.bool:
+        result = (conv2(array, structure, shape, method='auto', allow_flipped_processing=False) > 0)
+    else:
+        array_vals = np.unique(array)
+        result = np.full_like(array, array_vals[0])
+        for val in array_vals[1:]:
+            val_mask = (array == val) if not np.isnan(val) else np.isnan(array)
+            result[conv2(val_mask, structure, shape, method='auto', allow_flipped_processing=False) > 0] = val
+
+    return result
+
+
+def bwareaopen(array, size_tolerance, connectivity=8, in_place=False):
+    # TODO: Write docstring.
+    if array.dtype == np.bool:
+        binary_array = array
+    else:
+        warn("Input array to `bwareaopen` is not a boolean array"
+             "\n-> Casting array to np.bool before performing function;"
+             " beware that in_place argument cannot modify input array")
+        binary_array = array.astype(np.bool)
+        in_place = True
     return sk_morphology.remove_small_objects(binary_array, size_tolerance, connectivity/4, in_place)
 
 
-def bwboundaries_array(array, side='inner', connectivity=8, noholes=False, matlab=True):
+def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
+                       edge_boundaries=True, grey_boundaries=False):
     """
-    This function is meant to replicate MATLAB's bwboundaries function.
-    Returns a boolean array of the same shape as the input array
-    with pixels on the boundary of [nonzero values in the input array] set to 1.
+    Return a binary array with 1-px borders of ones highlighting
+    boundaries between areas of differing values in the input array.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Binary array from which to extract black-white boundaries.
+    side : str, 'inner' or 'outer'
+        If 'inner', boundaries are on the side of ones.
+        If 'outer', boundaries are on the side of zeros.
+    connectivity : int, 4 or 8
+        For drawing boundaries...
+        If 4, only pixels with touching edges are considered connected.
+        If 8, pixels with touching edges and corners are considered connected.
+    noholes : bool
+        If True, do not draw boundaries of zero clusters surrounded by ones.
+    edge_boundaries : bool
+        If True, take all nonzero pixels on the edges of the array to be boundaries.
+    grey_boundaries : bool
+        If True and a non-boolean array is provided,
+        boundaries between areas of different values are drawn.
+
+    Returns
+    -------
+    bwboundaries_array : ndarray of bool, same shape as input array
+        A binary array with 1-px borders of ones highlighting boundaries
+        between areas of differing values in the input array.
+
+    Notes
+    -----
+    This function is meant to replicate MATLAB's bwboundaries function. [1]
+
+    References
+    ----------
+    .. [1] https://www.mathworks.com/help/images/ref/bwboundaries.html
+
     """
     side_choices = ('inner', 'outer')
-    connectivity_duo = {4, 8}
+    conn_choices = (4, 8)
     if side not in side_choices:
-        raise InvalidArgumentError("'side' must be 'inner' or 'outer'")
-    if connectivity not in connectivity_duo:
-        raise InvalidArgumentError("connectivity must be 4 or 8")
+        raise InvalidArgumentError("'side' must be one of {}".format(side_choices))
+    if connectivity not in conn_choices:
+        raise InvalidArgumentError("connectivity must be one of {}".format(conn_choices))
 
-    fn = ndimage.binary_erosion if side == 'inner' else ndimage.binary_dilation
-
-    structure = np.zeros((3, 3), dtype=np.bool)
+    binary_array = array.astype(np.bool) if (array.dtype != np.bool and not grey_boundaries) else array
+    fn = imerode if side == 'inner' else imdilate
+    structure = np.zeros((3, 3), dtype=np.int8)
     if connectivity == 8:
         structure[:, 1] = 1
         structure[1, :] = 1
     elif connectivity == 4:
         structure[:, :] = 1
 
-    if noholes or matlab:
-        array_filled = ndimage.binary_fill_holes(array)
-
     if noholes:
-        return (array_filled != fn(array_filled, structure=structure))
+        array_filled = sp_ndimage.binary_fill_holes(binary_array)
+        result = (array_filled != fn(array_filled, structure=structure))
     else:
-        if matlab:
-            return bwboundaries_array((array != fn(array_filled, structure=structure)),
-                                      side=side,
-                                      connectivity=list(connectivity_duo.difference({connectivity}))[0],
-                                      noholes=False, matlab=False)
+        result = (binary_array != fn(binary_array, structure=structure))
+
+    if edge_boundaries:
+        result[ 0, np.nonzero(binary_array[ 0, :])] = True
+        result[-1, np.nonzero(binary_array[-1, :])] = True
+        result[np.nonzero(binary_array[:,  0]),  0] = True
+        result[np.nonzero(binary_array[:, -1]), -1] = True
+
+    return result
+
+
+def entropyfilt(array, kernel, bin_bitdepth=8, nbins=None):
+    # TODO: Write docstring.
+
+    if bin_bitdepth is None and nbins is None:
+        raise InvalidArgumentError("Either bin_bitdepth or nbins must be provided")
+    if nbins is None:
+        if type(bin_bitdepth) == int and 1 <= bin_bitdepth <= 64:
+            nbins = 2**bin_bitdepth
         else:
-            return (array != fn(array, structure=structure))
-
-
-def entropyfilt(array, kernel):
-    # TODO: Write docstring.
-    reduced_array = None
-    if array.dtype in (np.uint8, np.int8, np.bool):
-        reduced_array = array
+            raise InvalidArgumentError("bin_bitdepth must be an integer between 1 and 64, inclusive")
     else:
-        array_dtype_float = True if 'float' in str(array.dtype) else False
-        array_dtype_max = np.finfo(array.dtype).max if array_dtype_float else np.iinfo(array.dtype).max
-        if not array_dtype_float:
-            reduced_array = array.astype(np.float32)
-        reduced_array = np.round(reduced_array / array_dtype_max * np.iinfo(np.uint8).max).astype(np.uint8)
-    return entropy(reduced_array, kernel)
+        if type(nbins) == int and 2 <= nbins <= 2**64:
+            bin_bitdepth = math.log(nbins, 2)
+        else:
+            raise InvalidArgumentError("nbins must be an integer between 2 and 2**64, inclusive")
+
+    array_dtype_str = str(array.dtype)
+    array_gentype = None
+    array_dtype_bitdepth = None
+    try:
+        if array_dtype_str == 'bool':
+            array_gentype = 'bool'
+        elif array_dtype_str.startswith('int'):
+            array_gentype = 'int'
+        elif array_dtype_str.startswith('uint'):
+            array_gentype = 'uint'
+        elif array_dtype_str.startswith('float'):
+            array_gentype = 'float'
+        else:
+            raise ValueError
+        if array_gentype == 'bool':
+            array_dtype_bitdepth = 1
+        elif array_gentype in ('int, uint'):
+            # The following throw ValueError if an invalid input array dtype is encountered.
+            array_dtype_bitdepth = int(array_dtype_str.split('int')[-1])
+        elif array_gentype == 'float':
+            array_dtype_bitdepth = np.inf
+    except ValueError:
+        raise InvalidArgumentError("array dtype np.{} is not supported".format(array_dtype_str))
+
+    bin_array = None
+    if array_dtype_bitdepth <= bin_bitdepth and array_gentype != 'float':
+        bin_array = array
+    else:
+        if nbins is None:
+            nbins = 2**bin_bitdepth
+
+        bin_array_max = nbins - 1
+        bin_array = array.astype(np.float64) if array_dtype_bitdepth > 16 else array.astype(np.float32)
+        bin_array = bin_array - np.nanmin(bin_array)
+        array_range = np.nanmax(bin_array)
+        if array_range > bin_array_max:
+            bin_array = round_half_up(array / array_range * bin_array_max)
+
+        dtype_bitdepths = (1, 8, 16, 32, 64)
+        bin_array_bitdepth = None
+        for b in dtype_bitdepths:
+            if bin_bitdepth <= b:
+                bin_array_bitdepth = b
+                break
+        if bin_array_bitdepth == 1:
+            bin_array = bin_array.astype(np.bool)
+        else:
+            bin_array = bin_array.astype(eval('np.uint{}'.format(bin_array_bitdepth)))
+
+    return entropy(bin_array, kernel)
 
 
-def getDataDensityMap(array, kernel_size=11):
+def convex_hull_image_offsets_diamond(ndim):
+    # TODO: Remove this function once skimage package is updated to include it.
+    offsets = np.zeros((2 * ndim, ndim))
+    for vertex, (axis, offset) in enumerate(product(range(ndim), (-0.5, 0.5))):
+        offsets[vertex, axis] = offset
+    return offsets
+
+
+def convex_hull_image(image, offset_coordinates=True, tolerance=1e-10):
+    # TODO: Remove this function once skimage package is updated to include it.
+    """Compute the convex hull image of a binary image.
+    The convex hull is the set of pixels included in the smallest convex
+    polygon that surround all white pixels in the input image.
+
+    Parameters
+    ----------
+    image : array
+        Binary input image. This array is cast to bool before processing.
+    offset_coordinates : bool, optional
+        If ``True``, a pixel at coordinate, e.g., (4, 7) will be represented
+        by coordinates (3.5, 7), (4.5, 7), (4, 6.5), and (4, 7.5). This adds
+        some "extent" to a pixel when computing the hull.
+    tolerance : float, optional
+        Tolerance when determining whether a point is inside the hull. Due
+        to numerical floating point errors, a tolerance of 0 can result in
+        some points erroneously being classified as being outside the hull.
+
+    Returns
+    -------
+    hull : (M, N) array of bool
+        Binary image with pixels in convex hull set to True.
+
+    References
+    ----------
+    .. [1] http://blogs.mathworks.com/steve/2011/10/04/binary-image-convex-hull-algorithm-notes/
+
+    """
+    ndim = image.ndim
+
+    # In 2D, we do an optimisation by choosing only pixels that are
+    # the starting or ending pixel of a row or column.  This vastly
+    # limits the number of coordinates to examine for the virtual hull.
+    if ndim == 2:
+        coords = sk_morphology._convex_hull.possible_hull(image.astype(np.uint8))
+    else:
+        coords = np.transpose(np.nonzero(image))
+        if offset_coordinates:
+            # when offsetting, we multiply number of vertices by 2 * ndim.
+            # therefore, we reduce the number of coordinates by using a
+            # convex hull on the original set, before offsetting.
+            hull0 = scipy.spatial.ConvexHull(coords)
+            coords = hull0.points[hull0.vertices]
+
+    # Add a vertex for the middle of each pixel edge
+    if offset_coordinates:
+        offsets = convex_hull_image_offsets_diamond(image.ndim)
+        coords = (coords[:, np.newaxis, :] + offsets).reshape(-1, ndim)
+
+    # ERIK'S NOTE: Added the following conditional barrier for speed.
+    if offset_coordinates or ndim != 2:
+        # repeated coordinates can *sometimes* cause problems in
+        # scipy.spatial.ConvexHull, so we remove them.
+        coords = unique_rows(coords)
+
+    # Find the convex hull
+    hull = ConvexHull(coords)
+    vertices = hull.points[hull.vertices]
+
+    # If 2D, use fast Cython function to locate convex hull pixels
+    if ndim == 2:
+        # ERIK'S NOTE: Substituted grid_points_in_poly() for the following for speed.
+        # mask = grid_points_in_poly(image.shape, vertices)
+        hull_perim_r, hull_perim_c = polygon_perimeter(vertices[:, 0], vertices[:, 1])
+        mask = np.zeros(image.shape, dtype=np.bool)
+        mask[hull_perim_r, hull_perim_c] = True
+        mask = sp_ndimage.morphology.binary_fill_holes(mask)
+    else:
+        gridcoords = np.reshape(np.mgrid[tuple(map(slice, image.shape))],
+                                (ndim, -1))
+        # A point is in the hull if it satisfies all of the hull's inequalities
+        coords_in_hull = np.all(hull.equations[:, :ndim].dot(gridcoords) +
+                                hull.equations[:, ndim:] < tolerance, axis=0)
+        mask = np.reshape(coords_in_hull, image.shape)
+
+    return mask
+
+
+def concave_hull_image_traverse_alpha_length(boundary_points, boundary_res, convex_hull, indices, indptr):
     # TODO: Write docstring.
-    return moving_average(array, kernel_size)
+
+    alpha_min = boundary_res
+    alpha_max = boundary_res
+    edge_info = {}
+    revisit_edges = deque()
+    amin_edges = set()
+
+    for k1, k2 in convex_hull:
+        next_edge = (k1, k2) if k1 < k2 else (k2, k1)
+        p1, p2 = boundary_points[[k1, k2]]
+        p1_p2 = p2 - p1
+        next_alpha = np.sqrt(np.sum(np.square(p2 - p1)))
+        alpha_max = max(alpha_max, next_alpha)
+        if abs(p1_p2[0]) > boundary_res or abs(p1_p2[1]) > boundary_res:
+            k3 = set(indptr[indices[k1]:indices[k1+1]]).intersection(
+                 set(indptr[indices[k2]:indices[k2+1]])).pop()
+            edge_info[next_edge] = [next_alpha, next_alpha, k3]
+            revisit_edges.append((next_edge, k3))
+
+            while len(revisit_edges) > 0:
+                next_edge, revisit_k3 = revisit_edges.pop()
+                k1, k2 = next_edge
+                k3 = revisit_k3
+                revisit_edge_info = edge_info[next_edge]
+                local_mam = revisit_edge_info[1]
+                p1, p2, p3 = boundary_points[[k1, k2, k3]]
+
+                while True:
+                    forward_edges = []
+                    edge_1_3 = None
+                    p1_p3 = p3 - p1
+                    edge_2_3 = None
+                    p2_p3 = p3 - p2
+                    if abs(p1_p3[0]) > boundary_res or abs(p1_p3[1]) > boundary_res:
+                        edge_1_3 = (k1, k3) if k1 < k3 else (k3, k1)
+                        forward_edges.append(edge_1_3)
+                    if abs(p2_p3[0]) > boundary_res or abs(p2_p3[1]) > boundary_res:
+                        edge_2_3 = (k2, k3) if k2 < k3 else (k3, k2)
+                        forward_edges.append(edge_2_3)
+
+                    next_edge = None
+                    for fedge in forward_edges:
+                        ka, kb = fedge
+                        fedge_k3 = set(indptr[indices[ka]:indices[ka+1]]).intersection(
+                                   set(indptr[indices[kb]:indices[kb+1]])).difference({k1, k2})
+                        if not fedge_k3:
+                            # We've arrived at a convex hull edge.
+                            if fedge == edge_1_3:
+                                edge_1_3 = None
+                            else:
+                                edge_2_3 = None
+                            continue
+                        fedge_k3 = fedge_k3.pop()
+
+                        if fedge not in edge_info:
+                            fedge_alpha = np.sqrt(np.sum(np.square(p1_p3 if fedge == edge_1_3 else p2_p3)))
+                            fedge_mam = min(local_mam, fedge_alpha)
+                            edge_info[fedge] = [fedge_alpha, fedge_mam, fedge_k3]
+
+                        else:
+                            fedge_info = edge_info[fedge]
+                            fedge_alpha, fedge_mam_old, _ = fedge_info
+                            fedge_mam = min(local_mam, fedge_alpha)
+                            if fedge_mam > fedge_mam_old:
+                                fedge_info[1] = fedge_mam
+                                fedge_info[2] = fedge_k3
+                            else:
+                                if fedge_mam > alpha_min:
+                                    alpha_min = fedge_mam
+                                    amin_edges.add(fedge)
+                                if fedge == edge_1_3:
+                                    edge_1_3 = None
+                                else:
+                                    edge_2_3 = None
+                                continue
+
+                        if next_edge is None:
+                            next_edge = fedge
+                            next_mam = fedge_mam
+                            next_k3 = fedge_k3
+
+                    if next_edge is not None:
+                        if edge_1_3 is not None:
+                            if next_edge[0] == k1:
+                                # p1 = p1
+                                p2 = p3
+                            else:
+                                p2 = p1
+                                p1 = p3
+
+                            if edge_2_3 is not None:
+                                revisit_edges.append((edge_2_3, fedge_k3))
+                        else:
+                            if next_edge[0] == k2:
+                                p1 = p2
+                                p2 = p3
+                            else:
+                                p1 = p3
+                                # p2 = p2
+
+                        k1, k2 = next_edge
+                        k3 = next_k3
+                        p3 = boundary_points[next_k3]
+                        local_mam = next_mam
+
+                        if revisit_k3:
+                            revisit_edge_info[2] = revisit_k3
+                            revisit_k3 = None
+                    else:
+                        break
+
+    return alpha_min, alpha_max, edge_info, amin_edges
+
+
+def concave_hull_image_traverse_alpha_area(boundary_points, boundary_res, convex_hull, indices, indptr, mode='area'):
+    # TODO: Write docstring.
+    # FIXME: Rewrite to match "alpha_line".
+    # TODO: Test function.
+
+    doAlphaCircumference = False
+    if mode == 'area':
+        pass
+    elif mode == 'circ':
+        doAlphaCircumference = True
+    else:
+        raise InvalidArgumentError("'mode' must be 'area' or 'circ'")
+
+    alpha_min = boundary_res
+    alpha_max = boundary_res
+    edge_info = {}
+    short_edge_lengths = {}
+    revisit_edges = set()
+    amin_edges = set()
+
+    for k1, k2 in convex_hull:
+        next_edge = (k1, k2) if k1 < k2 else (k2, k1)
+        p1, p2 = boundary_points[[k1, k2]]
+        next_edge_len = np.sqrt(np.sum(np.square(p2 - p1)))
+        if next_edge_len > boundary_res:
+            chull_edge_info = [None, np.inf, None, next_edge_len]
+            edge_info[next_edge] = chull_edge_info
+            revisit_edges.add(next_edge)
+
+            while len(revisit_edges) > 0:
+                next_edge = revisit_edges.pop()
+                k1, k2 = next_edge
+                prev_edge_info = edge_info[next_edge]
+                prev_mam = prev_edge_info[1]
+                not_k3 = prev_edge_info[2]
+                len_1_2 = prev_edge_info[3]
+                p1, p2 = boundary_points[[k1, k2]]
+
+                while True:
+                    possible_k3 = set(indptr[indices[k1]:indices[k1+1]]).intersection(
+                                  set(indptr[indices[k2]:indices[k2+1]])
+                    )
+                    k3 = possible_k3.pop()
+                    if k3 == not_k3:
+                        if len(possible_k3) > 0:
+                            k3 = possible_k3.pop()
+                        else:
+                            # We've arrived at a convex hull edge.
+                            break
+
+                    edge_1_3 = (k1, k3) if k1 < k3 else (k3, k1)
+                    edge_2_3 = (k2, k3) if k2 < k3 else (k3, k2)
+
+                    p3 = boundary_points[k3]
+                    local_area = None
+
+                    next_edge = None
+                    next_edge_info = None
+                    other_edge = None
+                    other_edge_info = None
+
+                    if edge_1_3 in edge_info:
+                        next_edge = edge_1_3
+                        next_edge_info = edge_info[next_edge]
+                        ne_area, ne_mam, ne_k3, next_edge_len = next_edge_info
+                        len_1_3 = next_edge_len
+                        if ne_k3 in (k1, k2):
+                            local_area = ne_area
+                    elif edge_1_3 in short_edge_lengths:
+                        len_1_3 = short_edge_lengths[edge_1_3]
+                    else:
+                        len_1_3 = np.sqrt(np.sum(np.square(p3 - p1)))
+                        if len_1_3 > boundary_res:
+                            next_edge = edge_1_3
+                            next_edge_len = len_1_3
+                        else:
+                            short_edge_lengths[edge_1_3] = len_1_3
+
+                    if edge_2_3 in edge_info:
+                        if next_edge is None:
+                            next_edge = edge_2_3
+                            next_edge_info = edge_info[next_edge]
+                            ne_area, ne_mam, ne_k3, next_edge_len = next_edge_info
+                            len_2_3 = next_edge_len
+                            if ne_k3 in (k1, k2):
+                                local_area = ne_area
+                        else:
+                            other_edge = edge_2_3
+                            other_edge_info = edge_info[other_edge]
+                            oe_area, oe_mam, oe_k3, other_edge_len = other_edge_info
+                            len_2_3 = other_edge_len
+                            if oe_k3 in (k1, k2):
+                                local_area = oe_area
+                    elif edge_2_3 in short_edge_lengths:
+                        len_2_3 = short_edge_lengths[edge_2_3]
+                    else:
+                        len_2_3 = np.sqrt(np.sum(np.square(p3 - p2)))
+                        if len_2_3 > boundary_res:
+                            if next_edge is None:
+                                next_edge = edge_2_3
+                                next_edge_len = len_2_3
+                            else:
+                                other_edge = edge_2_3
+                                other_edge_len = len_2_3
+                        else:
+                            short_edge_lengths[edge_2_3] = len_2_3
+
+                    if local_area is None:
+                        local_edgelengths = np.array([len_1_2, len_1_3, len_2_3])
+                        local_semiperim = 0.5 * np.sum(local_edgelengths)
+                        local_area = np.sqrt(local_semiperim * np.prod(local_semiperim - local_edgelengths))
+                        if doAlphaCircumference:
+                            local_area = np.prod(local_edgelengths) / (4.0 * local_area)
+
+                    local_mam = min(prev_mam, local_area)
+
+                    if next_edge is not None:
+                        if other_edge is not None:
+                            if other_edge_info is None:
+                                other_edge_info = [local_area, local_mam, k1, other_edge_len]
+                                edge_info[other_edge] = other_edge_info
+                                revisit_edges.add(other_edge)
+                            else:
+                                next_mam = min(prev_mam, oe_area)
+                                if next_mam > oe_mam:
+                                    other_edge_info[0] = local_area
+                                    other_edge_info[1] = local_mam
+                                    other_edge_info[2] = k1
+                                    revisit_edges.add(other_edge)
+                                else:
+                                    if next_mam > alpha_min:
+                                        alpha_min = next_mam
+                                        amin_edges.add(other_edge)
+
+                        if next_edge_info is None:
+                            next_edge_info = [None, None, None, next_edge_len]
+                            edge_info[next_edge] = next_edge_info
+                        else:
+                            next_mam = min(prev_mam, ne_area)
+                            if next_mam > ne_mam:
+                                pass
+                            else:
+                                if next_mam > alpha_min:
+                                    alpha_min = next_mam
+                                    amin_edges.add(next_edge)
+                                next_edge = None
+
+                    prev_edge_info[0] = local_area
+                    prev_edge_info[1] = local_mam
+                    prev_edge_info[2] = k3
+
+                    if next_edge is not None:
+                        if next_edge == edge_1_3:
+                            not_k3 = k2
+                            if next_edge[0] == k1:
+                                # p1 = p1
+                                p2 = p3
+                            else:
+                                p2 = p1
+                                p1 = p3
+                        else:
+                            not_k3 = k1
+                            if next_edge[0] == k2:
+                                p1 = p2
+                                p2 = p3
+                            else:
+                                p1 = p3
+                                # p2 = p2
+                        k1, k2 = next_edge
+                        prev_mam = local_mam
+                        len_1_2 = next_edge_len
+                        prev_edge_info = next_edge_info
+                    else:
+                        break
+
+            alpha_max = max(alpha_max, chull_edge_info[0])
+
+    return alpha_min, alpha_max, edge_info, amin_edges
+
+
+def concave_hull_image(image, concavity, fill=True,
+                       data_boundary_res=3, alpha_mode='line', alpha_cutoff_mode='unique',
+                       debug=False):
+    # TODO: Write docstring.
+    # TODO: Fix and test 'area'/'circ' alpha modes.
+    """
+
+    Parameters
+    ----------
+    image :
+    concavity :
+    fill :
+    data_boundary_res : positive int
+        Minimum coordinate-wise distance between two points in a triangle for that edge to be
+        traversed and allow the triangle on the other side of the edge to be considered for erosion.
+    alpha_mode :
+    alpha_cutoff_mode :
+    debug :
+
+    Returns
+    -------
+
+    """
+    if 0 <= concavity <= 1:
+        pass
+    else:
+        raise InvalidArgumentError("concavity must be between 0 and 1, inclusive")
+    # if data_boundary_res < 1:
+    #     raise InvalidArgumentError("data_boundary_res must be >= 1")
+    if alpha_mode not in ('line', 'area', 'circ'):
+        raise UnsupportedMethodError("alpha_mode='{}'".format(alpha_mode))
+    if alpha_cutoff_mode not in ('mean', 'median', 'unique'):
+        raise UnsupportedMethodError("alpha_cutoff_mode='{}'".format(alpha_cutoff_mode))
+
+    # Find data coverage boundaries.
+    # TODO: Fix the following section once testing of maskEdges() is complete.
+    data_boundary = bwboundaries_array(image, connectivity=8, noholes=True, side='inner')
+    # data_boundary = test.readImage('data_boundary')
+    boundary_points = np.argwhere(data_boundary)
+
+    if debug:
+        import matplotlib.pyplot as plt
+    else:
+        del data_boundary
+
+    tri = scipy.spatial.Delaunay(boundary_points)
+
+    if debug in (True, 1):
+        print "[DEBUG] concave_hull_image_alpha_line (1): Initial triangulation plot"
+        plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], tri.simplices.copy(), lw=1)
+        plt.plot(boundary_points[:, 1], -boundary_points[:, 0], 'o', ms=1)
+        plt.show()
+
+    hull_convex = tri.convex_hull
+    indices, indptr = tri.vertex_neighbor_vertices
+
+    traverse_args = [boundary_points, data_boundary_res, hull_convex, indices, indptr]
+    traverse_fun = None
+    if alpha_mode == 'line':
+        traverse_fun = concave_hull_image_traverse_alpha_length
+    elif alpha_mode == 'area':
+        traverse_fun = concave_hull_image_traverse_alpha_area
+    elif alpha_mode == 'circ':
+        traverse_fun = concave_hull_image_traverse_alpha_area
+        traverse_args.append('circ')
+
+    alpha_min, alpha_max, edge_info, amin_edges = traverse_fun(*traverse_args)
+
+    alpha_cut = None
+    if concavity == 0 or alpha_min == alpha_max:
+        alpha_cut = np.inf
+    elif alpha_cutoff_mode == 'mean':
+        alpha_cut = (alpha_min + alpha_max) / 2
+    elif alpha_cutoff_mode in ('median', 'unique'):
+        mam_allowed = [einfo[1] for einfo in edge_info.values() if einfo[1] > alpha_min]
+        if not mam_allowed:
+            warn("Of {} total edges in edge_info, none have mam > alpha_min={}".format(len(edge_info), alpha_min))
+            alpha_cut = np.inf
+        else:
+            if alpha_cutoff_mode == 'unique':
+                mam_allowed = list(set(mam_allowed))
+            mam_allowed.sort()
+            alpha_cut = mam_allowed[-int(np.ceil(len(mam_allowed) * concavity))]
+        del mam_allowed
+
+    if debug in (True, 2):
+        print "[DEBUG] concave_hull_image_alpha_line (2): Triangulation traversal"
+        print "alpha_min = {}".format(alpha_min)
+        print "alpha_max = {}".format(alpha_max)
+        print "concavity = {}".format(concavity)
+        print "alpha_cut = {}".format(alpha_cut)
+        while True:
+            eaten_simplices = []
+            eaten_tris_mam = []
+            mam_instances = {}
+            for edge in edge_info:
+                einfo = edge_info[edge]
+                if einfo[1] >= alpha_cut:
+                    eaten_simplices.append([edge[0], edge[1], einfo[2]])
+                    eaten_tris_mam.append(einfo[1])
+                if einfo[1] == alpha_min:
+                    mam_tris = []
+                    mam_instances[edge] = mam_tris
+                    for k1 in edge:
+                        amin_neighbors = indptr[indices[k1]:indices[k1+1]]
+                        for k2 in amin_neighbors:
+                            possible_k3 = set(indptr[indices[k1]:indices[k1+1]]).intersection(set(indptr[indices[k2]:indices[k2+1]]))
+                            for k3 in possible_k3:
+                                mam_tris.append([k1, k2, k3])
+            plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], tri.simplices.copy(), lw=1)
+            if eaten_simplices:
+                plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], eaten_simplices, color='black', lw=1)
+                plt.tripcolor(boundary_points[:, 1], -boundary_points[:, 0], eaten_simplices, facecolors=np.array(eaten_tris_mam), lw=1)
+            for amin_edge in amin_edges:
+                plt.plot(boundary_points[amin_edge, 1], -boundary_points[amin_edge, 0], 'r--', lw=1)
+            for mam_edge in mam_instances:
+                mam_tris = mam_instances[mam_edge]
+                plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], mam_tris, color='red', lw=1)
+            plt.plot(boundary_points[:, 1], -boundary_points[:, 0], 'o', ms=1)
+            for hull_edge in hull_convex:
+                plt.plot(boundary_points[hull_edge, 1], -boundary_points[hull_edge, 0], 'yo', lw=1.5)
+            for mam_edge in mam_instances:
+                plt.plot(boundary_points[mam_edge, 1], -boundary_points[mam_edge, 0], 'ro', lw=1.5)
+            plt.show()
+            user_input = raw_input("Modify params? (y/n): ")
+            if user_input.lower() != "y":
+                break
+            validInput = False
+            while not validInput:
+                try:
+                    user_input = raw_input("concavity = ")
+                    if user_input == "":
+                        break
+                    else:
+                        user_input_num = float(user_input)
+                    if 0 <= user_input_num <= 1:
+                        pass
+                    else:
+                        raise ValueError
+                    concavity = user_input_num
+
+                    alpha_cut = None
+                    if concavity == 0 or alpha_min == alpha_max:
+                        alpha_cut = np.inf
+                    elif alpha_cutoff_mode == 'mean':
+                        alpha_cut = (alpha_min + alpha_max) / 2
+                    elif alpha_cutoff_mode in ('median', 'unique'):
+                        mam_allowed = [einfo[1] for einfo in edge_info.values() if einfo[1] > alpha_min]
+                        if not mam_allowed:
+                            warn("Of {} total edges in edge_info, none have mam > alpha_min={}".format(len(edge_info), alpha_min))
+                            alpha_cut = np.inf
+                        else:
+                            if alpha_cutoff_mode == 'unique':
+                                mam_allowed = list(set(mam_allowed))
+                            mam_allowed.sort()
+                            alpha_cut = mam_allowed[-int(np.ceil(len(mam_allowed) * concavity))]
+                        del mam_allowed
+
+                    validInput = True
+                    print "alpha_cut = {}".format(alpha_cut)
+                except ValueError:
+                    print "concavity must be an int or float between 0 and 1"
+            while not validInput:
+                try:
+                    user_input = raw_input("alpha_cut = ")
+                    if user_input == "":
+                        break
+                    else:
+                        user_input_num = float(user_input)
+                    alpha_cut = user_input_num
+                    validInput = True
+                except ValueError:
+                    print "alpha_cut must be an int or float"
+
+    eaten_tris = []
+    mam_instances = []
+    for edge in edge_info:
+        einfo = edge_info[edge]
+        if einfo[1] >= alpha_cut:
+            eaten_tris.append(shapely.geometry.Polygon(boundary_points[[edge[0], edge[1], einfo[2]]]))
+        if einfo[1] == alpha_min:
+            mam_indices = []
+            mam_instances.append(mam_indices)
+            for k1 in edge:
+                amin_neighbors = indptr[indices[k1]:indices[k1+1]]
+                for k2 in amin_neighbors:
+                    possible_k3 = set(indptr[indices[k1]:indices[k1+1]]).intersection(set(indptr[indices[k2]:indices[k2+1]]))
+                    for k3 in possible_k3:
+                        mam_indices.extend([k1, k2, k3])
+
+    eaten_poly = shapely.ops.unary_union(eaten_tris)
+    mam_poly = shapely.ops.unary_union(
+        [shapely.geometry.MultiPoint(boundary_points[np.unique(indices)]).convex_hull for indices in mam_instances]
+    )
+    hull_convex_poly = shapely.geometry.MultiPoint(boundary_points[np.unique(hull_convex)]).convex_hull
+
+    hull_concave_poly = hull_convex_poly.difference(eaten_poly.difference(mam_poly))
+    if type(hull_concave_poly) == shapely.geometry.polygon.Polygon:
+        hull_concave_poly = [hull_concave_poly]
+    else:
+        warn("Concave hull is broken into multiple polygons; try increasing data_boundary_res")
+
+    del eaten_poly, mam_poly, hull_convex_poly
+
+    mask = np.zeros(image.shape, dtype=np.bool)
+    for poly in hull_concave_poly:
+        cchull_r, cchull_c = poly.exterior.coords.xy
+        cchull_r = np.array(cchull_r)
+        cchull_c = np.array(cchull_c)
+
+        if debug in (True, 3):
+            print "[DEBUG] concave_hull_image_alpha_line (3): Concave hull boundary points"
+            plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], tri.simplices.copy(), lw=1)
+            if eaten_simplices:
+                plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], eaten_simplices, color='red', lw=1)
+            plt.plot(boundary_points[:, 1], -boundary_points[:, 0], 'o', ms=1)
+            plt.plot(cchull_c, -cchull_r, 'ro', ms=3)
+            i = 0
+            for xy in np.column_stack((cchull_c, -cchull_r)):
+                i += 1
+                plt.annotate(s=str(i), xy=xy)
+            plt.show()
+
+        draw_r, draw_c = polygon_perimeter(cchull_r, cchull_c)
+        mask[draw_r, draw_c] = 1
+
+    if fill:
+        mask = sp_ndimage.morphology.binary_fill_holes(mask)
+
+    # TODO: Remove the following before sharing algorithm.
+    if debug in (True, 4):
+        debug_mask = np.zeros(image.shape, dtype=np.int8)
+        debug_mask[mask] = 1
+        debug_mask[data_boundary] += 2
+        test.saveImage(debug_mask, 'debug_concave_hull_image')
+
+    return mask
 
 
 def getWindow(array, window_shape, x_y_tup, one_based_index=True):
     # TODO: Write docstring.
-    # FIXME: Do error checking.
+    # FIXME: Needs error checking on array bounds.
     window_ysize, window_xsize = window_shape
     colNum, rowNum = x_y_tup
     if one_based_index:
@@ -787,7 +1591,7 @@ def getFPvertices(array, X, Y,
     # Get the data boundary ring.
     if method == 'convhull':
         # Fill interior nodata holes.
-        array_filled = ndimage.morphology.binary_fill_holes(array_data)
+        array_filled = sp_ndimage.morphology.binary_fill_holes(array_data)
         try:
             ring = getFPring_nonzero(array_filled, X, Y)
         except MemoryError:
@@ -801,7 +1605,7 @@ def getFPvertices(array, X, Y,
         ring = getFPring_nonzero(array_data, X, Y)
 
     else:
-        raise UnsupportedMethodError("method='{}' in call to raster_array_tools.getFPvertices".format(method))
+        raise UnsupportedMethodError("method='{}'".format(method))
 
     del array_data
     if 'array_filled' in vars():
@@ -843,7 +1647,7 @@ def getFPring_convhull(array_filled, X, Y):
     footprint vertices of the data mass, using [X, Y] grid coordinates.
     """
     # Derive data cluster boundaries (in array representation).
-    data_boundary = (array_filled != ndimage.binary_erosion(array_filled))
+    data_boundary = (array_filled != sp_ndimage.binary_erosion(array_filled))
 
     boundary_points = np.argwhere(data_boundary)
     del data_boundary
@@ -929,20 +1733,20 @@ def getDataBoundariesPoly(array, X, Y, nodataVal=np.nan, coverage='all',
 
     if coverage == 'outer':
         # Fill interior nodata holes.
-        data_array = ndimage.morphology.binary_fill_holes(data_array)
+        data_array = sp_ndimage.morphology.binary_fill_holes(data_array)
 
     if erode:
         # Erode data regions to eliminate *any* data spurs (possible 1 or 2 pixel-
         # width fingers that stick out from data clusters in the original array).
         # This should make the tracing of data boundaries more efficient since
         # the rings that are traced will be more substantial.
-        data_array = ndimage.binary_erosion(data_array, structure=np.ones((3, 3)))
+        data_array = sp_ndimage.binary_erosion(data_array, structure=np.ones((3, 3)))
         if ~np.any(data_array):
             # No data clusters large enough to have a traceable boundary exist.
             return None
         # Reverse the erosion process to retrieve a data array that does not
         # contain data spurs, yet remains true to data coverage.
-        data_array = ndimage.binary_dilation(data_array, structure=np.ones((3, 3)))
+        data_array = sp_ndimage.binary_dilation(data_array, structure=np.ones((3, 3)))
 
     if BBS:
         # Bi-directional Boundary Skewing
@@ -952,7 +1756,7 @@ def getDataBoundariesPoly(array, X, Y, nodataVal=np.nan, coverage='all',
         # boundary nodes after each boundary ring is traced.
         print "Performing Bi-directional Boundary Skewing"
         outer_boundary = (
-            ndimage.binary_dilation(data_array, structure=np.ones((3, 3))) != data_array
+            sp_ndimage.binary_dilation(data_array, structure=np.ones((3, 3))) != data_array
         )
         outer_boundary_nodes = [(row[0], row[1]) for row in np.argwhere(outer_boundary)]
         # In skew_check, 0 is the location of an outer boundary node to be checked, 'n'.
@@ -968,7 +1772,7 @@ def getDataBoundariesPoly(array, X, Y, nodataVal=np.nan, coverage='all',
         data_array = (data_array | skew_additions)
 
     # Find data coverage boundaries.
-    data_boundary = (data_array != ndimage.binary_erosion(data_array))
+    data_boundary = (data_array != sp_ndimage.binary_erosion(data_array))
 
     # Create polygon.
     poly = ogr.Geometry(ogr.wkbPolygon)
@@ -1061,92 +1865,53 @@ def outline(array, every, start=None, pass_start=False, complete_ring=True):
     return fixed_route
 
 
-def connectEdges(edges_array):
+def connectEdges(edge_collection, allow_modify_deque_input=True):
+    # TODO: Test function.
     """
-    A helper function for connectEdges_inplace.
-    Takes a 2D NumPy array (or some other 2D object with iterable sub-objects)
-    and creates a 2D list of edge lists from it to pass to connectEdges_inplace.
-    The input list is NOT modified in the process.
+    Takes a collection of edges, each edge being an ordered collection of vertex numbers,
+    and recursively connects them by linking edges with endpoints that have matching vertex numbers.
+    A reduced list of edges (each edge as a deque) is returned. This list will contain multiple edge
+    components if the input edges cannot be connected to form a single unbroken edge.
+    If allow_modify_deque_input=True, an input edge_list containing deque edge components will be
+    modified.
     """
-    edges_list = [list(e) for e in edges_array]
-    return connectEdges_inplace(edges_list)
-
-
-def connectEdges_inplace(edges_list):
-    """
-    Takes a 2D list of edge lists, where points are identified by vertex number,
-    and recursively connects them by linking edges with endpoints that have
-    matching vertex numbers.
-    If the edges can be connected to form a single ring, it is returned as a
-    1D list of vertices. If multiple rings exist, they are returned as a
-    2D list of their vertices as separate lists.
-    The input list is modified in the process.
-    """
-    input_edgeNum = len(edges_list)
-    if input_edgeNum < 2:
-        # Return the single ring.
-        return list(edges_list[0])
-
-    # print "Connecting {} edges".format(input_edgeNum)  ## For testing purposes.
-
-    lines = [deque(edges_list[0])]
-    edges_list = edges_list[1:]
-    i = 0
-    for e in edges_list:
-        start = i
-        endpoints = (e[0], e[-1])
-        connected = False
-
-        if lines[i][0] in endpoints:
-            if lines[i][0] == endpoints[1]:
-                del e[-1]
-                e.reverse()
-                lines[i].extendleft(e)
-            else:
-                del e[0]
-                lines[i].extendleft(e)
-            connected = True
-        elif lines[i][-1] in endpoints:
-            if lines[i][-1] == endpoints[0]:
-                del e[0]
-                lines[i].extend(e)
-            else:
-                del e[-1]
-                e.reverse()
-                lines[i].extend(e)
-            connected = True
-        i += 1
-        while not connected and i != start:
-            try:
-                if lines[i][0] in endpoints:
-                    if lines[i][0] == endpoints[1]:
-                        del e[-1]
-                        e.reverse()
-                        lines[i].extendleft(e)
-                    else:
-                        del e[0]
-                        lines[i].extendleft(e)
-                    connected = True
-                elif lines[i][-1] in endpoints:
-                    if lines[i][-1] == endpoints[0]:
-                        del e[0]
-                        lines[i].extend(e)
-                    else:
-                        del e[-1]
-                        e.reverse()
-                        lines[i].extend(e)
-                    connected = True
-                i += 1
-            except IndexError:
-                i = 0
-        if not connected:
-            lines.append(deque(e))
-        else:
-            i -= 1
-
-    if len(lines) < input_edgeNum:
-        # Try another pass to connect edges.
-        return connectEdges(lines)
+    edges_input = None
+    if type(edge_collection[0]) == deque:
+        edges_input = edge_collection if allow_modify_deque_input else copy.deepcopy(edge_collection)
     else:
-        # More than one ring exists.
-        return [list(deq) for deq in lines]
+        edges_input = [deque(e) for e in edge_collection]
+
+    while True:
+        edges_output = []
+        for edge_in in edges_input:
+            edge_in_end_l, edge_in_end_r = edge_in[0], edge_in[-1]
+            connected = False
+            for edge_out in edges_output:
+                if edge_out[0] == edge_in_end_l:
+                    edge_out.popleft()
+                    edge_out.extendleft(edge_in)
+                    edge_in_added = True
+                    break
+                if edge_out[0] == edge_in_end_r:
+                    edge_out.popleft()
+                    edge_in.reverse()
+                    edge_out.extendleft(edge_in)
+                    edge_in_added = True
+                    break
+                if edge_out[-1] == edge_in_end_l:
+                    edge_out.pop()
+                    edge_out.extend(edge_in)
+                    edge_in_added = True
+                    break
+                if edge_out[-1] == edge_in_end_r:
+                    edge_out.pop()
+                    edge_in.reverse()
+                    edge_out.extend(edge_in)
+                    edge_in_added = True
+                    break
+            if not connected:
+                edges_output.append(edge_in)
+        if len(edges_output) == len(edges_input):
+            return edges_output
+        else:
+            edges_input = edges_output

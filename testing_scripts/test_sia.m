@@ -42,11 +42,26 @@ if (strcmp(flavor, 'auto') || (~isempty(matchkey) && strcmp(matchkey, 'auto'))) 
 end
 
 % Determine the correct data type for saving the image data.
+fmtstr = [];
 if ~isempty(flavor)
     if strcmp(flavor, 'auto')
         flavor = array_name;
     end
-    [flavor_name,~,~] = test_interpretImageRasterFlavor(flavor);
+    [flavor_name, fmt, ~] = test_interpretImageRasterFlavor(flavor);
+    switch fmt
+        case 1;  fmtstr = 'uint8';
+        case 2;  fmtstr = 'int16';
+        case 3;  fmtstr = 'int32';
+        case 4;  fmtstr = 'single';
+        case 5;  fmtstr = 'double';
+        case 6;  error('cant write complex numbers') %complex single
+        case 9;  error('cant write complex numbers') %complex double
+        case 11; fmtstr = 'int8';
+        case 12; fmtstr = 'uint16';
+        case 13; fmtstr = 'uint32';
+        case 14; fmtstr = 'int64';
+        case 15; fmtstr = 'uint64';
+    end
 else
     flavor_name = '';
 end
@@ -60,4 +75,4 @@ else
 end
 
 testFname = test_getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concurrent, false);
-test_saveImage(array, testFname);
+test_saveImage(array, testFname, fmtstr);

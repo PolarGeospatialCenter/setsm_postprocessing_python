@@ -15,6 +15,7 @@ import numpy as np
 from scipy import interpolate
 
 import raster_array_tools as rat
+
 import test
 
 
@@ -357,7 +358,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border 0's introduced by NaN interpolation.
         M3 = ~np.isnan(zi)
-        M3 = rat.imerode_binary(M3, structure=np.ones((6, 6)))  # border cutline
+        M3 = rat.imerode(M3, structure=np.ones((6, 6)))  # border cutline
 
         zi[~M3] = np.nan
         mi[~M3] = 0
@@ -365,7 +366,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border on orthos separately.
         M4 = (oi != 0)
-        M4 = rat.imerode_binary(M4, structure=np.ones((6, 6)))
+        M4 = rat.imerode(M4, structure=np.ones((6, 6)))
         oi[~M4] = 0
         del M4
 
@@ -651,8 +652,8 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
 
     m = rat.extractRasterParams(matchFile, 'array').astype(np.bool)
     if m.shape != z.shape:
-        print "WARNING: matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
-        print "Interpolating to dem dimensions"
+        warnings.warn("matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
+                     + "\nInterpolating to dem dimensions")
         x, y = rat.extractRasterParams(matchFile, 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.isnan(m)] = 0  # Convert back to bool.
@@ -661,8 +662,8 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     if os.path.isfile(orthoFile):
         o = rat.extractRasterParams(orthoFile, 'array').astype(np.uint16)
         if o.shape != z.shape:
-            print "WARNING: orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
-            print "Interpolating to dem dimensions"
+            warnings.warn("orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
+                          + "\nInterpolating to dem dimensions")
             x, y = rat.extractRasterParams(orthoFile, 'x', 'y')
             # TODO: Is the following line necessary?
             o[np.isnan(o)] = np.nan  # Set border to NaN so it won't be interpolated.

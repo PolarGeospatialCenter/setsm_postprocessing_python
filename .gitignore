@@ -5,7 +5,7 @@
 
 .idea
 
-link_new_files_from_matlab.bat
-link_new_files_to_googledrive_from_mega.bat
+link_new_files_from_matlab.py
+link_new_files_to_googledrive_from_mega.py
 
 Raster.py

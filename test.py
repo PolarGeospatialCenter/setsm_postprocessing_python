@@ -8,11 +8,16 @@ import inspect
 import os
 import platform
 import re
+import warnings
 from glob import glob
+from warnings import warn
 
 import ogr, osr
 import numpy as np
-import scipy
+from io import BytesIO
+from PIL import Image
+from scipy.misc import imread as scipy_imread
+from tifffile import imread, imsave
 
 import mask_scene
 import raster_array_tools as rat
@@ -28,6 +33,8 @@ PREFIX_RUNNUM = 'CURRENT_RUNNUM_'
 
 PROJREF_POLAR_STEREO = """PROJCS["unnamed",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-70],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]"""
 
+
+warnings.simplefilter('always', UserWarning)
 
 class InvalidArgumentError(Exception):
     def __init__(self, msg):
@@ -162,7 +169,7 @@ def sg(varNames_csv):
 
     sg_varNames_list = __arg0__.split(',')
     for sg_i, sg_v in enumerate(sg_varNames_list):
-        sg_testVname = '{}{}_{}'.format('sg_testVar_', sg_i, sg_v)
+        sg_testVname = '{}{}_{}'.format('sg_testVar_', sg_i, sg_v.strip())
         exec('global {}'.format(sg_testVname))
         exec('{} = {}'.format(sg_testVname, sg_v))
         sg_testVnames_list.append(sg_testVname)
@@ -390,32 +397,32 @@ def interpretImageRasterFlavor(flavor):
     raster_nodata = None
 
     if flavor is not None and flavor != '':
-        if flavor in ('dem', 'z', 'Z', 'Zsub'):
+        if flavor in ('dem', 'dem_array', 'z', 'Z', 'Zsub'):
             flavor_name = 'dem'
             image_PILmode = 'F'
             raster_format = 'float32'
             raster_nodata = -9999
-        elif flavor in ('match', 'm', 'M', 'Msub'):
+        elif flavor in ('match', 'match_array', 'm', 'M', 'Msub'):
             flavor_name = 'match'
             image_PILmode = 'L'
             raster_format = 'uint8'
             raster_nodata = 0
-        elif flavor in ('ortho', 'o', 'or', 'O', 'Osub'):
+        elif flavor in ('ortho', 'ortho_array', 'o', 'or', 'O', 'Osub'):
             flavor_name = 'ortho'
             image_PILmode = 'I'
             raster_format = 'int16'
             raster_nodata = 0
-        elif flavor == 'mask':
+        elif flavor in ('mask', 'mask_array'):
             flavor_name = 'mask'
             image_PILmode = 'L'
             raster_format = 'uint8'
             raster_nodata = 0
-        elif flavor in ('data', 'md', 'd'):
+        elif flavor in ('data', 'data_array', 'md', 'd'):
             flavor_name = 'data'
             image_PILmode = 'L'
             raster_format = 'uint8'
             raster_nodata = 0
-        elif flavor in ('edge', 'me', 'e'):
+        elif flavor in ('edge', 'edge_array', 'me', 'e'):
             flavor_name = 'edge'
             image_PILmode = 'L'
             raster_format = 'uint8'
@@ -472,22 +479,36 @@ def getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concur
         imgnum = 1
     filetype = 'ras' if isRaster else 'img'
     flavor_name = '{:_<5}'.format(flavor_name)
-    matchkey = matchkey.replace(' ', '-').replace('~', '-')
+    if matchkey != '':
+        matchkey = '_'+matchkey.replace(' ', '-').replace('~', '-')
     if descr != '':
         descr = '~'+descr.replace(' ', '-')
 
-    testFname = 'run{:03d}_{:03d}_py_{}_{}_{}_{}x{}{}.tif'.format(
-        runnum, imgnum, filetype, flavor_name, matchkey, array.shape[0], array.shape[1], descr
+    testFname = 'run{:03d}_{:03d}_py_{}_{}_{}x{}{}{}.tif'.format(
+        runnum, imgnum, filetype, flavor_name, array.shape[0], array.shape[1], matchkey, descr
     )
     return testFname
 
 
-def saveImage(array, fname='testImage_py.tif', PILmode='F'):
+def saveImage(array, fname='testImage_py.tif', dtype_out=None, do_casting=False):
     testFile = getTestFileFromFname(fname)
     if testFile is None:
         return
-    image = scipy.misc.toimage(array, high=np.max(array), low=np.min(array), mode=PILmode.upper())
-    image.save(testFile)
+
+    dtype_in = str(array.dtype)
+    array_out = array
+    if dtype_out is not None:
+        if dtype_in != dtype_out:
+            warn("Input array data type ({}) differs from specified output data type ({})".format(dtype_in, dtype_out))
+            if do_casting:
+                print "Casting array to output data type"
+                array_out = array.astype(rat.dtype_np2gdal(dtype_out, form_out='numpy'))
+
+    if array_out.dtype == np.bool:
+        image = Image.frombytes(mode='1', size=array_out.shape[::-1], data=np.packbits(array_out, axis=1))
+        image.save(testFile)
+    else:
+        imsave(testFile, array_out)
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
@@ -508,13 +529,11 @@ def sia(array, flavor='auto', matchkey='auto', descr='', compare=False, concurre
 
     # Determine the correct data type for saving the image data.
     flavor_name = ''
-    PILmode = ''
-    if flavor.upper() in ('F', 'I', 'L'):
-        PILmode = flavor
-    else:
+    fmtstr = None
+    if flavor is not None:
         if flavor == 'auto':
             flavor = array_name
-        flavor_name, PILmode, _, _ = interpretImageRasterFlavor(flavor)
+        flavor_name, _, fmtstr, _ = interpretImageRasterFlavor(flavor)
 
     if matchkey is not None:
         if matchkey == 'auto':
@@ -523,10 +542,10 @@ def sia(array, flavor='auto', matchkey='auto', descr='', compare=False, concurre
         matchkey = ''
 
     testFname = getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concurrent, False)
-    saveImage(array, testFname, PILmode)
+    saveImage(array, testFname, fmtstr)
 
 
-def sia_one(array, flavor='F', matchkey=None, descr='', compare=False, concurrent=False, array_name=None):
+def sia_one(array, flavor=None, matchkey=None, descr='', compare=False, concurrent=False, array_name=None):
     """
     Save Image Auto -- (For) One (Image)
     ::
@@ -544,8 +563,8 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
         return
 
     if proj_ref is None:
-        print "WARNING: No proj_ref argument given to saveRaster()"
-        print "-> Using default global PROJREF_POLAR_STEREO"
+        warn("No proj_ref argument given to saveRaster()"
+             "\n-> Using default global PROJREF_POLAR_STEREO")
         proj_ref = PROJREF_POLAR_STEREO
 
     rat.saveArrayAsTiff(Z, testFile,
@@ -575,7 +594,7 @@ def sra(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concur
     # Determine the correct data type for saving the raster data.
     if flavor == 'auto':
         flavor = array_name
-    flavor_name, _, fmt, nodata = interpretImageRasterFlavor(flavor)
+    flavor_name, _, fmtstr, nodata = interpretImageRasterFlavor(flavor)
 
     if matchkey is not None:
         if matchkey == 'auto':
@@ -589,14 +608,14 @@ def sra(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concur
         Z_copy[np.where(np.isnan(Z_copy))] = nodata
     else:
         Z_copy = Z
-    saveRaster(Z_copy, X, Y, fname=testFname, proj_ref=proj_ref, nodataVal=nodata, dtype_out=fmt)
+    saveRaster(Z_copy, X, Y, fname=testFname, proj_ref=proj_ref, nodataVal=nodata, dtype_out=fmtstr)
 
 
 def waitForComparison(expected_imgnum):
 
     last_imgnum = getNextImgnum(compare=True, concurrent=True)
     if last_imgnum != expected_imgnum:
-        print "WARNING: last_imgnum ({}) != expected_imgnum ({}) in test file comparison!!".format(last_imgnum, expected_imgnum)
+        warn("last_imgnum ({}) != expected_imgnum ({}) in test file comparison!!".format(last_imgnum, expected_imgnum))
 
     FILE_COMPARE_READY = os.path.join(TESTDIR, 'COMPARE_READY')
     FILE_COMPARE_WAIT  = os.path.join(TESTDIR, 'COMPARE_WAIT')
@@ -614,7 +633,13 @@ def waitForComparison(expected_imgnum):
 
 
 def readImage(imgFile='testImage_ml.tif'):
-    return scipy.misc.imread(findFile(imgFile))
+    try:
+        in_array = imread(findFile(imgFile))
+    except (ValueError, Image.DecompressionBombWarning):
+        warn("Error in reading image with tifffile.imread()"
+             "\n-> Assuming image is logical; opening with scipy.misc.imread() and casting array to np.bool")
+        in_array = scipy_imread(findFile(imgFile)).astype(np.bool)
+    return in_array
 
 
 def readRasterZ(rasterFile='testRaster_ml.tif'):
