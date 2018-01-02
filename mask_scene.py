@@ -812,12 +812,10 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
     if min_data_cluster is None:
         min_data_cluster = int(math.floor(1000*2/res))
 
-    # TODO: Fix the following section once testing of getEdgeMask() is complete.
     # Fill interior holes since we're just looking for edges here.
     mask = sp_ndimage.morphology.binary_fill_holes(match_array)
     # Get rid of isolated little clusters of data.
     mask = rat.bwareaopen(mask, min_data_cluster, in_place=True)
-    # mask = test.readImage('mask')
 
     if not np.any(mask):
         # No clusters exceed minimum cluster area.

@@ -1346,9 +1346,7 @@ def concave_hull_image(image, concavity, fill=True,
         raise UnsupportedMethodError("alpha_cutoff_mode='{}'".format(alpha_cutoff_mode))
 
     # Find data coverage boundaries.
-    # TODO: Fix the following section once testing of maskEdges() is complete.
     data_boundary = bwboundaries_array(image, connectivity=8, noholes=True, side='inner')
-    # data_boundary = test.readImage('data_boundary')
     boundary_points = np.argwhere(data_boundary)
 
     if debug:
