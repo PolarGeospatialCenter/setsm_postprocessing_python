@@ -1,13 +1,7 @@
-function test_saveImage(array, fname, dtype_out, do_casting)
+function test_saveImage(array, fname)
 
 if ~exist('fname', 'var') || isempty(fname)
     fname = 'testImage_ml.tif';
-end
-if ~exist('dtype_out', 'var') || isempty(dtype_out)
-    dtype_out = [];
-end
-if ~exist('do_casting', 'var') || isempty(do_casting)
-    do_casting = false;
 end
 
 test_setGlobals();
@@ -19,23 +13,10 @@ if isempty(testFile)
     return;
 end
 
-dtype_in = class(array);
-array_out = array;
-if ~isempty(dtype_out)
-    if ~strcmp(dtype_in, dtype_out)
-        warning("Input array data type (%s) differs from specified output data type (%s)\n", ...
-            dtype_in, dtype_out);
-        if do_casting
-            fprintf("Casting array to output data type");
-            array_out = eval(sprintf('%s(array);', dtype_out));
-        end
-    end
-end
-
-array_class = class(array_out);
+array_class = class(array);
 
 if strcmp(array_class, 'logical')
-    imwrite(array_out, testFile);
+    imwrite(array, testFile);
     
 else
     
@@ -64,14 +45,14 @@ else
 end
 
 t = Tiff(testFile, 'w');
-setTag(t, 'ImageLength', size(array_out, 1))
-setTag(t, 'ImageWidth',  size(array_out, 2))
+setTag(t, 'ImageLength', size(array, 1))
+setTag(t, 'ImageWidth',  size(array, 2))
 setTag(t, 'Photometric', Tiff.Photometric.MinIsBlack);
-setTag(t, 'SampleFormat', sf);
 setTag(t, 'BitsPerSample', bps);
+setTag(t, 'SampleFormat', sf);
 setTag(t, 'SamplesPerPixel', 1);
 setTag(t, 'PlanarConfiguration', Tiff.PlanarConfiguration.Chunky);
-t.write(array_out);
+t.write(array);
     
 end
 

@@ -39,6 +39,7 @@ class_order = ["logical", "int8", "uint8", "int16", "uint16", "int32", "uint32",
 array_ranks = cellfun(@(x) find(strcmp(class(x), class_order)), {arr1, arr2});
 compare_rank = max(array_ranks);
 compare_dtype = class_order(compare_rank);
+
 if strcmp(compare_dtype, 'logical') || contains(compare_dtype, 'uint')
     compare_rank = compare_rank + 1;
     compare_dtype = class_order(compare_rank);
@@ -52,7 +53,7 @@ if ~strcmp(arr1_dtype, compare_dtype)
     eval(sprintf('arr1 = %s(arr1);', compare_dtype));
     arr1_casted = true;
 end
-if ~strcmp(arr1_dtype, compare_dtype)
+if ~strcmp(arr2_dtype, compare_dtype)
     if display_casting
         arr2_precast = arr2;
         arr2_precast_dtype = arr2_dtype;
@@ -61,8 +62,18 @@ if ~strcmp(arr1_dtype, compare_dtype)
     eval(sprintf('arr2 = %s(arr2);', compare_dtype));
     arr2_casted = true;
 end
-fprintf("--> '%s' array class: %s\n", title1, arr1_dtype);
-fprintf("--> '%s' array class: %s\n", title2, arr2_dtype);  
+
+if array_ranks(1) == array_ranks(2)
+    flag_arr1_cast = false;
+    flag_arr2_cast = false;
+else
+    flag_arr1_cast = arr1_casted;
+    flag_arr2_cast = arr2_casted;
+end
+fprintf("--> '%s' array class: ", title1);  
+fprintf(flag_arr1_cast + 1, "%s\n",  arr1_dtype);
+fprintf("--> '%s' array class: ", title2);  
+fprintf(flag_arr2_cast + 1, "%s\n",  arr2_dtype);
 
 has_nans = false;
 if any(cellfun(@(x) any(strcmp(class(x), ["single", "double"])), {arr1, arr2}))
@@ -90,10 +101,10 @@ end
 UL_nans = 0;
 UR_nans = 0;
 if has_nans
-    diff(isnan(diff)) = 0;
     UL_nans = sum(diff(:) == inf);
     UR_nans = sum(diff(:) == -inf);
 end
+diff(isnan(diff)) = 0;
 
 diff_bool = (diff ~= 0);
 vals_diff_bool = unique(diff_bool);
@@ -101,13 +112,16 @@ cnts_diff_bool = histcounts(diff_bool);
 
 diff_bool_disp = [];
 diff_bool_title = [];
-if display_difflate
-    diffl_factor = 0.006;
+if display_difflate && (display_image || display_split)
+%     diffl_factor = 0.006;
+    diffl_factor = 0.003;
     if display_split
         diffl_factor = diffl_factor / 2;
     end
-    diffl_se_sz = max(ceil(size(diff_bool) * diffl_factor));
-    diff_bool_disp = imdilate(diff_bool, ones(diffl_se_sz));
+%     diffl_se_sz = max(ceil(size(diff_bool) * diffl_factor));
+%     diff_bool_disp = imdilate(diff_bool, ones(diffl_se_sz));
+    diffl_se_sz = prod(size(diff_bool)) * diffl_factor;
+    diff_bool_disp = imdilate(diff_bool, ones(ceil(sqrt(diffl_se_sz))));
     diff_bool_title = sprintf('Boolean Difference (dilated by ones(%d))', diffl_se_sz);
 else
     diff_bool_disp = diff_bool;
@@ -146,7 +160,7 @@ end
 
 if display_split
     figure('Name', sprintf('DIFF: %s', figtitle));
-    test_viewArray(diff, diff_title, true);
+    test_viewArray(diff, diff_title, ~display_image);
     figure('Name', sprintf('BOOL: %s', figtitle));
     test_viewArray(diff_bool_disp, diff_bool_title, false);
 end

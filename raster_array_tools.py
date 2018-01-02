@@ -19,6 +19,7 @@ import numpy as np
 import scipy
 import shapely.geometry
 import shapely.ops
+from osgeo import gdal_array
 from scipy import ndimage as sp_ndimage
 from scipy.spatial import ConvexHull
 from skimage.draw import polygon_perimeter
@@ -201,6 +202,7 @@ def extractRasterParams(rasterFile_or_ds, *params):
     return value_list
 
 
+# Legacy; Retained for a visual aid of equivalences between NumPy and GDAL data types.
 def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
     """
     Converts between input NumPy data type (dtype_in may be either
@@ -212,25 +214,22 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
     the conversion may be forced with the argument force_conversion=True.
     """
     dtype_dict = {                                            # ---GDAL LIMITATIONS---
-        'bool'      : (np.bool,       gdal.GDT_Byte,     1),
+        'bool'      : (np.bool,       gdal.GDT_Byte,     0),  # GDAL no bool/logical/1-bit
         'int8'      : (np.int8,       gdal.GDT_Byte,     1),  # GDAL byte is unsigned
         'int16'     : (np.int16,      gdal.GDT_Int16,    1),
         'int32'     : (np.int32,      gdal.GDT_Int32,    1),
-        'int'       : (np.int,        gdal.GDT_Int32,    1),  # Comparable to np.int32
-        'intc'      : (np.intc,       gdal.GDT_Int32,    1),  # Comparable to np.int32
+        'intc'      : (np.intc,       gdal.GDT_Int32,    1),  # np.intc ~= np.int32
         'int64'     : (np.int64,      gdal.GDT_Int32,    0),  # GDAL no int64
-        'intp'      : (np.intp,       gdal.GDT_Int32,    1),  # Comparable to np.int64
+        'intp'      : (np.intp,       gdal.GDT_Int32,    0),  # intp ~= np.int64
         'uint8'     : (np.uint8,      gdal.GDT_Byte,     1),
         'uint16'    : (np.uint16,     gdal.GDT_UInt16,   1),
         'uint32'    : (np.uint32,     gdal.GDT_UInt32,   1),
         'uint64'    : (np.uint64,     gdal.GDT_UInt32,   0),  # GDAL no uint64
-        'float'     : (np.float,      gdal.GDT_Float64,  1),
         'float16'   : (np.float16,    gdal.GDT_Float32,  1),  # GDAL no float16
         'float32'   : (np.float32,    gdal.GDT_Float32,  1),
         'float64'   : (np.float64,    gdal.GDT_Float64,  1),
-        'complex'   : (np.complex,    gdal.GDT_CFloat64, 1),  # :: Not sure if these
-        'complex64' : (np.complex64,  gdal.GDT_CFloat32, 1),  # :: complex lookups
-        'complex128': (np.complex128, gdal.GDT_CFloat64, 1),  # :: are correct.
+        'complex64' : (np.complex64,  gdal.GDT_CFloat32, 1),
+        'complex128': (np.complex128, gdal.GDT_CFloat64, 1),
     }
     errmsg_unsupported_dtype = "Conversion of NumPy data type '{}' to GDAL is not supported".format(dtype_in)
 
@@ -257,7 +256,8 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
 def saveArrayAsTiff(array, dest,
                     X=None, Y=None, proj_ref=None, geotrans_rot_tup=(0, 0),
                     like_rasterFile=None,
-                    nodataVal=None, dtype_out=None, force_dtype=False, skip_casting=False):
+                    nodataVal=None, dtype_out=None):
+    # FIXME: Rewrite docstring in new standard.
     """
     Saves a NumPy 2D array as a single-band raster image in GeoTiff format.
     Takes as input [X, Y] coordinate ranges of pixels in the raster grid as
@@ -268,19 +268,40 @@ def saveArrayAsTiff(array, dest,
     may be used for the output dataset and [X, Y, geotrans_rot_tup, proj_ref]
     should not be given.
     """
+    dtype_gdal = None
+    if dtype_out is not None:
+        if type(dtype_out) == str:
+            dtype_out = eval('np.{}'.format(dtype_out.lower()))
+        dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_out)
+        if dtype_gdal is None:
+            raise InvalidArgumentError("Output array data type ({}) does not have equivalent "
+                                       "GDAL data type and is not supported".format(dtype_out))
+
     dest_temp = dest.replace('.tif', '_temp.tif')
 
-    dtype_in = str(array.dtype)
-    array_out = array
+    dtype_in = array.dtype
+    promote_dtype = None
+    if dtype_in == np.bool:
+        promote_dtype = np.uint8
+    elif dtype_in == np.int8:
+        promote_dtype = np.int16
+    elif dtype_in == np.float16:
+        promote_dtype = np.float32
+    if promote_dtype is not None:
+        warn("Input array data type ({}) does not have equivalent GDAL data type and is not "
+             "supported, but will be safely promoted to {}".format(dtype_in, promote_dtype))
+        array = array.astype(promote_dtype)
+        dtype_in = promote_dtype
+
     if dtype_out is not None:
         if dtype_in != dtype_out:
-            warn("Input array data type ({}) differs from output raster data type ({})".format(dtype_in, dtype_out))
-            if not skip_casting:
-                print "Casting array to output data type"
-                array_out = array.astype(dtype_np2gdal(dtype_out, form_out='numpy'))
-        dtype = dtype_np2gdal(dtype_out, force_conversion=force_dtype)
+            raise InvalidArgumentError("Input array data type ({}) differs from desired "
+                                       "output data type ({})".format(dtype_in, dtype_out))
     else:
-        dtype = dtype_np2gdal(dtype_in, force_conversion=force_dtype)
+        dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_in)
+        if dtype_gdal is None:
+            raise InvalidArgumentError("Input array data type ({}) does not have equivalent "
+                                       "GDAL data type and is not supported".format(dtype_in))
 
     if proj_ref is not None and type(proj_ref) == osr.SpatialReference:
         proj_ref = proj_ref.ExportToWkt()
@@ -290,8 +311,8 @@ def saveArrayAsTiff(array, dest,
     if like_rasterFile is not None:
         ds_like = gdal.Open(like_rasterFile, gdal.GA_ReadOnly)
         if shape[0] != ds_like.RasterYSize or shape[1] != ds_like.RasterXSize:
-            raise InvalidArgumentError("Shape of like_rasterFile '{}' ({}, {}) does not match"
-                                       " the shape of 'array' to be saved ({})".format(
+            raise InvalidArgumentError("Shape of like_rasterFile '{}' ({}, {}) does not match "
+                                       "the shape of 'array' to be saved ({})".format(
                 like_rasterFile, ds_like.RasterYSize, ds_like.RasterXSize, shape)
             )
         geo_trans = ds_like.GetGeoTransform()
@@ -299,20 +320,20 @@ def saveArrayAsTiff(array, dest,
             proj_ref = ds_like.GetProjectionRef()
     else:
         if shape[0] != Y.size or shape[1] != X.size:
-            raise InvalidArgumentError("Lengths of [Y, X] grid coordinates ({}, {}) do not match"
-                                       " the shape of 'array' to be saved ({})".format(Y.size, X.size, shape))
+            raise InvalidArgumentError("Lengths of [Y, X] grid coordinates ({}, {}) do not match "
+                                       "the shape of 'array' to be saved ({})".format(Y.size, X.size, shape))
         geo_trans = (X[0], X[1]-X[0], geotrans_rot_tup[0],
                      Y[0], geotrans_rot_tup[1], Y[1]-Y[0])
 
     # Create and write the output dataset to a temporary file.
     driver = gdal.GetDriverByName('GTiff')
-    ds_out = driver.Create(dest_temp, shape[1], shape[0], 1, dtype)
+    ds_out = driver.Create(dest_temp, shape[1], shape[0], 1, dtype_gdal)
     ds_out.SetGeoTransform(geo_trans)
     if proj_ref is not None:
         ds_out.SetProjection(proj_ref)
     else:
         warn("Missing projection reference for saved raster '{}'".format(dest))
-    ds_out.GetRasterBand(1).WriteArray(array_out)
+    ds_out.GetRasterBand(1).WriteArray(array)
     ds_out = None  # Dereference dataset to initiate write to disk of intermediate image.
 
     ###################################################
@@ -388,15 +409,33 @@ def interp2_gdal(X, Y, Z, Xi, Yi, method, borderNaNs=True):
     except KeyError:
         raise UnsupportedMethodError("Cannot find GDAL equivalent of method='{}'".format(method))
 
-    dtype = dtype_np2gdal(Z.dtype)
+    dtype_in = Z.dtype
+    promote_dtype = None
+    if dtype_in == np.bool:
+        promote_dtype = np.uint8
+    elif dtype_in == np.int8:
+        promote_dtype = np.int16
+    elif dtype_in == np.float16:
+        promote_dtype = np.float32
+    if promote_dtype is not None:
+        warn("Input array data type ({}) does not have equivalent GDAL data type and is not "
+             "supported, but will be safely promoted to {}".format(dtype_in, promote_dtype))
+        Z = Z.astype(promote_dtype)
+        dtype_in = promote_dtype
+
+    dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_in)
+    if dtype_gdal is None:
+        raise InvalidArgumentError("Input array data type ({}) does not have equivalent "
+                                   "GDAL data type and is not supported".format(dtype_in))
+
     mem_drv = gdal.GetDriverByName('MEM')
 
-    ds_in = mem_drv.Create('', X.size, Y.size, 1, dtype)
+    ds_in = mem_drv.Create('', X.size, Y.size, 1, dtype_gdal)
     ds_in.SetGeoTransform((X[0], X[1]-X[0], 0,
                            Y[0], 0, Y[1]-Y[0]))
     ds_in.GetRasterBand(1).WriteArray(Z)
 
-    ds_out = mem_drv.Create('', Xi.size, Yi.size, 1, dtype)
+    ds_out = mem_drv.Create('', Xi.size, Yi.size, 1, dtype_gdal)
     ds_out.SetGeoTransform((Xi[0], Xi[1]-Xi[0], 0,
                             Yi[0], 0, Yi[1]-Yi[0]))
 
@@ -550,13 +589,15 @@ def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
     currently can't be interpolated through the GDAL method (and are instead set to zeros) without
     applying some sort of fix.
     """
+    gdal_fix_choices = (None, 'pad', 'pad_merge', 'rotate', 'scipy')
+
     # If a resize factor is provided for size, round up the x, y pixel
     # sizes for the output array to match MATLAB's imresize function.
     new_shape = size if type(size) == tuple else np.ceil(np.dot(size, array.shape)).astype(int)
     if use_gdal == 'auto':
         use_gdal = False if np.any((np.array(new_shape) - np.array(array.shape)) >= 0) else True
-    if gdal_fix not in (None, 'pad', 'pad_merge', 'rotate', 'scipy'):
-        raise InvalidArgumentError("gdal_fix must be 'pad', 'pad_merge', 'rotate', 'scipy', or None")
+    if gdal_fix not in gdal_fix_choices:
+        raise InvalidArgumentError("gdal_fix must be one of {}".format(gdal_fix_choices))
 
     old_array = array
     new_array = None
@@ -614,7 +655,8 @@ def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
     return new_array.astype(array.dtype)
 
 
-def conv2(array, kernel, shape='full', method='auto', allow_flipped_processing=True):
+def conv2(array, kernel, shape='full', method='auto',
+          default_double_out=True, allow_flipped_processing=True):
     """
     Convolve two 2D arrays.
 
@@ -628,6 +670,12 @@ def conv2(array, kernel, shape='full', method='auto', allow_flipped_processing=T
         See documentation for scipy.signal.convolve. [1]
     method : str; 'direct', 'fft', or 'auto'
         See documentation for scipy.signal.convolve. [1]
+    default_double_out : bool
+        If True, returns an array of type np.float64
+        unless the input array is of type np.float32,
+        in which case an array of type np.float32 is returned.
+        The sole purpose of this option is to allow this function
+        to most closely replicate the corresponding MATLAB array method. [2]
     allow_flipped_processing : bool
         If True and at least one of the kernel array's sides
         has an even length, rotate both input array and kernel
@@ -661,6 +709,18 @@ def conv2(array, kernel, shape='full', method='auto', allow_flipped_processing=T
     .. [2] https://www.mathworks.com/help/matlab/ref/conv2.html
 
     """
+    if default_double_out:
+        dtype_out = None
+        if isinstance(array.dtype.type(1), np.floating):
+            dtype_out = array.dtype
+            if (isinstance(kernel.dtype.type(1), np.floating)
+                and int(str(kernel.dtype).replace('float', '')) > int(str(dtype_out).replace('float', ''))):
+                warn("Since default_double_out=True, kernel with floating dtype ({}) at greater precision than"
+                     " array floating dtype ({}) is cast to array dtype".format(str(kernel.dtype), str(dtype_out)))
+                kernel = kernel.astype(dtype_out)
+        else:
+            dtype_out = np.float64
+
     rotation_flag = False
     if allow_flipped_processing:
         array, kernel, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, kernel)
@@ -686,100 +746,219 @@ def conv2(array, kernel, shape='full', method='auto', allow_flipped_processing=T
         # Return the input array to its original state.
         array[array_nans] = np.nan
 
+    if default_double_out and result.dtype != dtype_out:
+        result = result.astype(dtype_out)
+
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def moving_average(array, kernel_size=None, kernel=None, shape='same', method='auto', allow_flipped_processing=True):
+def moving_average(array, kernel_size=None, kernel=None, shape='same', method='auto',
+                   float_dtype=None, allow_flipped_processing=True):
+    # FIXME: Rewrite docstring in new standard.
     """
     Given an input array of any type, returns an array of the same size with each pixel containing
     the average of the surrounding [kernel_size x kernel_size] neighborhood (or a that of a custom
     boolean neighborhood specified through input 'kernel').
     Arguments 'mode' and allow_rotation are forwarded through to the convolution function.
     """
+    float_dtype_choices = (None, np.float16, np.float32, np.float64)
+
     if kernel_size is None and kernel is None:
         raise InvalidArgumentError("Either kernel_size or kernel must be provided")
+    if float_dtype not in float_dtype_choices:
+        raise InvalidArgumentError("float_dtype must be one of {}".format(float_dtype_choices))
+
+    float_dtype_bits = int(str(float_dtype(1).dtype).replace('float', '')) if float_dtype is not None else np.inf
+    array_float_bits = int(str(array.dtype).replace('float', '')) if isinstance(array.dtype.type(1), np.floating) else 0
+    if array_float_bits > float_dtype_bits:
+        warn("Input float_dtype ({}) is lower precision than input array floating dtype ({})".format(
+             str(float_dtype(1).dtype), str(array.dtype))
+             + "\n-> Casting array to float_dtype")
+        array = array.astype(float_dtype)
+    if float_dtype is None:
+        if array_float_bits > 0:
+            float_dtype_bits = array_float_bits
+        else:
+            float_dtype_bits = 64
+        float_dtype = eval('np.float{}'.format(float_dtype_bits))
+
     if kernel is not None:
         if np.any(~np.logical_or(kernel == 0, kernel == 1)):
             raise InvalidArgumentError("kernel may only contain zeros and ones")
+
+        if kernel.dtype != float_dtype:
+            kernel = kernel.astype(float_dtype)
+
         conv_kernel = np.rot90(kernel / np.sum(kernel), 2)
     else:
-        conv_kernel = np.ones((kernel_size, kernel_size)) / (kernel_size**2)
+        conv_kernel = np.ones((kernel_size, kernel_size), dtype=float_dtype) / (kernel_size**2)
 
-    return conv2(array, conv_kernel, shape, method, allow_flipped_processing=allow_flipped_processing)
+    return conv2(array, conv_kernel, shape, method,
+                 default_double_out=False, allow_flipped_processing=allow_flipped_processing)
 
 
-def imerode(array, structure, shape='same', allow_flipped_processing=True):
+def imerode(array, structure, shape='same', mode='conv', allow_flipped_processing=True):
     # TODO: Write docstring.
     """
     This function is meant to replicate MATLAB's imerode function.
     """
+    mode_choices = ('conv', 'skimage', 'scipy', 'scipy_grey')
+
     if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
         raise InvalidArgumentError("structure contains values other than 0 and 1")
+    if mode not in mode_choices:
+        raise InvalidArgumentError("'mode' must be one of {}".format(mode_choices))
 
-    if not isinstance(array.dtype.type(1), np.floating):
-        prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
-        dtype_bitdepths = (1, 8, 16, 32, 64)
-        conv_bitdepth = None
-        for b in dtype_bitdepths:
-            if prod_bitdepth <= b:
-                conv_bitdepth = b
-                break
-        if conv_bitdepth == 1:
-            structure = structure.astype(np.bool)
-        else:
-            structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
-
-    structure = np.rot90(structure, 2)
+    if mode == 'conv':
+        if not isinstance(array.dtype.type(1), np.floating):
+            prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
+            dtype_bitdepths = (1, 8, 16, 32, 64)
+            conv_bitdepth = None
+            for b in dtype_bitdepths:
+                if prod_bitdepth <= b:
+                    conv_bitdepth = b
+                    break
+            if conv_bitdepth == 1:
+                structure = structure.astype(np.bool)
+            else:
+                structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
+        structure = np.rot90(structure, 2)
 
     rotation_flag = False
     if allow_flipped_processing:
         array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
 
+    if mode == 'skimage':
+        pady, padx = np.array(structure.shape) / 2
+        pady, padx = int(pady), int(padx)
+
     if array.dtype == np.bool:
-        result = (conv2(~array, structure, shape, method='auto', allow_flipped_processing=False) == 0)
+        if mode == 'conv':
+            result = (conv2(~array, structure, shape, method='auto',
+                            default_double_out=False, allow_flipped_processing=False) == 0)
+        elif mode in ('scipy', 'scipy_grey'):
+            result = sp_ndimage.binary_erosion(array, structure, border_value=1)
+        elif mode == 'skimage':
+            array = np.pad(array, ((pady, pady), (padx, padx)), 'constant', constant_values=1)
+            result = sk_morphology.binary_erosion(array, structure)[pady:-pady, padx:-padx]
+
+    elif mode == 'scipy_grey':
+        if np.any(structure != 1):
+            if not isinstance(structure.dtype.type(1), np.floating):
+                structure = structure.astype(np.float32)
+            result = sp_ndimage.grey_erosion(array, structure=(structure - 1))
+        else:
+            result = sp_ndimage.grey_erosion(array, size=structure.shape)
+
     else:
-        array_vals = np.unique(array)[::-1]
+        array_vals = np.unique(array)
+
+        array_vals_nans = np.isnan(array_vals)
+        has_nans = np.any(array_vals_nans)
+        if has_nans:
+            array_nans = np.isnan(array)
+            # Remove possible multiple occurrences of "nan" in results of np.unique().
+            array_vals = np.delete(array_vals, np.where(np.isnan(array_vals)))
+            array_vals = np.append(array_vals, np.nan)
+
+        if mode == 'skimage':
+            padval = np.inf if isinstance(array.dtype.type(1), np.floating) else np.iinfo(array.dtype).max
+            array = np.pad(array, ((pady, pady), (padx, padx)), 'constant', constant_values=padval)
+
         result = np.full_like(array, array_vals[0])
         for val in array_vals[1:]:
-            val_mask = (array == val) if not np.isnan(val) else np.isnan(array)
-            result[conv2(val_mask, structure, shape, method='auto', allow_flipped_processing=False) > 0] = val
+            if not np.isnan(val):
+                mask_val = (array >= val) if not has_nans else np.logical_or(array >= val, array_nans)
+            else:
+                mask_val = array_nans if mode != 'skimage' else np.logical_or(array_nans, array == np.inf)
+
+            if mode == 'conv':
+                result_val = (conv2(~mask_val, structure, shape, method='auto',
+                                    default_double_out=False, allow_flipped_processing=False) == 0)
+            elif mode == 'scipy':
+                result_val = sp_ndimage.binary_erosion(mask_val, structure, border_value=1)
+            elif mode == 'skimage':
+                result_val = sk_morphology.binary_erosion(mask_val, structure)
+
+            result[result_val] = val
+
+        if mode == 'skimage':
+            result = result[pady:-pady, padx:-padx]
 
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def imdilate(array, structure, shape='same'):
+def imdilate(array, structure, shape='same', mode='conv', allow_flipped_processing=True):
     # TODO: Write docstring.
     """
     This function is meant to replicate MATLAB's imdilate function.
     """
+    mode_choices = ('conv', 'skimage', 'scipy', 'scipy_grey')
+
     if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
         raise InvalidArgumentError("structure contains values other than 0 and 1")
+    if mode not in mode_choices:
+        raise InvalidArgumentError("'mode' must be one of {}".format(mode_choices))
 
-    if not isinstance(array.dtype.type(1), np.floating):
-        prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
-        dtype_bitdepths = (1, 8, 16, 32, 64)
-        conv_bitdepth = None
-        for b in dtype_bitdepths:
-            if prod_bitdepth <= b:
-                conv_bitdepth = b
-                break
-        if conv_bitdepth == 1:
-            structure = structure.astype(np.bool)
-        else:
-            structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
+    if mode == 'conv':
+        if not isinstance(array.dtype.type(1), np.floating):
+            prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
+            dtype_bitdepths = (1, 8, 16, 32, 64)
+            conv_bitdepth = None
+            for b in dtype_bitdepths:
+                if prod_bitdepth <= b:
+                    conv_bitdepth = b
+                    break
+            if conv_bitdepth == 1:
+                structure = structure.astype(np.bool)
+            else:
+                structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
 
-    structure = np.rot90(structure, 2)
+    rotation_flag = False
+    if mode in ('scipy', 'scipy_grey', 'skimage') and allow_flipped_processing:
+        array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
 
     if array.dtype == np.bool:
-        result = (conv2(array, structure, shape, method='auto', allow_flipped_processing=False) > 0)
+        if mode == 'conv':
+            result = (conv2(array, structure, shape, method='auto',
+                            default_double_out=False, allow_flipped_processing=False) > 0)
+        elif mode in ('scipy', 'scipy_grey'):
+            result = sp_ndimage.binary_dilation(array, structure, border_value=0)
+        elif mode == 'skimage':
+            result = sk_morphology.binary_dilation(array, structure)
+
+    elif mode == 'scipy_grey':
+        if np.any(structure != 1):
+            if not isinstance(structure.dtype.type(1), np.floating):
+                structure = structure.astype(np.float32)
+            result = sp_ndimage.grey_dilation(array, structure=(structure - 1))
+        else:
+            result = sp_ndimage.grey_dilation(array, size=structure.shape)
+
     else:
         array_vals = np.unique(array)
+        array_vals_nans = np.isnan(array_vals)
+        has_nans = np.any(array_vals_nans)
+        if has_nans:
+            # Remove possible multiple occurrences of "nan" in results of np.unique().
+            array_vals = np.delete(array_vals, np.where(np.isnan(array_vals)))
+            array_vals = np.append(array_vals, np.nan)
+
         result = np.full_like(array, array_vals[0])
         for val in array_vals[1:]:
-            val_mask = (array == val) if not np.isnan(val) else np.isnan(array)
-            result[conv2(val_mask, structure, shape, method='auto', allow_flipped_processing=False) > 0] = val
+            mask_val = (array == val) if not np.isnan(val) else np.isnan(array)
 
-    return result
+            if mode == 'conv':
+                result_val = (conv2(mask_val, structure, shape, method='auto',
+                                    default_double_out=False, allow_flipped_processing=False) > 0)
+            elif mode == 'scipy':
+                result_val = sp_ndimage.binary_dilation(mask_val, structure, border_value=0)
+            elif mode == 'skimage':
+                result_val = sk_morphology.binary_dilation(mask_val, structure)
+
+            result[result_val] = val
+
+    return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
 def bwareaopen(array, size_tolerance, connectivity=8, in_place=False):
@@ -1137,191 +1316,11 @@ def concave_hull_image_traverse_alpha_length(boundary_points, boundary_res, conv
     return alpha_min, alpha_max, edge_info, amin_edges
 
 
-def concave_hull_image_traverse_alpha_area(boundary_points, boundary_res, convex_hull, indices, indptr, mode='area'):
-    # TODO: Write docstring.
-    # FIXME: Rewrite to match "alpha_line".
-    # TODO: Test function.
-
-    doAlphaCircumference = False
-    if mode == 'area':
-        pass
-    elif mode == 'circ':
-        doAlphaCircumference = True
-    else:
-        raise InvalidArgumentError("'mode' must be 'area' or 'circ'")
-
-    alpha_min = boundary_res
-    alpha_max = boundary_res
-    edge_info = {}
-    short_edge_lengths = {}
-    revisit_edges = set()
-    amin_edges = set()
-
-    for k1, k2 in convex_hull:
-        next_edge = (k1, k2) if k1 < k2 else (k2, k1)
-        p1, p2 = boundary_points[[k1, k2]]
-        next_edge_len = np.sqrt(np.sum(np.square(p2 - p1)))
-        if next_edge_len > boundary_res:
-            chull_edge_info = [None, np.inf, None, next_edge_len]
-            edge_info[next_edge] = chull_edge_info
-            revisit_edges.add(next_edge)
-
-            while len(revisit_edges) > 0:
-                next_edge = revisit_edges.pop()
-                k1, k2 = next_edge
-                prev_edge_info = edge_info[next_edge]
-                prev_mam = prev_edge_info[1]
-                not_k3 = prev_edge_info[2]
-                len_1_2 = prev_edge_info[3]
-                p1, p2 = boundary_points[[k1, k2]]
-
-                while True:
-                    possible_k3 = set(indptr[indices[k1]:indices[k1+1]]).intersection(
-                                  set(indptr[indices[k2]:indices[k2+1]])
-                    )
-                    k3 = possible_k3.pop()
-                    if k3 == not_k3:
-                        if len(possible_k3) > 0:
-                            k3 = possible_k3.pop()
-                        else:
-                            # We've arrived at a convex hull edge.
-                            break
-
-                    edge_1_3 = (k1, k3) if k1 < k3 else (k3, k1)
-                    edge_2_3 = (k2, k3) if k2 < k3 else (k3, k2)
-
-                    p3 = boundary_points[k3]
-                    local_area = None
-
-                    next_edge = None
-                    next_edge_info = None
-                    other_edge = None
-                    other_edge_info = None
-
-                    if edge_1_3 in edge_info:
-                        next_edge = edge_1_3
-                        next_edge_info = edge_info[next_edge]
-                        ne_area, ne_mam, ne_k3, next_edge_len = next_edge_info
-                        len_1_3 = next_edge_len
-                        if ne_k3 in (k1, k2):
-                            local_area = ne_area
-                    elif edge_1_3 in short_edge_lengths:
-                        len_1_3 = short_edge_lengths[edge_1_3]
-                    else:
-                        len_1_3 = np.sqrt(np.sum(np.square(p3 - p1)))
-                        if len_1_3 > boundary_res:
-                            next_edge = edge_1_3
-                            next_edge_len = len_1_3
-                        else:
-                            short_edge_lengths[edge_1_3] = len_1_3
-
-                    if edge_2_3 in edge_info:
-                        if next_edge is None:
-                            next_edge = edge_2_3
-                            next_edge_info = edge_info[next_edge]
-                            ne_area, ne_mam, ne_k3, next_edge_len = next_edge_info
-                            len_2_3 = next_edge_len
-                            if ne_k3 in (k1, k2):
-                                local_area = ne_area
-                        else:
-                            other_edge = edge_2_3
-                            other_edge_info = edge_info[other_edge]
-                            oe_area, oe_mam, oe_k3, other_edge_len = other_edge_info
-                            len_2_3 = other_edge_len
-                            if oe_k3 in (k1, k2):
-                                local_area = oe_area
-                    elif edge_2_3 in short_edge_lengths:
-                        len_2_3 = short_edge_lengths[edge_2_3]
-                    else:
-                        len_2_3 = np.sqrt(np.sum(np.square(p3 - p2)))
-                        if len_2_3 > boundary_res:
-                            if next_edge is None:
-                                next_edge = edge_2_3
-                                next_edge_len = len_2_3
-                            else:
-                                other_edge = edge_2_3
-                                other_edge_len = len_2_3
-                        else:
-                            short_edge_lengths[edge_2_3] = len_2_3
-
-                    if local_area is None:
-                        local_edgelengths = np.array([len_1_2, len_1_3, len_2_3])
-                        local_semiperim = 0.5 * np.sum(local_edgelengths)
-                        local_area = np.sqrt(local_semiperim * np.prod(local_semiperim - local_edgelengths))
-                        if doAlphaCircumference:
-                            local_area = np.prod(local_edgelengths) / (4.0 * local_area)
-
-                    local_mam = min(prev_mam, local_area)
-
-                    if next_edge is not None:
-                        if other_edge is not None:
-                            if other_edge_info is None:
-                                other_edge_info = [local_area, local_mam, k1, other_edge_len]
-                                edge_info[other_edge] = other_edge_info
-                                revisit_edges.add(other_edge)
-                            else:
-                                next_mam = min(prev_mam, oe_area)
-                                if next_mam > oe_mam:
-                                    other_edge_info[0] = local_area
-                                    other_edge_info[1] = local_mam
-                                    other_edge_info[2] = k1
-                                    revisit_edges.add(other_edge)
-                                else:
-                                    if next_mam > alpha_min:
-                                        alpha_min = next_mam
-                                        amin_edges.add(other_edge)
-
-                        if next_edge_info is None:
-                            next_edge_info = [None, None, None, next_edge_len]
-                            edge_info[next_edge] = next_edge_info
-                        else:
-                            next_mam = min(prev_mam, ne_area)
-                            if next_mam > ne_mam:
-                                pass
-                            else:
-                                if next_mam > alpha_min:
-                                    alpha_min = next_mam
-                                    amin_edges.add(next_edge)
-                                next_edge = None
-
-                    prev_edge_info[0] = local_area
-                    prev_edge_info[1] = local_mam
-                    prev_edge_info[2] = k3
-
-                    if next_edge is not None:
-                        if next_edge == edge_1_3:
-                            not_k3 = k2
-                            if next_edge[0] == k1:
-                                # p1 = p1
-                                p2 = p3
-                            else:
-                                p2 = p1
-                                p1 = p3
-                        else:
-                            not_k3 = k1
-                            if next_edge[0] == k2:
-                                p1 = p2
-                                p2 = p3
-                            else:
-                                p1 = p3
-                                # p2 = p2
-                        k1, k2 = next_edge
-                        prev_mam = local_mam
-                        len_1_2 = next_edge_len
-                        prev_edge_info = next_edge_info
-                    else:
-                        break
-
-            alpha_max = max(alpha_max, chull_edge_info[0])
-
-    return alpha_min, alpha_max, edge_info, amin_edges
-
-
 def concave_hull_image(image, concavity, fill=True,
-                       data_boundary_res=3, alpha_mode='line', alpha_cutoff_mode='unique',
+                       data_boundary_res=3, alpha_cutoff_mode='unique',
                        debug=False):
+    # TODO: Add more comments.
     # TODO: Write docstring.
-    # TODO: Fix and test 'area'/'circ' alpha modes.
     """
 
     Parameters
@@ -1332,7 +1331,6 @@ def concave_hull_image(image, concavity, fill=True,
     data_boundary_res : positive int
         Minimum coordinate-wise distance between two points in a triangle for that edge to be
         traversed and allow the triangle on the other side of the edge to be considered for erosion.
-    alpha_mode :
     alpha_cutoff_mode :
     debug :
 
@@ -1344,10 +1342,6 @@ def concave_hull_image(image, concavity, fill=True,
         pass
     else:
         raise InvalidArgumentError("concavity must be between 0 and 1, inclusive")
-    # if data_boundary_res < 1:
-    #     raise InvalidArgumentError("data_boundary_res must be >= 1")
-    if alpha_mode not in ('line', 'area', 'circ'):
-        raise UnsupportedMethodError("alpha_mode='{}'".format(alpha_mode))
     if alpha_cutoff_mode not in ('mean', 'median', 'unique'):
         raise UnsupportedMethodError("alpha_cutoff_mode='{}'".format(alpha_cutoff_mode))
 
@@ -1373,17 +1367,9 @@ def concave_hull_image(image, concavity, fill=True,
     hull_convex = tri.convex_hull
     indices, indptr = tri.vertex_neighbor_vertices
 
-    traverse_args = [boundary_points, data_boundary_res, hull_convex, indices, indptr]
-    traverse_fun = None
-    if alpha_mode == 'line':
-        traverse_fun = concave_hull_image_traverse_alpha_length
-    elif alpha_mode == 'area':
-        traverse_fun = concave_hull_image_traverse_alpha_area
-    elif alpha_mode == 'circ':
-        traverse_fun = concave_hull_image_traverse_alpha_area
-        traverse_args.append('circ')
-
-    alpha_min, alpha_max, edge_info, amin_edges = traverse_fun(*traverse_args)
+    alpha_min, alpha_max, edge_info, amin_edges = concave_hull_image_traverse_alpha_length(
+        boundary_points, data_boundary_res, hull_convex, indices, indptr
+    )
 
     alpha_cut = None
     if concavity == 0 or alpha_min == alpha_max:

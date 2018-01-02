@@ -490,25 +490,16 @@ def getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concur
     return testFname
 
 
-def saveImage(array, fname='testImage_py.tif', dtype_out=None, do_casting=False):
+def saveImage(array, fname='testImage_py.tif'):
     testFile = getTestFileFromFname(fname)
     if testFile is None:
         return
 
-    dtype_in = str(array.dtype)
-    array_out = array
-    if dtype_out is not None:
-        if dtype_in != dtype_out:
-            warn("Input array data type ({}) differs from specified output data type ({})".format(dtype_in, dtype_out))
-            if do_casting:
-                print "Casting array to output data type"
-                array_out = array.astype(rat.dtype_np2gdal(dtype_out, form_out='numpy'))
-
-    if array_out.dtype == np.bool:
-        image = Image.frombytes(mode='1', size=array_out.shape[::-1], data=np.packbits(array_out, axis=1))
+    if array.dtype == np.bool:
+        image = Image.frombytes(mode='1', size=array.shape[::-1], data=np.packbits(array, axis=1))
         image.save(testFile)
     else:
-        imsave(testFile, array_out)
+        imsave(testFile, array)
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
@@ -533,7 +524,7 @@ def sia(array, flavor='auto', matchkey='auto', descr='', compare=False, concurre
     if flavor is not None:
         if flavor == 'auto':
             flavor = array_name
-        flavor_name, _, fmtstr, _ = interpretImageRasterFlavor(flavor)
+        flavor_name, _, _, _ = interpretImageRasterFlavor(flavor)
 
     if matchkey is not None:
         if matchkey == 'auto':
@@ -542,7 +533,7 @@ def sia(array, flavor='auto', matchkey='auto', descr='', compare=False, concurre
         matchkey = ''
 
     testFname = getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concurrent, False)
-    saveImage(array, testFname, fmtstr)
+    saveImage(array, testFname)
 
 
 def sia_one(array, flavor=None, matchkey=None, descr='', compare=False, concurrent=False, array_name=None):
@@ -557,7 +548,7 @@ def sia_one(array, flavor=None, matchkey=None, descr='', compare=False, concurre
 def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
                proj_ref=None, geotrans_rot_tup=(0, 0),
                like_rasterFile=None,
-               nodataVal=None, dtype_out=None, force_dtype=False, skip_casting=False):
+               nodataVal=None, dtype_out=None):
     testFile = getTestFileFromFname(fname)
     if testFile is None:
         return
@@ -570,7 +561,7 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
     rat.saveArrayAsTiff(Z, testFile,
                         X, Y, proj_ref, geotrans_rot_tup,
                         like_rasterFile,
-                        nodataVal, dtype_out, force_dtype, skip_casting)
+                        nodataVal, dtype_out)
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 

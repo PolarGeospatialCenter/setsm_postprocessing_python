@@ -75,4 +75,4 @@ else
 end
 
 testFname = test_getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concurrent, false);
-test_saveImage(array, testFname, fmtstr);
+test_saveImage(array, testFname);
