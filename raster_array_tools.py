@@ -577,6 +577,7 @@ def interp2_scipy(X, Y, Z, Xi, Yi, method, borderNaNs=True,
 
 
 def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
+    # TODO: Write docstring in new standard.
     """
     This function is meant to replicate MATLAB's imresize function.
 
@@ -598,6 +599,10 @@ def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
         use_gdal = False if np.any((np.array(new_shape) - np.array(array.shape)) >= 0) else True
     if gdal_fix not in gdal_fix_choices:
         raise InvalidArgumentError("gdal_fix must be one of {}".format(gdal_fix_choices))
+
+    # The trivial case
+    if size == 1 or size == array.shape:
+        return array
 
     old_array = array
     new_array = None
@@ -652,7 +657,10 @@ def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
         if 'uint' in str(array.dtype):
             new_array[new_array < 0] = 0
 
-    return new_array.astype(array.dtype)
+    if new_array.dtype != array.dtype:
+        new_array = new_array.astype(array.dtype)
+
+    return new_array
 
 
 def conv2(array, kernel, shape='full', method='auto',
@@ -671,9 +679,8 @@ def conv2(array, kernel, shape='full', method='auto',
     method : str; 'direct', 'fft', or 'auto'
         See documentation for scipy.signal.convolve. [1]
     default_double_out : bool
-        If True, returns an array of type np.float64
-        unless the input array is of type np.float32,
-        in which case an array of type np.float32 is returned.
+        If True and input array is not of floating data type,
+        casts the result to np.float64 before returning.
         The sole purpose of this option is to allow this function
         to most closely replicate the corresponding MATLAB array method. [2]
     allow_flipped_processing : bool
@@ -689,7 +696,7 @@ def conv2(array, kernel, shape='full', method='auto',
     conv2 : ndarray, 2D
         A 2D array containing the convolution of input array and kernel.
 
-    NOTES
+    Notes
     -----
     This function is meant to replicate MATLAB's conv2 function. [2]
 
@@ -720,6 +727,10 @@ def conv2(array, kernel, shape='full', method='auto',
                 kernel = kernel.astype(dtype_out)
         else:
             dtype_out = np.float64
+
+    if kernel.dtype == np.bool:
+        warn("Boolean data type for kernel is not supported, casting to np.float32")
+        kernel = kernel.astype(np.float32)
 
     rotation_flag = False
     if allow_flipped_processing:
@@ -797,31 +808,140 @@ def moving_average(array, kernel_size=None, kernel=None, shape='same', method='a
                  default_double_out=False, allow_flipped_processing=allow_flipped_processing)
 
 
-def imerode(array, structure, shape='same', mode='conv', allow_flipped_processing=True):
+# Deprecated; Retained because it is an important thing to remember.
+def conv_binary_structure_prevent_overflow(array, structure):
+    # TODO: Write docstring.
+
+    # Get upper bound on minimum positive bitdepth for convolution.
+    conv_bitdepth_pos = math.log(np.prod(structure.shape)+1, 2)
+    dtype_bitdepths_pos = (1, 7, 8, 15, 16, 31, 32, 63, 64)
+    for b in dtype_bitdepths_pos:
+        if conv_bitdepth_pos <= b:
+            conv_bitdepth_pos = b
+            break
+
+    # Parse input array and structure data type for bitdepth.
+    input_bitdepth_pos = 0
+    for arr in (array, structure):
+        arr_gentype = arr.dtype.type(1)
+        if arr.dtype == np.bool:
+            arr_posbits = 1
+        elif isinstance(arr_gentype, np.int):
+            arr_posbits = int(str(arr.dtype).replace('int', '')) - 1
+        elif isinstance(arr_gentype, np.uint):
+            arr_posbits = int(str(arr.dtype).replace('uint', ''))
+        else:
+            arr_posbits = 0
+        input_bitdepth_pos = max(input_bitdepth_pos, arr_posbits)
+
+    # If maximum positive bitdepth from inputs is too low,
+    # cast structure to minimum positive bitdepth for conovlution.
+    if input_bitdepth_pos < conv_bitdepth_pos:
+        if conv_bitdepth_pos != 1 and (conv_bitdepth_pos % 2) != 0:
+            conv_bitdepth_pos += 1
+        structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth_pos)))
+
+    return structure
+
+
+def imerode(array, structure, mode='auto',
+            cast_structure_for_speed=True, allow_flipped_processing=True):
     # TODO: Write docstring.
     """
-    This function is meant to replicate MATLAB's imerode function.
+    Erode an array with the provided binary structure.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Array to erode.
+    structure : ndarray, 2D
+        Binary array with True/1-valued elements specifying the structure for erosion.
+        structure must either have boolean data type or contain only the values 0 and 1.
+    mode : str; 'auto', 'conv', 'skimage', 'scipy', or 'scipy_grey'
+        Specifies which method will be used to perform erosion.
+        'auto' -------- use the fastest of ('conv', 'scipy') given array, structure sizes
+        'conv' -------- conv2 (local)
+        'skimage' ----- skimage.morphology.binary_erosion (Scikit-Image) [1]
+        'scipy' ------- scipy.ndimage.binary_erosion (SciPy) [2]
+        'scipy_grey' -- scipy.ndimage.grey_erosion (SciPy) [3]
+    cast_structure_for_speed : bool
+        If True and structure is not single data type, cast it to single,
+        which results in the best performance for all methods.
+    allow_flipped_processing : bool
+        (only applicable when mode=='conv')
+        If True and at least one of the kernel array's sides
+        has an even length, rotate both input array and kernel
+        180 degrees before performing convolution, then rotate
+        the result array 180 degrees before returning.
+        The sole purpose of this option is to allow this function
+        and other functions that utilize this one to most closely
+        replicate their corresponding MATLAB array method. [4]
+
+    Returns
+    -------
+    imerode : ndarray of type bool, same shape as input array
+        A 2D array containing the erosion of the input array by structure.
+
+    Notes
+    -----
+    This function is meant to replicate MATLAB's imerode function. [4]
+
+    Strictly binary erosion will be performed if and only if array.dtype is np.bool,
+    otherwise greyscale erosion will be performed. However, greyscale erosion on a
+    binary array containing only values X and Y produces the same result as if the
+    values [min(X, Y), max(X, Y)] were mapped to [0, 1] and cast to a boolean array,
+    passed into this function, then mapped values in the result array back to their
+    original values (for floating input array, note -inf < 0 < inf < NaN).
+
+    All modes will handle greyscale erosion when the input array is not boolean.
+    For input arrays of feasibly large sizes containing more than two values,
+    'scipy_grey' is the fastest method for performing greyscale erosion,
+    but since the method may interpolate on the boundaries between regions
+    of differing values (which the MATLAB function does not do), it is not
+    an acceptable default method and is not considered when mode=='auto'.
+
+    In preliminary testing, all three methods 'conv', 'scipy', and 'skimage'
+    are able to reproduce the results of the MATLAB function for both binary
+    and greyscale erosion (with the exception of some edge pixels when a
+    structure with a False/zero center element is used in grey erosion,
+    which produces nonsensical values where proper erosion cannot be detected
+    by these three methods as well as MATLAB's function -- only the 'scipy_grey'
+    method handles this case properly).
+
+    References
+    ----------
+    .. [1] http://scikit-image.org/docs/dev/api/skimage.morphology.html#skimage.morphology.binary_erosion
+    .. [2] https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.ndimage.morphology.binary_erosion.html
+    .. [3] https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.ndimage.morphology.grey_erosion.html
+    .. [4] https://www.mathworks.com/help/images/ref/imerode.html
+
     """
-    mode_choices = ('conv', 'skimage', 'scipy', 'scipy_grey')
+    mode_choices = ('auto', 'conv', 'skimage', 'scipy', 'scipy_grey')
 
     if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
         raise InvalidArgumentError("structure contains values other than 0 and 1")
     if mode not in mode_choices:
         raise InvalidArgumentError("'mode' must be one of {}".format(mode_choices))
 
+    if cast_structure_for_speed and structure.dtype != np.float32:
+        structure = structure.astype(np.float32)
+
+    if mode == 'auto':
+        # Make an estimate of the runtime for 'conv' and 'scipy' methods,
+        # then choose the faster method.
+        array_elements = np.prod(array.shape)
+        struc_elements = np.prod(structure.shape)
+        time_conv = 1.25e-07 * array_elements - 7.61e-02
+        time_scipy = (  (1.56e-10 * array_elements - 2.66e-04) * struc_elements
+                      + (1.34e-08 * array_elements - 1.42e-02) )
+        mode = 'conv' if time_conv < time_scipy else 'scipy'
+
     if mode == 'conv':
-        if not isinstance(array.dtype.type(1), np.floating):
-            prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
-            dtype_bitdepths = (1, 8, 16, 32, 64)
-            conv_bitdepth = None
-            for b in dtype_bitdepths:
-                if prod_bitdepth <= b:
-                    conv_bitdepth = b
-                    break
-            if conv_bitdepth == 1:
-                structure = structure.astype(np.bool)
-            else:
-                structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
+        if (    not isinstance(structure.dtype.type(1), np.floating)
+            and not isinstance(array.dtype.type(1), np.floating) ):
+            # Make sure one of the input integer arrays has great enough
+            # positive bitdepth to prevent overflow during convolution.
+            structure = conv_binary_structure_prevent_overflow(array, structure)
         structure = np.rot90(structure, 2)
 
     rotation_flag = False
@@ -833,8 +953,9 @@ def imerode(array, structure, shape='same', mode='conv', allow_flipped_processin
         pady, padx = int(pady), int(padx)
 
     if array.dtype == np.bool:
+        # Binary erosion
         if mode == 'conv':
-            result = (conv2(~array, structure, shape, method='auto',
+            result = (conv2(~array, structure, shape='same', method='auto',
                             default_double_out=False, allow_flipped_processing=False) == 0)
         elif mode in ('scipy', 'scipy_grey'):
             result = sp_ndimage.binary_erosion(array, structure, border_value=1)
@@ -843,6 +964,7 @@ def imerode(array, structure, shape='same', mode='conv', allow_flipped_processin
             result = sk_morphology.binary_erosion(array, structure)[pady:-pady, padx:-padx]
 
     elif mode == 'scipy_grey':
+        # Greyscale erosion
         if np.any(structure != 1):
             if not isinstance(structure.dtype.type(1), np.floating):
                 structure = structure.astype(np.float32)
@@ -851,8 +973,8 @@ def imerode(array, structure, shape='same', mode='conv', allow_flipped_processin
             result = sp_ndimage.grey_erosion(array, size=structure.shape)
 
     else:
+        # Greyscale erosion
         array_vals = np.unique(array)
-
         array_vals_nans = np.isnan(array_vals)
         has_nans = np.any(array_vals_nans)
         if has_nans:
@@ -865,6 +987,10 @@ def imerode(array, structure, shape='same', mode='conv', allow_flipped_processin
             padval = np.inf if isinstance(array.dtype.type(1), np.floating) else np.iinfo(array.dtype).max
             array = np.pad(array, ((pady, pady), (padx, padx)), 'constant', constant_values=padval)
 
+        # Start with an array full of the lowest value from the input array.
+        # Overlay the erosion of all higher-value layers (combined)
+        # as the second-lowest value. Call this the new lowest value,
+        # and repeat until all layers have been added up through the highest value.
         result = np.full_like(array, array_vals[0])
         for val in array_vals[1:]:
             if not np.isnan(val):
@@ -873,7 +999,7 @@ def imerode(array, structure, shape='same', mode='conv', allow_flipped_processin
                 mask_val = array_nans if mode != 'skimage' else np.logical_or(array_nans, array == np.inf)
 
             if mode == 'conv':
-                result_val = (conv2(~mask_val, structure, shape, method='auto',
+                result_val = (conv2(~mask_val, structure, shape='same', method='auto',
                                     default_double_out=False, allow_flipped_processing=False) == 0)
             elif mode == 'scipy':
                 result_val = sp_ndimage.binary_erosion(mask_val, structure, border_value=1)
@@ -888,39 +1014,113 @@ def imerode(array, structure, shape='same', mode='conv', allow_flipped_processin
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def imdilate(array, structure, shape='same', mode='conv', allow_flipped_processing=True):
+def imdilate(array, structure, mode='auto',
+             cast_structure_for_speed=True, allow_flipped_processing=True):
     # TODO: Write docstring.
     """
-    This function is meant to replicate MATLAB's imdilate function.
+    Dilate an array with the provided binary structure.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Array to dilate.
+    structure : ndarray, 2D
+        Binary array with True/1-valued elements specifying the structure for dilation.
+        structure must either have boolean data type or contain only the values 0 and 1.
+    mode : str; 'auto', 'conv', 'skimage', 'scipy', or 'scipy_grey'
+        Specifies which method will be used to perform dilation.
+        'auto' -------- use the fastest of ('conv', 'scipy') given array, structure sizes
+        'conv' -------- conv2 (local)
+        'skimage' ----- skimage.morphology.binary_dilation (Scikit-Image) [1]
+        'scipy' ------- scipy.ndimage.binary_dilation (SciPy) [2]
+        'scipy_grey' -- scipy.ndimage.grey_dilation (SciPy) [3]
+    cast_structure_for_speed : bool
+        If True and structure is not single data type, cast it to single,
+        which results in the best performance for all methods.
+    allow_flipped_processing : bool
+        (only applicable when mode=='conv')
+        If True and at least one of the kernel array's sides
+        has an even length, rotate both input array and kernel
+        180 degrees before performing convolution, then rotate
+        the result array 180 degrees before returning.
+        The sole purpose of this option is to allow this function
+        and other functions that utilize this one to most closely
+        replicate their corresponding MATLAB array method. [4]
+
+    Returns
+    -------
+    imdilate : ndarray of type bool, same shape as input array
+        A 2D array containing the dilation of the input array by structure.
+
+    Notes
+    -----
+    This function is meant to replicate MATLAB's imdilate function. [4]
+
+    Strictly binary dilation will be performed if and only if array.dtype is np.bool,
+    otherwise greyscale dilation will be performed. However, greyscale dilation on a
+    binary array containing only values X and Y produces the same result as if the
+    values [min(X, Y), max(X, Y)] were mapped to [0, 1] and cast to a boolean array,
+    passed into this function, then mapped values in the result array back to their
+    original values (for floating input array, note -inf < 0 < inf < NaN).
+
+    All modes will handle greyscale dilation when the input array is not boolean.
+    For input arrays of feasibly large sizes containing more than two values,
+    'scipy_grey' is the fastest method for performing greyscale dilation,
+    but since the method may interpolate on the boundaries between regions
+    of differing values (which the MATLAB function does not do), it is not
+    an acceptable default method and is not considered when mode=='auto'.
+
+    In preliminary testing, all three methods 'conv', 'scipy', and 'skimage'
+    are able to reproduce the results of the MATLAB function for both binary
+    and greyscale dilation (with the exception of some edge pixels when a
+    structure with a False/zero center element is used in grey dilation,
+    which produces nonsensical values where proper dilation cannot be detected
+    by these three methods as well as MATLAB's function -- only the 'scipy_grey'
+    method handles this case properly).
+
+    References
+    ----------
+    .. [1] http://scikit-image.org/docs/dev/api/skimage.morphology.html#skimage.morphology.binary_dilation
+    .. [2] https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.ndimage.morphology.binary_dilation.html
+    .. [3] https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.ndimage.morphology.grey_dilation.html
+    .. [4] https://www.mathworks.com/help/images/ref/imdilate.html
+
     """
-    mode_choices = ('conv', 'skimage', 'scipy', 'scipy_grey')
+    mode_choices = ('auto', 'conv', 'skimage', 'scipy', 'scipy_grey')
 
     if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
         raise InvalidArgumentError("structure contains values other than 0 and 1")
     if mode not in mode_choices:
         raise InvalidArgumentError("'mode' must be one of {}".format(mode_choices))
 
+    if cast_structure_for_speed and structure.dtype != np.float32:
+        structure = structure.astype(np.float32)
+
+    if mode == 'auto':
+        # Make an estimate of the runtime for 'conv' and 'scipy' methods,
+        # then choose the faster method.
+        array_elements = np.prod(array.shape)
+        struc_elements = np.prod(structure.shape)
+        time_conv = 1.23e-07 * array_elements - 4.62e-02
+        time_scipy = (  (6.60e-10 * array_elements - 3.59e-04) * struc_elements
+                      + (2.43e-08 * array_elements + 4.05e-02) )
+        mode = 'conv' if time_conv < time_scipy else 'scipy'
+
     if mode == 'conv':
-        if not isinstance(array.dtype.type(1), np.floating):
-            prod_bitdepth = math.log(np.prod(structure.shape)+1, 2)
-            dtype_bitdepths = (1, 8, 16, 32, 64)
-            conv_bitdepth = None
-            for b in dtype_bitdepths:
-                if prod_bitdepth <= b:
-                    conv_bitdepth = b
-                    break
-            if conv_bitdepth == 1:
-                structure = structure.astype(np.bool)
-            else:
-                structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth)))
+        if (    not isinstance(structure.dtype.type(1), np.floating)
+            and not isinstance(array.dtype.type(1), np.floating) ):
+            # Make sure one of the input integer arrays has great enough
+            # positive bitdepth to prevent overflow during convolution.
+            structure = conv_binary_structure_prevent_overflow(array, structure)
 
     rotation_flag = False
     if mode in ('scipy', 'scipy_grey', 'skimage') and allow_flipped_processing:
         array, structure, rotation_flag = rotate_array_if_kernel_has_even_sidelength(array, structure)
 
     if array.dtype == np.bool:
+        # Binary dilation
         if mode == 'conv':
-            result = (conv2(array, structure, shape, method='auto',
+            result = (conv2(array, structure, shape='same', method='auto',
                             default_double_out=False, allow_flipped_processing=False) > 0)
         elif mode in ('scipy', 'scipy_grey'):
             result = sp_ndimage.binary_dilation(array, structure, border_value=0)
@@ -928,6 +1128,7 @@ def imdilate(array, structure, shape='same', mode='conv', allow_flipped_processi
             result = sk_morphology.binary_dilation(array, structure)
 
     elif mode == 'scipy_grey':
+        # Greyscale dilation
         if np.any(structure != 1):
             if not isinstance(structure.dtype.type(1), np.floating):
                 structure = structure.astype(np.float32)
@@ -936,6 +1137,7 @@ def imdilate(array, structure, shape='same', mode='conv', allow_flipped_processi
             result = sp_ndimage.grey_dilation(array, size=structure.shape)
 
     else:
+        # Greyscale dilation
         array_vals = np.unique(array)
         array_vals_nans = np.isnan(array_vals)
         has_nans = np.any(array_vals_nans)
@@ -944,12 +1146,15 @@ def imdilate(array, structure, shape='same', mode='conv', allow_flipped_processi
             array_vals = np.delete(array_vals, np.where(np.isnan(array_vals)))
             array_vals = np.append(array_vals, np.nan)
 
+        # Start with an array full of the lowest value from the input array,
+        # then overlay the dilation of each higher-value layer,
+        # one at a time, until all layers have been added.
         result = np.full_like(array, array_vals[0])
         for val in array_vals[1:]:
             mask_val = (array == val) if not np.isnan(val) else np.isnan(array)
 
             if mode == 'conv':
-                result_val = (conv2(mask_val, structure, shape, method='auto',
+                result_val = (conv2(mask_val, structure, shape='same', method='auto',
                                     default_double_out=False, allow_flipped_processing=False) > 0)
             elif mode == 'scipy':
                 result_val = sp_ndimage.binary_dilation(mask_val, structure, border_value=0)
