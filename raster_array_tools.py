@@ -193,8 +193,8 @@ def extractRasterParams(rasterFile_or_ds, *params):
             if spat_ref is not None:
                 value.AssignSpatialReference(spat_ref)
             else:
-                warn("Spatial reference could not be extracted from raster dataset,"
-                     " so extracted geometry has not been assigned a spatial reference.")
+                warn("Spatial reference could not be extracted from raster dataset, "
+                     "so extracted geometry has not been assigned a spatial reference.")
         value_list.append(value)
 
     if len(value_list) == 1:
@@ -590,7 +590,7 @@ def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
     currently can't be interpolated through the GDAL method (and are instead set to zeros) without
     applying some sort of fix.
     """
-    gdal_fix_choices = (None, 'pad', 'pad_merge', 'rotate', 'scipy')
+    gdal_fix_choices = [None, 'pad', 'pad_merge', 'rotate', 'scipy']
 
     # If a resize factor is provided for size, round up the x, y pixel
     # sizes for the output array to match MATLAB's imresize function.
@@ -598,7 +598,8 @@ def imresize(array, size, method='bicubic', use_gdal='auto', gdal_fix='scipy'):
     if use_gdal == 'auto':
         use_gdal = False if np.any((np.array(new_shape) - np.array(array.shape)) >= 0) else True
     if gdal_fix not in gdal_fix_choices:
-        raise InvalidArgumentError("gdal_fix must be one of {}".format(gdal_fix_choices))
+        raise UnsupportedMethodError("gdal_fix must be one of {}, "
+                                     "but was '{}'".format(gdal_fix_choices, gdal_fix))
 
     # The trivial case
     if size == 1 or size == array.shape:
@@ -722,8 +723,8 @@ def conv2(array, kernel, shape='full', method='auto',
             dtype_out = array.dtype
             if (isinstance(kernel.dtype.type(1), np.floating)
                 and int(str(kernel.dtype).replace('float', '')) > int(str(dtype_out).replace('float', ''))):
-                warn("Since default_double_out=True, kernel with floating dtype ({}) at greater precision than"
-                     " array floating dtype ({}) is cast to array dtype".format(str(kernel.dtype), str(dtype_out)))
+                warn("Since default_double_out=True, kernel with floating dtype ({}) at greater precision than "
+                     "array floating dtype ({}) is cast to array dtype".format(str(kernel.dtype), str(dtype_out)))
                 kernel = kernel.astype(dtype_out)
         else:
             dtype_out = np.float64
@@ -753,7 +754,7 @@ def conv2(array, kernel, shape='full', method='auto',
         result[(-1.0e-12 < result) & (result < 10.0e-12)] = 0
 
     if fixnans_flag:
-        result[imdilate(array_nans, np.ones(kernel.shape), shape)] = np.nan
+        result[imdilate(array_nans, size=kernel.shape)] = np.nan
         # Return the input array to its original state.
         array[array_nans] = np.nan
 
@@ -772,12 +773,13 @@ def moving_average(array, kernel_size=None, kernel=None, shape='same', method='a
     boolean neighborhood specified through input 'kernel').
     Arguments 'mode' and allow_rotation are forwarded through to the convolution function.
     """
-    float_dtype_choices = (None, np.float16, np.float32, np.float64)
+    float_dtype_choices = [None, np.float16, np.float32, np.float64]
 
     if kernel_size is None and kernel is None:
         raise InvalidArgumentError("Either kernel_size or kernel must be provided")
     if float_dtype not in float_dtype_choices:
-        raise InvalidArgumentError("float_dtype must be one of {}".format(float_dtype_choices))
+        raise UnsupportedDataTypeError("float_dtype must be one of {}, "
+                                       "but was {}".format(float_dtype_choices, float_dtype))
 
     float_dtype_bits = int(str(float_dtype(1).dtype).replace('float', '')) if float_dtype is not None else np.inf
     array_float_bits = int(str(array.dtype).replace('float', '')) if isinstance(array.dtype.type(1), np.floating) else 0
@@ -794,6 +796,9 @@ def moving_average(array, kernel_size=None, kernel=None, shape='same', method='a
         float_dtype = eval('np.float{}'.format(float_dtype_bits))
 
     if kernel is not None:
+        if not np.any(kernel):
+            # The trivial case
+            return np.zeros_like(array, float_dtype)
         if np.any(~np.logical_or(kernel == 0, kernel == 1)):
             raise InvalidArgumentError("kernel may only contain zeros and ones")
 
@@ -810,8 +815,6 @@ def moving_average(array, kernel_size=None, kernel=None, shape='same', method='a
 
 # Deprecated; Retained because it is an important thing to remember.
 def conv_binary_structure_prevent_overflow(array, structure):
-    # TODO: Write docstring.
-
     # Get upper bound on minimum positive bitdepth for convolution.
     conv_bitdepth_pos = math.log(np.prod(structure.shape)+1, 2)
     dtype_bitdepths_pos = (1, 7, 8, 15, 16, 31, 32, 63, 64)
@@ -844,9 +847,8 @@ def conv_binary_structure_prevent_overflow(array, structure):
     return structure
 
 
-def imerode(array, structure, mode='auto',
+def imerode(array, structure=None, size=None, mode='auto',
             cast_structure_for_speed=True, allow_flipped_processing=True):
-    # TODO: Write docstring.
     """
     Erode an array with the provided binary structure.
 
@@ -854,9 +856,14 @@ def imerode(array, structure, mode='auto',
     ----------
     array : ndarray, 2D
         Array to erode.
-    structure : ndarray, 2D
+    structure : None or (ndarray, 2D)
         Binary array with True/1-valued elements specifying the structure for erosion.
         structure must either have boolean data type or contain only the values 0 and 1.
+        If None, size must be provided.
+    size : None, positive int, or array shape tuple
+        Side length or shape of structure (of ones)
+        to be used as structure for erosion.
+        If None, structure must be provided.
     mode : str; 'auto', 'conv', 'skimage', 'scipy', or 'scipy_grey'
         Specifies which method will be used to perform erosion.
         'auto' -------- use the fastest of ('conv', 'scipy') given array, structure sizes
@@ -916,14 +923,26 @@ def imerode(array, structure, mode='auto',
     .. [4] https://www.mathworks.com/help/images/ref/imerode.html
 
     """
-    mode_choices = ('auto', 'conv', 'skimage', 'scipy', 'scipy_grey')
+    mode_choices = ['auto', 'conv', 'skimage', 'scipy', 'scipy_grey']
 
-    if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+    if size is None and structure is None:
+        raise InvalidArgumentError("Either size or structure must be provided")
+    if (     structure is not None
+        and (structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1))) ):
         raise InvalidArgumentError("structure contains values other than 0 and 1")
     if mode not in mode_choices:
-        raise InvalidArgumentError("'mode' must be one of {}".format(mode_choices))
+        raise UnsupportedMethodError("'mode' must be one of {}, but was '{}'".format(mode_choices, mode))
 
-    if cast_structure_for_speed and structure.dtype != np.float32:
+    if structure is None:
+        if type(size) == int:
+            structure = np.ones((size, size), dtype=np.float32)
+        elif type(size) == tuple:
+            structure = np.ones(size, dtype=np.float32)
+        else:
+            raise InvalidArgumentError(
+                "size type may only be int or tuple, but was {} (size={})".format(type(size), size)
+            )
+    elif cast_structure_for_speed:
         structure = structure.astype(np.float32)
 
     if mode == 'auto':
@@ -975,13 +994,16 @@ def imerode(array, structure, mode='auto',
     else:
         # Greyscale erosion
         array_vals = np.unique(array)
-        array_vals_nans = np.isnan(array_vals)
-        has_nans = np.any(array_vals_nans)
-        if has_nans:
-            array_nans = np.isnan(array)
-            # Remove possible multiple occurrences of "nan" in results of np.unique().
-            array_vals = np.delete(array_vals, np.where(np.isnan(array_vals)))
-            array_vals = np.append(array_vals, np.nan)
+        if isinstance(array.dtype.type(1), np.floating):
+            array_vals_nans = np.isnan(array_vals)
+            has_nans = np.any(array_vals_nans)
+            if has_nans:
+                array_nans = np.isnan(array)
+                # Remove possible multiple occurrences of "nan" in results of np.unique().
+                array_vals = np.delete(array_vals, np.where(np.isnan(array_vals)))
+                array_vals = np.append(array_vals, np.nan)
+        else:
+            has_nans = False
 
         if mode == 'skimage':
             padval = np.inf if isinstance(array.dtype.type(1), np.floating) else np.iinfo(array.dtype).max
@@ -1014,9 +1036,8 @@ def imerode(array, structure, mode='auto',
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def imdilate(array, structure, mode='auto',
+def imdilate(array, structure=None, size=None, mode='auto',
              cast_structure_for_speed=True, allow_flipped_processing=True):
-    # TODO: Write docstring.
     """
     Dilate an array with the provided binary structure.
 
@@ -1024,9 +1045,14 @@ def imdilate(array, structure, mode='auto',
     ----------
     array : ndarray, 2D
         Array to dilate.
-    structure : ndarray, 2D
+    structure : None or (ndarray, 2D)
         Binary array with True/1-valued elements specifying the structure for dilation.
         structure must either have boolean data type or contain only the values 0 and 1.
+        If None, size must be provided.
+    size : None, positive int, or array shape tuple
+        Side length or shape of structure (of ones)
+        to be used as structure for erosion.
+        If None, structure must be provided.
     mode : str; 'auto', 'conv', 'skimage', 'scipy', or 'scipy_grey'
         Specifies which method will be used to perform dilation.
         'auto' -------- use the fastest of ('conv', 'scipy') given array, structure sizes
@@ -1086,14 +1112,27 @@ def imdilate(array, structure, mode='auto',
     .. [4] https://www.mathworks.com/help/images/ref/imdilate.html
 
     """
-    mode_choices = ('auto', 'conv', 'skimage', 'scipy', 'scipy_grey')
+    mode_choices = ['auto', 'conv', 'skimage', 'scipy', 'scipy_grey']
 
-    if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+    if size is None and structure is None:
+        raise InvalidArgumentError("Either size or structure must be provided")
+    if (     structure is not None
+        and (structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1))) ):
         raise InvalidArgumentError("structure contains values other than 0 and 1")
     if mode not in mode_choices:
-        raise InvalidArgumentError("'mode' must be one of {}".format(mode_choices))
+        raise UnsupportedMethodError("'mode' must be one of {}, but was '{}'".format(mode_choices, mode))
 
-    if cast_structure_for_speed and structure.dtype != np.float32:
+    if structure is None:
+        if type(size) == int:
+            structure = np.ones((size, size), dtype=np.float32)
+        elif type(size) == tuple:
+            structure = np.ones(size, dtype=np.float32)
+        else:
+            raise InvalidArgumentError(
+                "size type may only be int or tuple, but was {} (size={})".format(
+                    type(size), size
+            ))
+    elif cast_structure_for_speed:
         structure = structure.astype(np.float32)
 
     if mode == 'auto':
@@ -1139,12 +1178,13 @@ def imdilate(array, structure, mode='auto',
     else:
         # Greyscale dilation
         array_vals = np.unique(array)
-        array_vals_nans = np.isnan(array_vals)
-        has_nans = np.any(array_vals_nans)
-        if has_nans:
-            # Remove possible multiple occurrences of "nan" in results of np.unique().
-            array_vals = np.delete(array_vals, np.where(np.isnan(array_vals)))
-            array_vals = np.append(array_vals, np.nan)
+        if isinstance(array.dtype.type(1), np.floating):
+            array_vals_nans = np.isnan(array_vals)
+            has_nans = np.any(array_vals_nans)
+            if has_nans:
+                # Remove possible multiple occurrences of "nan" in results of np.unique().
+                array_vals = np.delete(array_vals, np.where(np.isnan(array_vals)))
+                array_vals = np.append(array_vals, np.nan)
 
         # Start with an array full of the lowest value from the input array,
         # then overlay the dilation of each higher-value layer,
@@ -1171,9 +1211,10 @@ def bwareaopen(array, size_tolerance, connectivity=8, in_place=False):
     if array.dtype == np.bool:
         binary_array = array
     else:
+        # FIXME: Do something better.
         warn("Input array to `bwareaopen` is not a boolean array"
-             "\n-> Casting array to np.bool before performing function;"
-             " beware that in_place argument cannot modify input array")
+             "\n-> Casting array to np.bool before performing function; "
+             "beware that in_place argument cannot modify input array")
         binary_array = array.astype(np.bool)
         in_place = True
     return sk_morphology.remove_small_objects(binary_array, size_tolerance, connectivity/4, in_place)
@@ -1219,12 +1260,12 @@ def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
     .. [1] https://www.mathworks.com/help/images/ref/bwboundaries.html
 
     """
-    side_choices = ('inner', 'outer')
-    conn_choices = (4, 8)
+    side_choices = ['inner', 'outer']
+    conn_choices = [4, 8]
     if side not in side_choices:
-        raise InvalidArgumentError("'side' must be one of {}".format(side_choices))
+        raise InvalidArgumentError("'side' must be one of {}, but was {}".format(side_choices, side))
     if connectivity not in conn_choices:
-        raise InvalidArgumentError("connectivity must be one of {}".format(conn_choices))
+        raise InvalidArgumentError("connectivity must be one of {}, but was {}".format(conn_choices, connectivity))
 
     binary_array = array.astype(np.bool) if (array.dtype != np.bool and not grey_boundaries) else array
     fn = imerode if side == 'inner' else imdilate
@@ -1259,12 +1300,14 @@ def entropyfilt(array, kernel, bin_bitdepth=8, nbins=None):
         if type(bin_bitdepth) == int and 1 <= bin_bitdepth <= 64:
             nbins = 2**bin_bitdepth
         else:
-            raise InvalidArgumentError("bin_bitdepth must be an integer between 1 and 64, inclusive")
+            raise InvalidArgumentError("bin_bitdepth must be an integer between 1 and 64, inclusive, "
+                                       "but was {}".format(bin_bitdepth))
     else:
         if type(nbins) == int and 2 <= nbins <= 2**64:
             bin_bitdepth = math.log(nbins, 2)
         else:
-            raise InvalidArgumentError("nbins must be an integer between 2 and 2**64, inclusive")
+            raise InvalidArgumentError("nbins must be an integer between 2 and 2**64, inclusive, "
+                                       "but was {}".format(nbins))
 
     array_dtype_str = str(array.dtype)
     array_gentype = None
@@ -1288,7 +1331,7 @@ def entropyfilt(array, kernel, bin_bitdepth=8, nbins=None):
         elif array_gentype == 'float':
             array_dtype_bitdepth = np.inf
     except ValueError:
-        raise InvalidArgumentError("array dtype np.{} is not supported".format(array_dtype_str))
+        raise UnsupportedDataTypeError("array dtype {} is not supported".format(array.dtype))
 
     bin_array = None
     if array_dtype_bitdepth <= bin_bitdepth and array_gentype != 'float':
@@ -1546,7 +1589,8 @@ def concave_hull_image(image, concavity, fill=True,
     if 0 <= concavity <= 1:
         pass
     else:
-        raise InvalidArgumentError("concavity must be between 0 and 1, inclusive")
+        raise InvalidArgumentError("concavity must be between 0 and 1, inclusive, "
+                                   "but was {}".format(concavity))
     if alpha_cutoff_mode not in ('mean', 'median', 'unique'):
         raise UnsupportedMethodError("alpha_cutoff_mode='{}'".format(alpha_cutoff_mode))
 

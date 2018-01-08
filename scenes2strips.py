@@ -358,7 +358,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border 0's introduced by NaN interpolation.
         M3 = ~np.isnan(zi)
-        M3 = rat.imerode(M3, structure=np.ones((6, 6)))  # border cutline
+        M3 = rat.imerode(M3, size=6)  # border cutline
 
         zi[~M3] = np.nan
         mi[~M3] = 0
@@ -366,7 +366,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border on orthos separately.
         M4 = (oi != 0)
-        M4 = rat.imerode(M4, structure=np.ones((6, 6)))
+        M4 = rat.imerode(M4, size=6)
         oi[~M4] = 0
         del M4
 
@@ -539,8 +539,8 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
 
         if np.any(abs(pn[1:]) > maxp):
             sys.stdout.write(
-                "maximum horizontal offset reached,"
-                " returning median vertical offset: {:.3f}\n".format(meddz)
+                "maximum horizontal offset reached, "
+                "returning median vertical offset: {:.3f}\n".format(meddz)
             )
             p = np.array([meddz, 0, 0])
             d0 = d00

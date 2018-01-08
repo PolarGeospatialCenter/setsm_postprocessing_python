@@ -17,10 +17,10 @@ from scenes2strips import scenes2strips
 
 def main():
     parser = argparse.ArgumentParser(description=(
-        "Filters scene dems in a source directory,"
-        " then mosaics them into strips and saves the results."
-        "\nBatch work is done in units of strip ID (<catid1_catid2>), as parsed from scene dem"
-        " filenames."))
+        "Filters scene dems in a source directory, "
+        "then mosaics them into strips and saves the results."
+        "\nBatch work is done in units of strip ID (<catid1_catid2>), as parsed from scene dem "
+        "filenames."))
 
     parser.add_argument('src',
         help=("Path to source directory containing scene dems to process."
@@ -29,8 +29,8 @@ def main():
         help="Resolution of target dems (2 or 8 meters).")
 
     parser.add_argument('--dst',
-        help="Path to destination directory for output mosaicked strip data"
-             " (default is src.(reverse)replace('tif_results', 'strips')).")
+        help="Path to destination directory for output mosaicked strip data "
+             "(default is src.(reverse)replace('tif_results', 'strips')).")
 
     parser.add_argument('--edgemask', action='store_true', default=False,
         help="Use two-mask filter with edgemask and datamask.")
@@ -42,14 +42,14 @@ def main():
     parser.add_argument('--pbs', action='store_true', default=False,
         help="Submit tasks to PBS.")
     parser.add_argument('--qsubscript',
-        help="Path to qsub script to use in PBS submission"
-             " (default is qsub_scenes2strips.sh in script root folder).")
+        help="Path to qsub script to use in PBS submission "
+             "(default is qsub_scenes2strips.sh in script root folder).")
     parser.add_argument('--dryrun', action='store_true', default=False,
         help="Print actions without executing.")
 
     parser.add_argument('--stripid',
-        help="Run filtering and mosaicking for a single strip with id"
-             " <catid1_catid2> (as parsed from scene dem filenames).")
+        help="Run filtering and mosaicking for a single strip with id "
+             "<catid1_catid2> (as parsed from scene dem filenames).")
 
     # Parse arguments.
     args = parser.parse_args()
