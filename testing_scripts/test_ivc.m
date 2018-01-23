@@ -232,7 +232,9 @@ while ~ready
                             arr1 = test_readImage(selection(1));
                             arr2 = test_readImage(selection(2));
                             if ~isequal(size(arr1), size(arr2))
-                                errmsg = 'Selected pair of images differ in array shape.\n';
+                                errmsg = "Selected pair of images differ in array shape.";
+                                errmsg = strcat(errmsg, sprintf("\n'%s': %dx%d\n", char(selection(1)), size(arr1, 1), size(arr1, 2)));
+                                errmsg = strcat(errmsg, sprintf("'%s': %dx%d", char(selection(2)), size(arr2, 1), size(arr2, 2)));
                                 error('CUSTOM MESSAGE');
                             end
                             clear('arr1', 'arr2');
@@ -428,7 +430,8 @@ while ~ready
     end
 
     if ~strcmp(errmsg, '')
-        fprintf(2, errmsg);
+        fprintf(2, '\n%s\n', errmsg);
+        fprintf('\n');
         errmsg = '';
     end
     

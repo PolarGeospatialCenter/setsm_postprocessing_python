@@ -154,7 +154,7 @@ def sg(varNames_csv):
     accessible in the current namespace.
     """
     if type(varNames_csv) != str:
-        raise InvalidArgumentError("varNames_csv must be a string")
+        raise InvalidArgumentError("`varNames_csv` must be a string")
     return stringifyThisFunctionForExec('"{}"'.format(varNames_csv))
 
     sg_varNames_list = None
@@ -246,7 +246,7 @@ def getCalledFunctionArgs(depth=1, funcName=None):
     try:
         if depth == 0 or depth == float('inf'):
             if funcName is None:
-                raise InvalidArgumentError("Must be given a function name to search for when depth is not certain")
+                raise InvalidArgumentError("`funcName` must be provided when depth is not certain")
             stack_iterable = xrange(len(stack))
             if depth != 0:
                 stack_iterable = reversed(stack_iterable)
@@ -256,15 +256,15 @@ def getCalledFunctionArgs(depth=1, funcName=None):
                     func_frame_record = stack[i+1]
                     break
             if func_frame_record is None:
-                raise InvalidArgumentError("Function name '{}' could not be found in the stack".format(funcName))
+                raise InvalidArgumentError("`funcName` '{}' could not be found in the stack".format(funcName))
         else:
             try:
                 func_frame_record = stack[depth+1]
             except IndexError:
-                raise InvalidArgumentError("Invalid 'depth' index for stack: {}".format(depth))
+                raise InvalidArgumentError("Invalid `depth` index for stack: {}".format(depth))
             if funcName is not None and stack[depth][3] != funcName:
-                raise InvalidArgumentError("Function name '{}' could not be found in the stack"
-                                           " at index {}".format(funcName, depth))
+                raise InvalidArgumentError("`funcName` '{}' could not be found in the stack "
+                                           "at index {}".format(funcName, depth))
 
             funcCall = ''.join([str(line).strip() for line in func_frame_record[4]])
 
@@ -294,7 +294,7 @@ def findFile(testFile):
             if not os.path.isfile(testFile_temp):
                 testFile_temp += '.tif'
                 if not os.path.isfile(testFile_temp):
-                    raise InvalidArgumentError("Cannot find test file: '{}'".format(testFile))
+                    raise InvalidArgumentError("Cannot find `testFile`: '{}'".format(testFile))
         testFile = testFile_temp
     return testFile
 
@@ -428,7 +428,7 @@ def interpretImageRasterFlavor(flavor):
             raster_format = 'uint8'
             raster_nodata = 0
         else:
-            raise InvalidArgumentError("Invalid image/raster 'flavor': {}".format(flavor))
+            raise InvalidArgumentError("Invalid `flavor`: {}".format(flavor))
 
     return flavor_name, image_PILmode, raster_format, raster_nodata
 
@@ -442,15 +442,15 @@ def handleBatchImageRasterAuto(arrays, flavor, matchkey, descr, compare, concurr
         if arrays is None:
             raise TestingError("No global variables with accepted test variable names to be found")
     if (flavor == 'auto' or matchkey == 'auto') and array_names is None:
-        raise InvalidArgumentError("Global variables with accepted test variable names must be set"
-                                   " in order to automatically determine image/raster flavor or matchkey")
+        raise InvalidArgumentError("Global variables with accepted test variable names must be set "
+                                   "in order to automatically determine `flavor` or `matchkey`")
 
     flavor_order = None
     if flavor.startswith('-'):
         if len(flavor) != (1+len(arrays)):
-            raise InvalidArgumentError("'flavor' argument starting with '-' must be followed by"
-                                       " a number of characters (flavor abbreviations) equal to"
-                                       " the number of input 'arrays'")
+            raise InvalidArgumentError("`flavor` argument starting with '-' must be followed by "
+                                       "a number of characters (flavor abbreviations) equal to "
+                                       "the number of arrays in `arrays`")
         flavor_order = flavor[1:len(flavor)]
     else:
         flavor_order = [flavor]*len(arrays)
@@ -515,8 +515,8 @@ def sia(array, flavor='auto', matchkey='auto', descr='', compare=False, concurre
         return
     # array_name = getCalledFunctionArgs()[0]
     if (flavor == 'auto' or matchkey == 'auto') and array_name is None:
-        raise InvalidArgumentError("'array_name' must be provided to automatically"
-                                   " determine image flavor or matchkey for a single array")
+        raise InvalidArgumentError("`array_name` must be provided to automatically "
+                                   "determine `flavor` or `matchkey` for a single array")
 
     # Determine the correct data type for saving the image data.
     flavor_name = ''
@@ -572,15 +572,15 @@ def sra(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concur
     Saves an indexed raster image in the test file directory specified by global TESTDIR.
     """
     if type(Z) in (tuple, list):
-        raise InvalidArgumentError("tuple/list argument for 'Z' is not supported")
+        raise InvalidArgumentError("tuple/list argument for `Z` is not supported")
     elif type(Z) == dict:
         # If 'Z' is a dictionary, assume it is one of global variables that contains test array variables.
         handleBatchImageRasterAuto(Z, flavor, matchkey, descr, compare, concurrent, X, Y, proj_ref)
         return
     # array_name = getCalledFunctionArgs()[0]
     if (flavor == 'auto' or matchkey == 'auto') and array_name is None:
-        raise InvalidArgumentError("'array_name' must be provided to automatically"
-                                   " determine raster flavor or matchkey for a single Z")
+        raise InvalidArgumentError("`array_name` must be provided to automatically "
+                                   "determine `flavor` or `matchkey` for a single array `Z`")
 
     # Determine the correct data type for saving the raster data.
     if flavor == 'auto':

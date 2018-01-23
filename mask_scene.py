@@ -17,6 +17,7 @@ from scipy import ndimage as sp_ndimage
 
 import raster_array_tools as rat
 
+# TODO: Remove `test` include once testing is complete.
 import test
 
 
@@ -32,9 +33,9 @@ class RasterDimensionError(Exception):
 def check_arggroups(arggroup_list, check='exist'):
     # TODO: Write docstring.
 
-    check_choices = ['exist', 'full']
+    check_choices = ('exist', 'full')
     if check not in check_choices:
-        raise InvalidArgumentError("'check' must be one of {}".format(check_choices))
+        raise InvalidArgumentError("`check` must be one of {}, but was '{}'".format(check_choices, check))
 
     result = []
     for arggroup in arggroup_list:
@@ -251,7 +252,7 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
 
     dem_nodata = np.isnan(dem_array)  # original background for rescaling
     dem_array[dem_array == -9999] = np.nan
-    data_density_map = getDataDensityMap(match_array, avg_kernel_size)
+    data_density_map = getDataDensityMap(match_array, avg_kernel_size, conv_depth='single')
     del match_array
 
     # Re-scale ortho data if WorldView correction is detected in the meta file.
@@ -402,9 +403,9 @@ def mask_v2a(demFile, avg_kernel_size=5,
     return ~mask
 
 
-def getDataDensityMap(array, kernel_size=11, float_dtype=np.float32):
+def getDataDensityMap(array, kernel_size=11, conv_depth='double'):
     # TODO: Write docstring.
-    return rat.moving_average(array, kernel_size, shape='same', float_dtype=float_dtype)
+    return rat.moving_average(array, kernel_size, shape='same', conv_depth=conv_depth)
 
 
 def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3):
@@ -605,8 +606,8 @@ def getSlopeMask(dem_array,
     """
     if not verify_arggroups((input_res, (x_dem, y_dem), (dx, dy))):
         raise InvalidArgumentError(
-            "One type of pixel spacing input (x/y res input_res, x and y coordinate vectors "
-            "[x_dem, y_dem], x and y gradient 2D arrays [dx, dy]) must be provided"
+            "One type of pixel spacing input (x/y res `input_res`, x and y coordinate vectors "
+            "[`x_dem`, `y_dem`], x and y gradient 2D arrays [`dx`, `dy`]) must be provided"
         )
     if avg_kernel_size is None:
         avg_kernel_size = int(math.floor(21*2/source_res))
@@ -820,7 +821,7 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
 
     """
     if res is None and min_data_cluster is None:
-        raise InvalidArgumentError("Resolution 'res' argument must be provided "
+        raise InvalidArgumentError("Resolution `res` argument must be provided "
                                    "to set default values of min_data_cluster")
     if not np.any(match_array):
         return match_array.astype(np.bool)
@@ -995,7 +996,7 @@ def DG_DN2RAD(DN,
     ]
     if None in [p[0] for p in xml_params]:
         if xmlFile is None:
-            raise InvalidArgumentError("'xmlFile' argument must be given to automatically set xml params")
+            raise InvalidArgumentError("`xmlFile` argument must be given to automatically set xml params")
         fillMissingXmlParams(xmlFile, xml_params)
         satID, effectiveBandwith, abscalFactor = [p[0] for p in xml_params]
         effectiveBandwith = float(effectiveBandwith)
