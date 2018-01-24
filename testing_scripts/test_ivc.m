@@ -205,7 +205,7 @@ while ~ready
             compare = [];
             
             if isempty(selection)
-                errmsg = 'No images are selected for viewing/comparing.\n';
+                errmsg = 'No images are selected for viewing/comparing.';
                 error('CUSTOM MESSAGE');
             else
             
@@ -226,7 +226,7 @@ while ~ready
                         [~, compare] = test_matchFnames(selection);
                         if isempty(compare)
                             if length(selection) ~= 2
-                                errmsg = 'No images could be automatically matched for comparison.\n';
+                                errmsg = 'No images could be automatically matched for comparison.';
                                 error('CUSTOM MESSAGE');
                             end
                             arr1 = test_readImage(selection(1));
@@ -242,7 +242,7 @@ while ~ready
                             select_num_b = 2;
                         end
                     elseif length(arg_nums) ~= 2
-                        errmsg = "Zero or two number arguments must be given to 'compare' command.\n";
+                        errmsg = "Zero or two number arguments must be given to 'compare' command.";
                         error('CUSTOM MESSAGE');
                     else
                         select_num_a = arg_nums(1);
@@ -274,7 +274,7 @@ while ~ready
                     end
                     if ~isempty(cell2mat(arrayfun(@(x) find(strcmp(x, ["raster", "ras"])), check_options, 'UniformOutput', false)))
                         if image_type ~= -1
-                            errmsg = sprintf("'%s' options (img/image) and (ras/raster) cannot both be present.\n", command_args(1));
+                            errmsg = sprintf("'%s' options (img/image) and (ras/raster) cannot both be present.", command_args(1));
                             error('CUSTOM MESSAGE');
                         end
                         image_type = 1;
@@ -376,7 +376,7 @@ while ~ready
             || strcmp(ME.message, 'Matrix index is out of range for deletion.') ...
             || strcmp(ME.message, 'Subscript indices must either be real positive integers or logicals.')
             if ~isempty(command_args)
-                errmsg = 'One or more number arguments is illegal.\n';
+                errmsg = 'One or more number arguments is illegal.';
             end
         else
             rethrow(ME);

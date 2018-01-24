@@ -76,17 +76,17 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False):
         maskFile = demFile.replace('dem.tif', maskFileSuffix+'.tif')
         stdout.write(demFile+"\n")
         mask = None
-        if maskFileSuffix == 'mask2a':
-            mask = mask_v2a(demFile)
-        else:
+        if maskFileSuffix == 'mask':
             mask = mask_v2(demFile)
-        # TODO: Check that this save function works properly.
-        rat.saveArrayAsTiff(mask.astype(np.uint8), maskFile, like_rasterFile=demFile, dtype_out=np.uint8)
+        elif maskFileSuffix == 'mask2a':
+            mask = mask_v2a(demFile)
+        rat.saveArrayAsTiff(mask, maskFile, like_rasterFile=demFile, nodataVal=0, dtype_out=np.uint8)
 
 
 def mask_v1(matchFile, noentropy=False):
     """
-    Creates edgemask and datamask of the matchtag array, with or without entropy protection.
+    Creates edgemask and datamask of the matchtag array,
+    with or without entropy protection.
 
     Parameters
     ----------
@@ -153,15 +153,13 @@ def mask_v1(matchFile, noentropy=False):
         cf = 0.5
         crop = n
 
-    # TODO: Fix the following section once testing of getEdgeMask() is complete.
     edgemask = getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
     if not noentropy:
         entropy_mask = getEntropyMask(matchFile.replace('matchtag.tif', 'ortho.tif'))
         np.logical_or(edgemask, entropy_mask, out=edgemask)
-    # edgemask = test.readImage('edgemask')
     edgemask = getEdgeMask(edgemask, min_data_cluster=Amin, hull_concavity=cf, crop=crop)
-    rat.saveArrayAsTiff(edgemask.astype(np.uint8), matchFile.replace('matchtag.tif', 'edgemask.tif'),
-                        like_rasterFile=matchFile, dtype_out=np.uint8)
+    rat.saveArrayAsTiff(edgemask, matchFile.replace('matchtag.tif', 'edgemask.tif'),
+                        like_rasterFile=matchFile, nodataVal=0, dtype_out=np.uint8)
 
     match_array[~edgemask] = 0
     del edgemask
@@ -181,12 +179,11 @@ def mask_v1(matchFile, noentropy=False):
     datamask = getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
     del match_array
     datamask = clean_mask(datamask, remove_pix=Amin, fill_pix=Amax, in_place=True)
-    # TODO: Check that this save function works properly.
-    rat.saveArrayAsTiff(datamask.astype(np.uint8), matchFile.replace('matchtag.tif', 'datamask.tif'),
-                        like_rasterFile=matchFile, dtype_out=np.uint8)
+    rat.saveArrayAsTiff(datamask, matchFile.replace('matchtag.tif', 'datamask.tif'),
+                        like_rasterFile=matchFile, nodataVal=0, dtype_out=np.uint8)
 
 
-def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500):
+def mask_v2(demFile, avg_kernel_size=21, processing_res=32, min_data_cluster=500):
     # TODO: Write my own docstring.
     """
     % MASK ArcticDEM masking algorithm
@@ -232,21 +229,22 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
     maxDN = meta['image_1_max'] if wv_correct_flag else None
 
     # Extract raster data.
-    dem_array, dem_x, dem_y, mask_shape, image_res = rat.extractRasterParams(
-        demFile, 'array', 'x', 'y', 'shape', 'res'
-    )
+    dem_array, image_shape, image_gt = rat.extractRasterParams(demFile, 'array', 'shape', 'geo_trans')
+    image_dx = image_gt[1]
+    image_dy = image_gt[5]
+    image_res = abs(image_dx)
     match_array = rat.extractRasterParams(matchFile, 'array')
     ortho_array = rat.extractRasterParams(orthoFile, 'array')
 
     # Raster size consistency checks
-    if match_array.shape != mask_shape:
+    if match_array.shape != image_shape:
         raise RasterDimensionError("matchFile '{}' dimensions {} do not match dem dimensions {}".format(
-                                   matchFile, match_array.shape, mask_shape))
+                                   matchFile, match_array.shape, image_shape))
 
     # FIXME: Mirror functionality from MATLAB code to allow correcting the following dimension error?
-    if ortho_array.shape != mask_shape:
+    if ortho_array.shape != image_shape:
         raise RasterDimensionError("orthoFile '{}' dimensions {} do not match dem dimensions {}".format(
-                                   orthoFile, ortho_array.shape, mask_shape))
+                                   orthoFile, ortho_array.shape, image_shape))
         # warn("orthoFile '{}' dimensions {} do not match dem dimensions {}".format(
         #     orthoFile, ortho_array.shape, mask_shape))
 
@@ -258,10 +256,11 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
     # Re-scale ortho data if WorldView correction is detected in the meta file.
     if maxDN is not None:
         print "rescaled to: 0 to {}".format(maxDN)
-        # TODO: Combine the following two functions once testing is complete?
         ortho_array = rescaleDN(ortho_array, maxDN)
-        ortho_array = DG_DN2RAD(ortho_array, satID=satID, effectiveBandwith=effbw, abscalFactor=abscalfact)
-        print "radiance value range: {:.2f} to {:.2f}".format(np.nanmin(ortho_array), np.nanmax(ortho_array))
+
+    # Convert ortho data to radiance.
+    ortho_array = DG_DN2RAD(ortho_array, satID=satID, effectiveBandwith=effbw, abscalFactor=abscalfact)
+    print "radiance value range: {:.2f} to {:.2f}".format(np.nanmin(ortho_array), np.nanmax(ortho_array))
 
     # Resize arrays to processing resolution.
     if image_res != processing_res:
@@ -269,16 +268,26 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
         dem_array        = rat.imresize(dem_array,        resize_factor)
         ortho_array      = rat.imresize(ortho_array,      resize_factor)
         data_density_map = rat.imresize(data_density_map, resize_factor)
+        processing_dy, processing_dx = image_res * np.array(image_shape) / np.array(dem_array.shape)
+    else:
+        processing_dx = processing_res
+        processing_dy = processing_res
+
+    # Coordinate ascending/descending directionality affects gradient used in getSlopeMask.
+    if image_dx < 0:
+        processing_dx = -processing_dx
+    if image_dy < 0:
+        processing_dy = -processing_dy
 
     # Set data density map no data.
     data_density_map[np.isnan(dem_array)] = np.nan
 
     # Mask edges using dem slope.
-    mask = getEdgeMask(getSlopeMask(dem_array, dem_y, dem_x, source_res=image_res))
+    mask = getEdgeMask(getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res))
     dem_array[~mask] = np.nan
     if not np.any(~np.isnan(dem_array)):
         return mask
-    del mask, dem_y, dem_x
+    del mask
 
     # Mask water.
     ortho_array[np.isnan(dem_array)] = 0
@@ -298,9 +307,8 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
     mask = ~np.isnan(dem_array)
     if not np.any(mask):
         return mask
-
     mask = rat.bwareaopen(mask, min_data_cluster, in_place=True)
-    mask = rat.imresize(mask, mask_shape, 'nearest')
+    mask = rat.imresize(mask, image_shape, 'nearest')
     mask[dem_nodata] = False
 
     return mask
@@ -322,15 +330,20 @@ def mask_v2a(demFile, avg_kernel_size=5,
     matchFile = demFile.replace('dem.tif', 'matchtag.tif')
 
     # Read DEM data and extract information for slope/cloud masking.
-    dem_array, dem_x, dem_y, image_res = rat.extractRasterParams(demFile, 'array', 'x', 'y', 'res')
-    dem_array[dem_array == -9999] = np.nan
-    dy, dx = np.gradient(dem_array, dem_y, dem_x)
+
+    dem_array, image_gt = rat.extractRasterParams(demFile, 'array', 'geo_trans')
+    image_dx = image_gt[1]
+    image_dy = image_gt[5]
+    image_res = abs(image_dx)
+
     if avg_kernel_size is None:
         avg_kernel_size = int(math.floor(21*2/image_res))
-    del dem_x, dem_y
+
+    dem_array[dem_array == -9999] = np.nan
+    dy, dx = np.gradient(dem_array, image_dy, image_dx)
 
     # Mask edges using dem slope.
-    mask = getEdgeMask(getSlopeMask(dem_array, dx=dx, dy=dy, avg_kernel_size=avg_kernel_size))
+    mask = getEdgeMask(getSlopeMask(dem_array, grad_dx=dx, grad_dy=dy, avg_kernel_size=avg_kernel_size))
     dem_array[~mask] = np.nan
     del mask
 
@@ -363,7 +376,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
 
     # Read matchtag and make data density map.
     match_array = rat.extractRasterParams(matchFile, 'array')
-    data_density_map = getDataDensityMap(match_array, avg_kernel_size)
+    data_density_map = getDataDensityMap(match_array, avg_kernel_size, conv_depth='single')
     data_density_map[dem_nodata] = np.nan
 
     # Locate probable cloud pixels.
@@ -381,11 +394,8 @@ def mask_v2a(demFile, avg_kernel_size=5,
 
     # Expand mask to surrounding bad pixels,
     # stop when mask stops growing.
-    dilate_structure = np.ones((iteration_dilate, iteration_dilate), dtype=np.float32)
-    i = 0
+    dilate_structure = np.ones((iteration_dilate, iteration_dilate), dtype=np.uint8)
     while N0 != N1:
-        i += 1
-        print i
         N0 = N1  # Set new to old.
         mask = rat.imdilate(mask, dilate_structure)  # Dilate the mask.
         mask[mask_bkg | (stdev_elev_array < demstdev_iter_thresh)] = False
@@ -408,7 +418,7 @@ def getDataDensityMap(array, kernel_size=11, conv_depth='double'):
     return rat.moving_average(array, kernel_size, shape='same', conv_depth=conv_depth)
 
 
-def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3):
+def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3, conv_depth='single'):
     """
     Return an array masking off areas of poor data coverage in a matchtag array.
 
@@ -438,7 +448,7 @@ def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3):
         To replicate functionality of DataDensityMask.m, pass the result of this function to clean_mask().
 
     """
-    return getDataDensityMap(match_array, kernel_size) >= density_thresh
+    return getDataDensityMap(match_array, kernel_size, conv_depth) >= density_thresh
 
 
 def getEntropyMask(orthoFile,
@@ -532,9 +542,10 @@ def getEntropyMask(orthoFile,
 
 
 def getSlopeMask(dem_array,
-                 y_dem=None, x_dem=None,
-                 input_res=None,
-                 dy=None, dx=None,
+                 res=None,
+                 dx=None, dy=None,
+                 X=None, Y=None,
+                 grad_dx=None, grad_dy=None,
                  source_res=None, avg_kernel_size=None,
                  dilate_bad=13):
     """
@@ -544,22 +555,26 @@ def getSlopeMask(dem_array,
     ----------
     dem_array : ndarray, 2D
         Array containing floating point DEM data.
-    y_dem : ndarray, 1D
-        y-axis coordinate vector for dem_array.
-    x_dem : ndarray, 1D
-        x-axis coordinate vector for dem_array.
-    input_res : None or positive float (meters)
-        Square resolution of pixels in dem_array.
-    dy : ndarray, 2D, shape like dem_array
-        y-axis gradient of dem_array.
-    dx : ndarray, 2D, shape like dem_array
-        x-axis gradient of dem_array.
+    res : None or positive float (meters)
+        Square resolution of pixels in `dem_array`.
+    dx : None or positive int
+        Horizontal length of pixels in `dem_array`.
+    dy : None or positive int
+        Vertical length of pixels in `dem_array`.
+    X : None or (ndarray, 1D)
+        x-axis coordinate vector for `dem_array`.
+    Y : None or (darray, 1D)
+        y-axis coordinate vector for `dem_array`.
+    grad_dx : None or (ndarray, 2D, shape like `dem_array`)
+        x-axis gradient of `dem_array`.
+    grad_dy : None or (ndarray, 2D, shape like `dem_array`)
+        y-axis gradient of `dem_array`.
     source_res : positive float (meters)
         Square resolution of pixels in the source image.
     avg_kernel_size : None or positive int
         Side length of square neighborhood (of ones)
         to be used as kernel for calculating mean slope.
-        If None, is set automatically by source_res.
+        If None, is set automatically by `source_res`.
     dilate_bad : None or positive int
         Side length of square neighborhood (of ones)
         to be used as kernel for dilating masked pixels.
@@ -604,28 +619,31 @@ def getSlopeMask(dem_array,
         To replicate functionality of edgeSlopeMask.m, pass the result of this function to getEdgeMask().
 
     """
-    if not verify_arggroups((input_res, (x_dem, y_dem), (dx, dy))):
+    if not verify_arggroups((res, (dx, dy), (X, Y), (grad_dx, grad_dy))):
         raise InvalidArgumentError(
-            "One type of pixel spacing input (x/y res `input_res`, x and y coordinate vectors "
-            "[`x_dem`, `y_dem`], x and y gradient 2D arrays [`dx`, `dy`]) must be provided"
+            "One type of pixel spacing input ([full regular `res`], [regular x `dx`, regular y `dy`]  "
+            "[x and y coordinate arrays `X` and `Y`], or [x and y gradient 2D arrays `grad_dx` and `grad_dy`]) "
+            "must be provided"
         )
     if avg_kernel_size is None:
         avg_kernel_size = int(math.floor(21*2/source_res))
 
     # Get elevation grade at each pixel.
-    if dx is None:
-        dy, dx = (np.gradient(dem_array, input_res) if input_res is not None
-             else np.gradient(dem_array, y_dem, x_dem))
-    grade = np.sqrt(np.square(dx) + np.square(dy))
+    if grad_dx is None:
+        if res is not None:
+            grad_dy, grad_dx = np.gradient(dem_array, res)
+        elif dx is not None:
+            grad_dy, grad_dx = np.gradient(dem_array, dy, dx)
+        elif X is not None:
+            grad_dy, grad_dx = np.gradient(dem_array, Y, X)
+    grade = np.sqrt(np.square(grad_dx) + np.square(grad_dy))
 
     # Mean grade over n-pixel kernel
-    mean_slope_array = rat.moving_average(grade, avg_kernel_size)
+    mean_slope_array = rat.moving_average(grade, avg_kernel_size, conv_depth='single')
 
     # Mask mean slopes greater than 1.
     mask = mean_slope_array < 1
 
-    # TODO: Check if the following can be accomplished with a binary erosion instead.
-    # -t    Change name of variable dilate_bad (also in docstring) if so.
     if dilate_bad is not None:
         # Dilate high mean slope pixels and set to false.
         mask[rat.imdilate((mean_slope_array > 1), size=dilate_bad)] = False
@@ -710,8 +728,9 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
         return mask
 
     # Calculate standard deviation of elevation.
-    mean_elev_array = rat.moving_average(dem_array, avg_kernel_size, shape='same')
-    stdev_elev_array = rat.moving_average(np.square(dem_array), avg_kernel_size, shape='same') - np.square(mean_elev_array)
+    mean_elev_array = rat.moving_average(dem_array, avg_kernel_size, shape='same', conv_depth='single')
+    stdev_elev_array = (rat.moving_average(np.square(dem_array), avg_kernel_size, shape='same', conv_depth='single')
+                        - np.square(mean_elev_array))
     stdev_elev_array[stdev_elev_array < 0] = 0
     stdev_elev_array = np.sqrt(stdev_elev_array)
 
@@ -1014,6 +1033,8 @@ def DG_DN2RAD(DN,
 
     DN = DN.astype(np.float32)
     DN[DN == 0] = np.nan
+
+    # Calculate radiance.
     return gain*DN*(abscalFactor/effectiveBandwith) + offset
 
 

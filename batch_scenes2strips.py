@@ -75,7 +75,7 @@ def main():
     if not os.path.isfile(qsubpath):
         parser.error("qsubscript path is not valid: {}".format(qsubpath))
     if args.rema2a and (args.edgemask or args.noentropy):
-        parser.error("rema2a and (edgemask, noentropy) filters are incompatible")
+        parser.error("rema2a and (edgemask or noentropy) filters are incompatible")
 
     # Create strip output directory if it doesn't already exist.
     if not os.path.isdir(dstdir):

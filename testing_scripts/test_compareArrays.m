@@ -165,7 +165,7 @@ if display_split
     test_viewArray(diff_bool_disp, diff_bool_title, false);
 end
 
-if display_histogram && length(vals_diff_bool) > 1
+if display_histogram && any(vals_diff_bool == 1)
     figure('Name', sprintf('HIST: %s', figtitle));
     test_histArray(diff, diff_title);
 end
