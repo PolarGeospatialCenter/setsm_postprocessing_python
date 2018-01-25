@@ -1,4 +1,4 @@
-function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, display_image, display_histogram, display_casting, display_split, display_difflate)
+function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen)
 % test_compareImages Reads two input image files into arrays and compares them. If only one image file is given, the image is displayed.
 
 if ~exist('figtitle', 'var') || isempty(figtitle)
@@ -21,6 +21,9 @@ if ~exist('display_split', 'var') || isempty(display_split)
 end
 if ~exist('display_difflate', 'var') || isempty(display_difflate)
     display_difflate = false;
+end
+if ~exist('display_fullscreen', 'var') || isempty(display_fullscreen)
+    display_fullscreen = true;
 end
 
 
@@ -72,20 +75,27 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
         
         [~, imgFname2, ~] = fileparts(imgFile2);
         
-        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFname1, imgFname2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate);
+        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFname1, imgFname2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen);
     end    
 end
 
 if single
+    figure_args_extra = {};
+    if display_fullscreen
+        figure_args_extra = [figure_args_extra, {'units','normalized','outerposition',[0 0 1 1]}];
+    end
+
     if display_histogram
         if any(strcmp(class(arr1), ["single", "double"]))
             arr1(isnan(arr1)) = -inf;
         end
-        figure('Name', sprintf('HIST: %s', figtitle));
+        figure_args = [{'Name', sprintf('HIST: %s', figtitle)}, figure_args_extra];
+        figure(figure_args{:});
         test_histArray(arr1, imgFname1);
     end
     if display_image
-        figure('Name', sprintf('VIEW: %s', figtitle));
+        figure_args = [{'Name', sprintf('VIEW: %s', figtitle)}, figure_args_extra];
+        figure(figure_args{:});
         test_viewArray(arr1, imgFname1, true);
     end
 end

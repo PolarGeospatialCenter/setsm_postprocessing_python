@@ -15,6 +15,7 @@ import numpy as np
 from scipy import interpolate
 
 import raster_array_tools as rat
+from mask_scene import getDataDensityMap
 
 import test
 
@@ -309,8 +310,8 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Coregistration
 
-        P0 = rat.getDataDensityMap(Msub[r[0]:r[1], c[0]:c[1]]) > 0.9
-        P1 = rat.getDataDensityMap(   m[r[0]:r[1], c[0]:c[1]]) > 0.9
+        P0 = getDataDensityMap(Msub[r[0]:r[1], c[0]:c[1]]) > 0.9
+        P1 = getDataDensityMap(   m[r[0]:r[1], c[0]:c[1]]) > 0.9
 
         # Coregister this scene to the strip mosaic.
         trans[:, i], rmse[i] = coregisterdems(

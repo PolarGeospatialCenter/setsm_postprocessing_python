@@ -183,7 +183,7 @@ def mask_v1(matchFile, noentropy=False):
                         like_rasterFile=matchFile, nodataVal=0, dtype_out=np.uint8)
 
 
-def mask_v2(demFile, avg_kernel_size=21, processing_res=32, min_data_cluster=500):
+def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500):
     # TODO: Write my own docstring.
     """
     % MASK ArcticDEM masking algorithm
@@ -370,7 +370,8 @@ def mask_v2a(demFile, avg_kernel_size=5,
     del dk_list, dx, dy, dk, dk_nodata, mean_dk, stdev_dk
 
     stdev_elev_array = np.sqrt(np.square(stdev_dk_list[0]) + np.square(stdev_dk_list[1]))
-    stdev_elev_nodata = rat.imdilate(dk_nodata_list[0] | dk_nodata_list[1], structure=avg_kernel)
+    stdev_elev_nodata = rat.imdilate(dk_nodata_list[0] | dk_nodata_list[1],
+                                     structure=avg_kernel.astype(np.uint8))
     stdev_elev_array[stdev_elev_nodata] = np.nan
     del stdev_dk_list, dk_nodata_list
 
@@ -413,7 +414,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     return ~mask
 
 
-def getDataDensityMap(array, kernel_size=11, conv_depth='double'):
+def getDataDensityMap(array, kernel_size=11, conv_depth='single'):
     # TODO: Write docstring.
     return rat.moving_average(array, kernel_size, shape='same', conv_depth=conv_depth)
 

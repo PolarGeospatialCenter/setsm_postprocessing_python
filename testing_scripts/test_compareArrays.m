@@ -1,4 +1,4 @@
-function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate)
+function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen)
 % Computes difference maps between two input image arrays and displays them with the original images. To better allow for comparison of nodata (NaN) pixel locations, all NaN values in both input arrays are converted to -Inf before differencing (arr2 - arr1).
 
 if ~exist('title1', 'var') || isempty(title1)
@@ -24,6 +24,9 @@ if ~exist('display_split', 'var') || isempty(display_split)
 end
 if ~exist('display_difflate', 'var') || isempty(display_difflate)
     display_difflate = false;
+end
+if ~exist('display_fullscreen', 'var') || isempty(display_fullscreen)
+    display_fullscreen = true;
 end
 
 
@@ -128,10 +131,16 @@ else
     diff_bool_title = 'Boolean Difference';
 end
 
+figure_args_extra = {};
+if display_fullscreen
+    figure_args_extra = [figure_args_extra, {'units','normalized','outerposition',[0 0 1 1]}];
+end
+
 diff_title = sprintf('Difference (%s - %s)', title2, title1);
 
 if display_casting && (arr1_casted || arr2_casted)
-    figure('Name', sprintf('CAST: %s', figtitle));
+    figure_args = [{'Name', sprintf('CAST: %s', figtitle)}, figure_args_extra];
+    figure(figure_args{:});
     subplot(2,2,1);
     test_viewArray(arr1, sprintf('%s (%s)', title1, compare_dtype), false);
     subplot(2,2,2);
@@ -147,7 +156,8 @@ if display_casting && (arr1_casted || arr2_casted)
 end
 
 if display_image
-    figure('Name', sprintf('COMP: %s', figtitle));
+    figure_args = [{'Name', sprintf('COMP: %s', figtitle)}, figure_args_extra];
+    figure(figure_args{:});
     subplot(2,2,1);
     test_viewArray(arr1, title1, false);
     subplot(2,2,2);
@@ -159,9 +169,11 @@ if display_image
 end
 
 if display_split
-    figure('Name', sprintf('DIFF: %s', figtitle));
+    figure_args = [{'Name', sprintf('DIFF: %s', figtitle)}, figure_args_extra];
+    figure(figure_args{:});
     test_viewArray(diff, diff_title, ~display_image);
-    figure('Name', sprintf('BOOL: %s', figtitle));
+    figure_args = [{'Name', sprintf('BOOL: %s', figtitle)}, figure_args_extra];
+    figure(figure_args{:});
     test_viewArray(diff_bool_disp, diff_bool_title, false);
 end
 

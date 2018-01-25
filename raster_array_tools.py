@@ -40,7 +40,7 @@ _outline_every1 = open("outline_every1.c", "r").read()
 RASTER_PARAMS = ['ds', 'shape', 'z', 'array', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
 
 
-warnings.simplefilter('always', UserWarning)
+# warnings.simplefilter('always', UserWarning)
 gdal.UseExceptions()
 
 class RasterIOError(Exception):
@@ -287,21 +287,21 @@ def saveArrayAsTiff(array, dest,
     dtype_in = array.dtype
     promote_dtype = None
     if dtype_in == np.bool:
-        promote_dtype = np.uint8
+        dtype_in = np.uint8  # np.bool values are 8-bit
     elif dtype_in == np.int8:
         promote_dtype = np.int16
     elif dtype_in == np.float16:
         promote_dtype = np.float32
     if promote_dtype is not None:
         warn("Input array data type ({}) does not have equivalent GDAL data type and is not "
-             "supported, but will be safely promoted to {}".format(dtype_in, promote_dtype))
+             "supported, but will be safely promoted to {}".format(dtype_in, promote_dtype(1).dtype))
         array = array.astype(promote_dtype)
         dtype_in = promote_dtype
 
     if dtype_out is not None:
         if dtype_in != dtype_out:
             raise InvalidArgumentError("Input array data type ({}) differs from desired "
-                                       "output data type ({})".format(dtype_in, dtype_out))
+                                       "output data type ({})".format(dtype_in, dtype_out(1).dtype))
     else:
         dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_in)
         if dtype_gdal is None:
@@ -354,7 +354,7 @@ def saveArrayAsTiff(array, dest,
     args.extend(['-co', 'COMPRESS=LZW'])            # Do LZW compression on output image.
     args.extend(['-co', 'TILED=YES'])               # Force creation of tiled TIFF files.
 
-    print "Running: {}".format(' '.join(args))
+    # print "Running: {}".format(' '.join(args))
     check_call(args)
     os.remove(dest_temp)  # Delete the intermediate image.
 
@@ -1016,7 +1016,7 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
             if (isinstance(kernel.dtype.type(1), np.floating)
                 and int(str(kernel.dtype).replace('float', '')) > int(str(dtype_out).replace('float', ''))):
                 warn("Since default_double_out=True, kernel with floating dtype ({}) at greater precision than "
-                     "array floating dtype ({}) is cast to array dtype".format(str(kernel.dtype), str(dtype_out)))
+                     "array floating dtype ({}) is cast to array dtype".format(kernel.dtype, dtype_out))
                 kernel = kernel.astype(dtype_out)
         else:
             dtype_out = np.float64
@@ -1231,12 +1231,12 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
     array_casted = False
     if 'array_dtype_cast' in vars():
         warn(array_dtype_errmsg + "\n-> Casting array from {} to {} for processing".format(
-             str(array_dtype_in), str(array_dtype_cast(1).dtype)))
+             array_dtype_in, array_dtype_cast(1).dtype))
         array = array.astype(array_dtype_cast)
         array_casted = True
     if 'kernel_dtype_cast' in vars():
         warn(kernel_dtype_errmsg + "\n-> Casting kernel from {} to {} for processing".format(
-             str(kernel_dtype_in), str(kernel_dtype_cast(1).dtype)))
+             kernel_dtype_in, kernel_dtype_cast(1).dtype))
         kernel = kernel.astype(kernel_dtype_cast)
 
     # Set convolution depth and output data type.
@@ -1962,7 +1962,7 @@ def imerode_imdilate_cv2(array, structure=None, size=None, iterations=1,
 
         if array_dtype_cast is not None:
             # warn(dtype_errmsg + "\n-> Casting array from {} to {} for processing".format(
-            #      str(array_dtype_in), str(array_dtype_cast(1).dtype)))
+            #      array_dtype_in, array_dtype_cast(1).dtype))
             array = array.astype(array_dtype_cast)
 
         if array_dtype_cast is None:
@@ -1984,7 +1984,7 @@ def imerode_imdilate_cv2(array, structure=None, size=None, iterations=1,
             )
     elif structure.dtype != np.uint8:
         warn("Fast erosion/dilation method only allows structure dtype np.uint8, but was {}".format(structure.dtype)
-             + "\n-> Casting structure from {} to uint8".format(str(structure.dtype)))
+             + "\n-> Casting structure from {} to uint8".format(structure.dtype))
         structure = structure.astype(np.uint8)
 
     rotation_flag = False
