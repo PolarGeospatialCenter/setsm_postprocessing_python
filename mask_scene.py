@@ -138,7 +138,6 @@ def mask_v1(matchFile, noentropy=False):
     print "Using settings for SETSM Version = {}".format(setsmVersion)
 
     match_array, res = rat.extractRasterParams(matchFile, 'array', 'res')
-    match_array = match_array.astype(np.bool)
 
     if setsmVersion < 2.01292016:
         n = int(math.floor(21*2/res))   # data density kernel window size
@@ -524,7 +523,7 @@ def getEntropyMask(orthoFile,
     ortho_subtraction = (  sp_ndimage.maximum_filter1d(ortho_array, kernel_size, axis=0)
                          - sp_ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0))
     if not wvcFlag:
-        ortho_subtraction = ortho_subtraction.astype(np.uint8)
+        ortho_subtraction = rat.astype_cropped(ortho_subtraction, np.uint8, allow_modify_array=True)
 
     # Entropy image
     entropy_array = rat.entropyfilt(ortho_subtraction, np.ones((kernel_size, kernel_size)))
@@ -670,7 +669,7 @@ def getWaterMask(ortho_array, meanSunElevation, data_density_map,
                          - sp_ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0))
 
     # Entropy image
-    entropy_array = rat.entropyfilt(rat.astype_matlab(ortho_subtraction, np.uint8),
+    entropy_array = rat.entropyfilt(rat.astype_cropped(ortho_subtraction, np.uint8, allow_modify_array=True),
                                     np.ones((kernel_size, kernel_size)))
 
     # Set edge-effected values to zero.

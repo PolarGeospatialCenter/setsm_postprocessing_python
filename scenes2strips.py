@@ -254,6 +254,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             # from the boundary coordinates a value between 1 and 2 for every zero corner in Ar
             # (there are usually two) before doing the main interpolation.
             corner_zeros = (np.array(cz_rows), np.array(cz_cols))
+            # FIXME: Check the following casting.
             fn = interpolate.SmoothBivariateSpline(B[0], B[1], Ar[B].astype(np.float64), kx=2, ky=2)
             Ar_interp = fn.ev(corner_zeros[0], corner_zeros[1])
             Ar_interp[Ar_interp < 1] = 1
@@ -272,6 +273,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # Use the coordinates and values of boundary pixels
         # to interpolate values for pixels with value zero.
         Ar_zero_coords = np.where(~Ar_nonzero)
+        # FIXME: Check the following casting.
         Ar_interp = interpolate.griddata(B, Ar[B].astype(np.float64), Ar_zero_coords, 'linear')
         Ar[Ar_zero_coords] = Ar_interp
 

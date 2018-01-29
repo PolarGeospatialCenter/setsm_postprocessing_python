@@ -2,9 +2,9 @@ function test_ibc
 % Image Batch Compare :: A command line program for comparing images between two directories that contain an identical number of TIF files (with matching filename pairs between the two) that meet a certain search criteria set in code.
 
 
-tifDir_ml = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/tif_results/2m';
-tifDir_py = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python_linked/tif_results/2m';
-tifFnameSearch = '*_mask.tif';
+tifDir_ml = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/tif_results/matlab_masks';
+tifDir_py = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python_linked/tif_results/python_masks';
+tifFnameSearch = '*_mask2a.tif';
 
 tifFiles_ml = dir([tifDir_ml,'/',tifFnameSearch]);
 tifFnames = {tifFiles_ml.name};
@@ -68,6 +68,9 @@ while (0 <= index) && (index <= num_tifs)
     
     while true
         fprintf(2, 'index = %d; IBC>> ', index);
+        if index > num_tifs
+            fprintf(2, '(end) ');
+        end
         command = input('', 's');
         if isempty(command) || strcmp(command, 'next')
             break;

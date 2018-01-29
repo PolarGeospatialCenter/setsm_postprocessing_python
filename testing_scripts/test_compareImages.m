@@ -89,8 +89,7 @@ if single
         if any(strcmp(class(arr1), ["single", "double"]))
             arr1(isnan(arr1)) = -inf;
         end
-        figure_args = [{'Name', sprintf('HIST: %s', figtitle)}, figure_args_extra];
-        figure(figure_args{:});
+        figure('Name', sprintf('HIST: %s', figtitle));
         test_histArray(arr1, imgFname1);
     end
     if display_image

@@ -376,11 +376,25 @@ def fix_array_if_rotation_was_applied(array, rotation_flag):
     return np.rot90(array, 2) if rotation_flag else array
 
 
-def round_half_up(array):
-    return np.floor(array + 0.5)
+def array_round_proper(array, in_place):
+    # Round half up for positive X.5,
+    # round half down for negative X.5.
+
+    if not in_place:
+        array = np.copy(array)
+
+    array_gt_zero = array > 0
+    array_lt_zero = array < 0
+
+    array[array_gt_zero] = np.floor(array + 0.5)[array_gt_zero]
+    array[array_lt_zero] =  np.ceil(array - 0.5)[array_lt_zero]
+
+    return array
 
 
-def astype_matlab(array, dtype_out, allow_modify_array=False):
+def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
+    # This function is meant to replicate MATLAB array type casting.
+
     # The trivial case
     if dtype_out == np.bool:
         return array.astype(dtype_out)
@@ -389,8 +403,9 @@ def astype_matlab(array, dtype_out, allow_modify_array=False):
     dtype_out_np = dtype_out if type(dtype_out) != np.dtype else dtype_out.type
 
     if isinstance(array_dtype_np(1), np.floating) and isinstance(dtype_out_np(1), np.integer):
-        array = round_half_up(array)
-        allow_modify_array = True
+        # TODO: Consider replacing the following costly call with:
+        # -t    np.around(array)
+        array = array_round_proper(array, allow_modify_array)
 
     return astype_cropped(array, dtype_out_np, allow_modify_array)
 
@@ -632,7 +647,7 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False,
 
 
 def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input',
-             round_half_up=True, one_dim_axis=1):
+             round_proper=True, one_dim_axis=1):
     """
     Resize an array.
 
@@ -667,7 +682,7 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
           - float32 if `array` is floating
         If 'input', the returned array data type will be
         the same as `array` data type.
-    round_half_up : bool
+    round_proper : bool
         If the resized array is converted from floating
         to an integer data type (such as when `float_resize=True`
         and `dtype_out='input'`)...
@@ -781,8 +796,8 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
 
     # Clean up result array.
     if dtype_out == 'input' and result.dtype != array_dtype_in:
-        if round_half_up:
-            result = astype_matlab(result, array_dtype_in, allow_modify_array=True)
+        if round_proper:
+            result = astype_round_and_crop(result, array_dtype_in, allow_modify_array=True)
         else:
             result = astype_cropped(result, array_dtype_in, allow_modify_array=True)
     if one_dim_flag:
@@ -925,7 +940,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
 
     # Clean up result array.
     if result.dtype != dtype_out_np:
-        result = astype_matlab(result, dtype_out_np, allow_modify_array=True)
+        result = astype_round_and_crop(result, dtype_out_np, allow_modify_array=True)
     if one_dim_flag:
         result_size_1d = new_shape[0] if one_dim_axis == 0 else new_shape[1]
         result = np.reshape(result, result_size_1d)
@@ -1022,7 +1037,7 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
             dtype_out = np.float64
 
     if kernel.dtype == np.bool:
-        warn("Boolean data type for kernel is not supported, casting to np.float32")
+        warn("Boolean data type for kernel is not supported, casting to float32")
         kernel = kernel.astype(np.float32)
 
     rotation_flag = False
@@ -1090,6 +1105,7 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
         pady_bot = -pady_bot if pady_bot > 0 else None
         padx_rht = -padx_rht if padx_rht > 0 else None
         result = result[pady_top:pady_bot, padx_lft:padx_rht]
+    # FIXME: Make returned data type function like conv2.
     if default_double_out and result.dtype != dtype_out:
         result = result.astype(dtype_out)
 
@@ -1230,13 +1246,15 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
     # to continue with faster and more reliable convolution method.
     array_casted = False
     if 'array_dtype_cast' in vars():
-        warn(array_dtype_errmsg + "\n-> Casting array from {} to {} for processing".format(
-             array_dtype_in, array_dtype_cast(1).dtype))
+        if array_dtype_in != np.bool:
+            warn(array_dtype_errmsg + "\n-> Casting array from {} to {} for processing".format(
+                 array_dtype_in, array_dtype_cast(1).dtype))
         array = array.astype(array_dtype_cast)
         array_casted = True
     if 'kernel_dtype_cast' in vars():
-        warn(kernel_dtype_errmsg + "\n-> Casting kernel from {} to {} for processing".format(
-             kernel_dtype_in, kernel_dtype_cast(1).dtype))
+        if array_dtype_in != np.bool:
+            warn(kernel_dtype_errmsg + "\n-> Casting kernel from {} to {} for processing".format(
+                 kernel_dtype_in, kernel_dtype_cast(1).dtype))
         kernel = kernel.astype(kernel_dtype_cast)
 
     # Set convolution depth and output data type.
@@ -1317,7 +1335,7 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
         elif result.dtype == np.float64:
             result[(-1.0e-15 < result) & (result < 1.0e-15)] = 0
     if result.dtype != dtype_out:
-        result = result.astype(dtype_out)
+        result = astype_round_and_crop(result, dtype_out, allow_modify_array=True)
 
     # Crop result if necessary.
     if shape == 'valid':
@@ -1583,7 +1601,7 @@ def imerode_slow(array, structure=None, size=None, iterations=1, mode='auto',
                 "`size` type may only be int or tuple, but was {} (size={})".format(type(size), size)
             )
     elif cast_structure_for_speed and structure.dtype != np.float32:
-            structure = structure.astype(np.float32)
+        structure = structure.astype(np.float32)
 
     if mode == 'auto':
         # FIXME: Get new time coefficients for faster conv2 function now being used.
@@ -2138,17 +2156,19 @@ def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
 
 
 def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
-                symmetric_border=True):
+                scale_from='dtype_max', symmetric_border=True, allow_modify_array=False):
     """
     Calculate local entropy of a grayscale image.
 
-    If the numerical range of data in `array` is greater than
-    the provided maximum number of bins (through either `nbins`
-    or `bin_bitdepth`), data values are scaled to fit within this
-    range and cast to an integer data type before entropy calculation.
+    If the numerical range of data in `array` is greater than the
+    provided maximum number of bins (through either `nbins` or
+    `bin_bitdepth`), data values are scaled down to fit within the
+    number of bins (as a range of continuous integers) and cast to an
+    integer data type before entropy calculation.
     If `array` data type is floating, values are rounded and cast to
-    an integer data type regardless, but no pre-scaling is applied if
-    the input data range is within the maximum number of bins.
+    an integer data type regardless, but (if `scale_from='array_range'`)
+    no pre-scaling is applied if the input data range is within the
+    maximum number of bins.
 
     Parameters
     ----------
@@ -2160,13 +2180,25 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
         Scale `array` data to fit in `2^bin_bitdepth` bins for
         entropy calculation if range of values is greater than
         number of bins.
-        If None, `nbins` must be provided.
+        If None, `nbins` must be provided and this is set by
+        `bin_bitdepth = math.log(nbins, 2)`.
     nbins : None or `2 <= int <= 2^16`
         (If not None, overrides `bin_bitdepth`)
         Scale `array` data to fit in `nbins` bins for entropy
+        calculation if necessary. for entropy
         calculation if range of values is greater than number
         of bins.
         If None, `bin_bitdepth` must be provided.
+    scale_from : str; 'dtype_max' or 'array_range'
+        If 'dtype_max' and bitdepth of `array` data type is
+        greater than `bin_bitdepth`, scale array data to fit
+        in `nbins` bins by first dividing array values by the
+        maximum possible value for the input array data type
+        before multiplying by `nbins`.
+        If 'array_range' and the range of values in `array` is
+        greater than `nbins`, scale array data by translating
+        the minimum array value to zero then dividing values
+        by the maximum array value before multiplying by `nbins`.
     symmetric_border : bool
         If True, pads `array` edges with the reflections of
         each edge so that `kernel` picks up these values when
@@ -2174,7 +2206,11 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
         calculations. Mimics MATLAB's `entropyfilt` function [2].
         If False, only values within the bounds of `array` are
         considered during entropy calculations.
-
+    allow_modify_array : bool
+        (Option only applies for floating `array`.)
+        Allow modifying values in `array` to save some memory
+        allocation in the case that rounding of data values is
+        performed on the input array itself.
 
     Returns
     -------
@@ -2217,31 +2253,55 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
                                        "but was {}".format(nbins))
 
     # Check array data type.
+    array_backup = array
     array_dtype_in = array.dtype
+    array_dtype_bitdepth = None
+    array_dtype_max = None
+    array_dtype_unsigned = False
     if array_dtype_in == np.bool:
         array_dtype_bitdepth = 1
+        array_dtype_max = 1
     if isinstance(array_dtype_in.type(1), np.integer):
         array_dtype_bitdepth = int(str(array_dtype_in).split('int')[-1])
+        array_dtype_max = np.iinfo(array_dtype_in).max
+        if array_dtype_in.kind == 'u':
+            array_dtype_unsigned = True
     elif isinstance(array_dtype_in.type(1), np.floating):
         array_dtype_bitdepth = np.inf
+        array_dtype_max = np.finfo(array_dtype_in).max
     else:
         raise UnsupportedDataTypeError("array dtype {} is not supported".format(array_dtype_in))
 
     # Create scaled-down version of array according
     # to input bin_bitdepth or number of bins nbins.
-    bin_array = None
-    if array_dtype_bitdepth <= bin_bitdepth and array_dtype_in in (np.bool, np.uint8, np.uint16):
-        bin_array = array
+    if nbins is None:
+        nbins = 2**bin_bitdepth
+
+    if scale_from == 'dtype_max' and not array_dtype_unsigned:
+        # For signed array data types, bin_array_max is a one-sided limit.
+        # For even values of nbins, let nbins be decreased by one to accomodate.
+        if nbins == 2:
+            raise InvalidArgumentError("`nbins` must be >= 3 for signed `array` data type "
+                                       "when scale_from='dtype_max'")
+        bin_array_max = int(np.ceil(nbins/2) - 1)
     else:
+        bin_array_max = nbins - 1
+
+    bin_array = None
+    if array_dtype_bitdepth <= bin_bitdepth:
+        bin_array = array
+
+    elif scale_from == 'dtype_max':
+        if not isinstance(array_dtype_in.type(1), np.floating):
+            array = array.astype(np.float32) if array_dtype_bitdepth <= 16 else array.astype(np.float64)
+        bin_array = array / array_dtype_max * bin_array_max
+
+    elif scale_from == 'array_range':
         array_min = np.nanmin(array)
         array_max = np.nanmax(array)
         array_range = array_max - array_min
 
-        if nbins is None:
-            nbins = 2**bin_bitdepth
-        bin_array_max = nbins - 1
-
-        if array_range <= bin_array_max:
+        if array_range < nbins:
             if array_min >= 0 and array_max <= np.iinfo(np.uint16).max:
                 bin_array = array
             else:
@@ -2249,7 +2309,7 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
                 # matter to entropy filter, shift array values so that minimum
                 # is set to zero.
                 if isinstance(array_dtype_in.type(1), np.floating):
-                    array = round_half_up(array)
+                    array = array_round_proper(array, allow_modify_array)
                 bin_array = np.empty_like(array, np.uint16)
                 np.subtract(array, array_min, out=bin_array, casting='unsafe')
         else:
@@ -2257,7 +2317,7 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
             # then scale to maximum number of bins.
             if not isinstance(array_dtype_in.type(1), np.floating):
                 array = array.astype(np.float32) if array_dtype_bitdepth <= 16 else array.astype(np.float64)
-            bin_array = round_half_up((array - array_min) / array_range * bin_array_max)
+            bin_array = (array - array_min) / array_range * bin_array_max
 
     # Convert bin array to uint16.
     # This is to both catch integer/floating arrays and
@@ -2266,7 +2326,9 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
     # faster than uint8.
     if bin_array.dtype != np.uint16:
         if isinstance(bin_array.dtype.type(1), np.floating):
-            bin_array = round_half_up(bin_array)
+            if bin_array is not array_backup:
+                allow_modify_array = True
+            bin_array = array_round_proper(bin_array, allow_modify_array)
         bin_array = bin_array.astype(np.uint16)
 
     # Edge settings
