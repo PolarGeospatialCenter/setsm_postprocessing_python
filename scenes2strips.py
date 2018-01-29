@@ -361,7 +361,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border 0's introduced by NaN interpolation.
         M3 = ~np.isnan(zi)
-        M3 = rat.imerode(M3, size=6)  # border cutline
+        M3 = rat.imerode(M3, 6)  # border cutline
 
         zi[~M3] = np.nan
         mi[~M3] = 0
@@ -369,7 +369,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Remove border on orthos separately.
         M4 = (oi != 0)
-        M4 = rat.imerode(M4, size=6)
+        M4 = rat.imerode(M4, 6)
         oi[~M4] = 0
         del M4
 

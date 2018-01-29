@@ -369,8 +369,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     del dk_list, dx, dy, dk, dk_nodata, mean_dk, stdev_dk
 
     stdev_elev_array = np.sqrt(np.square(stdev_dk_list[0]) + np.square(stdev_dk_list[1]))
-    stdev_elev_nodata = rat.imdilate(dk_nodata_list[0] | dk_nodata_list[1],
-                                     structure=avg_kernel.astype(np.uint8))
+    stdev_elev_nodata = rat.imdilate(dk_nodata_list[0] | dk_nodata_list[1], avg_kernel.astype(np.uint8))
     stdev_elev_array[stdev_elev_nodata] = np.nan
     del stdev_dk_list, dk_nodata_list
 
@@ -405,7 +404,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     mask = ~rat.bwareaopen(~mask, max_hole_fill, in_place=True)
 
     # Remove border effect.
-    mask = mask | rat.imdilate(dem_nodata, size=dilate_bad)
+    mask = mask | rat.imdilate(dem_nodata, dilate_bad)
 
     # remove small data gaps.
     mask = ~rat.bwareaopen(~mask, max_hole_fill, in_place=True)
@@ -526,7 +525,7 @@ def getEntropyMask(orthoFile,
         ortho_subtraction = rat.astype_cropped(ortho_subtraction, np.uint8, allow_modify_array=True)
 
     # Entropy image
-    entropy_array = rat.entropyfilt(ortho_subtraction, np.ones((kernel_size, kernel_size)))
+    entropy_array = rat.entropyfilt(ortho_subtraction, kernel_size)
     mask = (entropy_array < entropy_thresh)
     del entropy_array
 
@@ -646,7 +645,7 @@ def getSlopeMask(dem_array,
 
     if dilate_bad is not None:
         # Dilate high mean slope pixels and set to false.
-        mask[rat.imdilate((mean_slope_array > 1), size=dilate_bad)] = False
+        mask[rat.imdilate((mean_slope_array > 1), dilate_bad)] = False
 
     return mask
 
@@ -670,7 +669,7 @@ def getWaterMask(ortho_array, meanSunElevation, data_density_map,
 
     # Entropy image
     entropy_array = rat.entropyfilt(rat.astype_cropped(ortho_subtraction, np.uint8, allow_modify_array=True),
-                                    np.ones((kernel_size, kernel_size)))
+                                    kernel_size)
 
     # Set edge-effected values to zero.
     entropy_array[ortho_array == 0] = 0
@@ -682,7 +681,7 @@ def getWaterMask(ortho_array, meanSunElevation, data_density_map,
     entropy_mask = rat.bwareaopen(entropy_mask, min_data_cluster, in_place=True)
 
     # Dilate masked pixels.
-    entropy_mask = rat.imdilate(entropy_mask, size=dilate)
+    entropy_mask = rat.imdilate(entropy_mask, dilate)
 
     # Mask data with low radiance and matchpoint density.
     radiance_mask = ((ortho_array != 0) & (ortho_array < ortho_thresh) & (data_density_map < data_density_thresh))
@@ -768,13 +767,13 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     mask = rat.bwareaopen(mask, min_nodata_cluster, in_place=True)
 
     # Remove thin borders caused by cliffs/ridges.
-    mask_edge = rat.imerode(mask, size=erode_border)
-    mask_edge = rat.imdilate(mask_edge, size=dilate_border)
+    mask_edge = rat.imerode(mask, erode_border)
+    mask_edge = rat.imdilate(mask_edge, dilate_border)
 
     mask = (mask & mask_edge)
 
     # Dilate nodata.
-    mask = rat.imdilate(mask, size=dilate_bad)
+    mask = rat.imdilate(mask, dilate_bad)
 
     # Remove small clusters of unfiltered data.
     mask = ~rat.bwareaopen(~mask, min_data_cluster, in_place=True)
@@ -859,7 +858,7 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
     mask = rat.concave_hull_image(mask, hull_concavity)
 
     if crop is not None:
-        mask = rat.imerode(mask, size=crop)
+        mask = rat.imerode(mask, crop)
 
     return mask
 

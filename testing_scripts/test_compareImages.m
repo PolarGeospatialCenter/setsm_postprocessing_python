@@ -1,4 +1,4 @@
-function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen)
+function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, display_image, display_histogram, display_casting, display_split, display_difflate, display_small)
 % test_compareImages Reads two input image files into arrays and compares them. If only one image file is given, the image is displayed.
 
 if ~exist('figtitle', 'var') || isempty(figtitle)
@@ -22,8 +22,8 @@ end
 if ~exist('display_difflate', 'var') || isempty(display_difflate)
     display_difflate = false;
 end
-if ~exist('display_fullscreen', 'var') || isempty(display_fullscreen)
-    display_fullscreen = true;
+if ~exist('display_small', 'var') || isempty(display_small)
+    display_small = false;
 end
 
 
@@ -75,13 +75,13 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
         
         [~, imgFname2, ~] = fileparts(imgFile2);
         
-        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFname1, imgFname2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen);
+        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFname1, imgFname2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
     end    
 end
 
 if single
     figure_args_extra = {};
-    if display_fullscreen
+    if ~display_small
         figure_args_extra = [figure_args_extra, {'units','normalized','outerposition',[0 0 1 1]}];
     end
 

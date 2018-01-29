@@ -1,4 +1,4 @@
-function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen)
+function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_small)
 % Computes difference maps between two input image arrays and displays them with the original images. To better allow for comparison of nodata (NaN) pixel locations, all NaN values in both input arrays are converted to -Inf before differencing (arr2 - arr1).
 
 if ~exist('title1', 'var') || isempty(title1)
@@ -25,8 +25,8 @@ end
 if ~exist('display_difflate', 'var') || isempty(display_difflate)
     display_difflate = false;
 end
-if ~exist('display_fullscreen', 'var') || isempty(display_fullscreen)
-    display_fullscreen = true;
+if ~exist('display_small', 'var') || isempty(display_small)
+    display_small = false;
 end
 
 
@@ -132,7 +132,7 @@ else
 end
 
 figure_args_extra = {};
-if display_fullscreen
+if ~display_small
     figure_args_extra = [figure_args_extra, {'units','normalized','outerposition',[0 0 1 1]}];
 end
 

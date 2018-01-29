@@ -1393,8 +1393,8 @@ def filter2(array, kernel, shape='full', zero_border=True, conv_depth='default',
                  nan_over_zero, allow_flipped_processing)
 
 
-def moving_average(array, size=None, kernel=None, shape='same',
-                   conv_depth='default', allow_flipped_processing=True):
+def moving_average(array, nhood, shape='same', conv_depth='default',
+                   allow_flipped_processing=True):
     """
     Calculate the moving average over an array.
 
@@ -1402,15 +1402,11 @@ def moving_average(array, size=None, kernel=None, shape='same',
     ----------
     array : ndarray, 2D
         Array for which to calculate the moving average.
-    size : None, positive int less than shortest side length of `array`,
-           or array shape tuple smaller than shape of `array`
-        Side length or shape of kernel (of ones)
-        to be treated as `kernel` argument.
-        If None, `kernel` must be provided.
-    kernel : None or (ndarray, 2D, smaller shape than `array`)
-        Binary array specifying neighborhood
-        of values to be averaged.
-        If None, `size` must be provided.
+    nhood : positive int, tuple like `array.shape`, or (ndarray, 2D)
+        If an integer / tuple, specifies the side length / shape
+        of structure (of ones) to be used as structure for moving window.
+        If ndarray, must be a binary array with True/1-valued elements
+        specifying the structure for moving window.
     shape :
         See documentation for `conv2`.
     conv_depth : str; 'default', 'single', or 'double'
@@ -1432,8 +1428,15 @@ def moving_average(array, size=None, kernel=None, shape='same',
     """
     conv_dtype_choices = ('default', 'single', 'double')
 
-    if size is None and kernel is None:
-        raise InvalidArgumentError("Either `kernel_size` or `kernel` must be provided")
+    structure = None
+    if type(nhood) in (int, tuple):
+        size = nhood
+    elif type(nhood) == np.ndarray:
+        structure = nhood
+    else:
+        raise InvalidArgumentError("`nhood` type may only be int, tuple, or ndarray, "
+                                   "but was {} (nhood={})".format(type(nhood), nhood))
+
     if conv_depth not in conv_dtype_choices:
         raise UnsupportedDataTypeError("float_dtype must be one of {}, "
                                        "but was {}".format(conv_dtype_choices, conv_depth))
@@ -1443,23 +1446,20 @@ def moving_average(array, size=None, kernel=None, shape='same',
     else:
         float_dtype = np.float32 if conv_depth == 'single' else np.float64
 
-    if kernel is not None:
-        if not np.any(kernel):
+    if structure is not None:
+        if not np.any(structure):
             # The trivial case,
             # must be handled to prevent divide by zero error.
             return np.zeros_like(array, float_dtype)
-        if np.any(~np.logical_or(kernel == 0, kernel == 1)):
-            raise InvalidArgumentError("`kernel` may only contain zeros and ones")
+        if np.any(~np.logical_or(structure == 0, structure == 1)):
+            raise InvalidArgumentError("`structure` may only contain zeros and ones")
     else:
         if type(size) == int:
-            kernel = np.ones((size, size), dtype=float_dtype)
+            structure = np.ones((size, size), dtype=float_dtype)
         elif type(size) == tuple:
-            kernel = np.ones(size, dtype=float_dtype)
-        else:
-            raise InvalidArgumentError("`size` type may only be int or tuple, "
-                                       "but was {} (size={})".format(type(size), size))
+            structure = np.ones(size, dtype=float_dtype)
 
-    conv_kernel = np.rot90(np.divide(kernel, np.sum(kernel), dtype=float_dtype), 2)
+    conv_kernel = np.rot90(np.divide(structure, np.sum(structure), dtype=float_dtype), 2)
 
     return conv2(array, conv_kernel, shape, conv_depth=conv_depth,
                  allow_flipped_processing=allow_flipped_processing)
@@ -1498,7 +1498,7 @@ def conv_binary_structure_prevent_overflow(array, structure):
     return structure
 
 
-def imerode_slow(array, structure=None, size=None, iterations=1, mode='auto',
+def imerode_slow(array, nhood, iterations=1, mode='auto',
                  cast_structure_for_speed=True, allow_flipped_processing=True):
     """
     Erode an array with the provided binary structure.
@@ -1507,15 +1507,11 @@ def imerode_slow(array, structure=None, size=None, iterations=1, mode='auto',
     ----------
     array : ndarray, 2D
         Array to erode.
-    structure : None or (ndarray, 2D, smaller shape than `array`)
-        Binary array with True/1-valued elements specifying the structure for erosion.
-        `structure` must either have boolean data type or contain only the values 0 and 1.
-        If None, `size` must be provided.
-    size : None, positive int less than shortest side length of `array`,
-           or array shape tuple smaller than shape of `array`
-        Side length or shape of structure (of ones)
-        to be used as structure for erosion.
-        If None, `structure` must be provided.
+    nhood : positive int, tuple like `array.shape`, or (ndarray, 2D)
+        If an integer / tuple, specifies the side length / shape
+        of structure (of ones) to be used as structure for erosion.
+        If ndarray, must be a binary array with True/1-valued elements
+        specifying the structure for erosion.
     iterations : positive int
         Number of times to perform the erosion.
     mode : str; 'auto', 'conv', 'skimage', 'scipy', or 'scipy_grey'
@@ -1583,25 +1579,23 @@ def imerode_slow(array, structure=None, size=None, iterations=1, mode='auto',
     """
     mode_choices = ('auto', 'conv', 'skimage', 'scipy', 'scipy_grey')
 
-    if size is None and structure is None:
-        raise InvalidArgumentError("Either `size` or `structure` must be provided")
-    if (     structure is not None
-        and (structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1))) ):
-        raise InvalidArgumentError("`structure` contains values other than 0 and 1")
+    structure = None
+    if type(nhood) == int:
+        structure = np.ones((nhood, nhood), dtype=np.float32)
+    elif type(nhood) == tuple:
+        structure = np.ones(nhood, dtype=np.float32)
+    elif type(nhood) == np.ndarray:
+        structure = nhood
+        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+            raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
+        if cast_structure_for_speed and structure.dtype != np.float32:
+            structure = structure.astype(np.float32)
+    else:
+        raise InvalidArgumentError("`nhood` type may only be int, tuple, or ndarray, "
+                                   "but was {} (nhood={})".format(type(nhood), nhood))
+
     if mode not in mode_choices:
         raise UnsupportedMethodError("'mode' must be one of {}, but was '{}'".format(mode_choices, mode))
-
-    if structure is None:
-        if type(size) == int:
-            structure = np.ones((size, size), dtype=np.float32)
-        elif type(size) == tuple:
-            structure = np.ones(size, dtype=np.float32)
-        else:
-            raise InvalidArgumentError(
-                "`size` type may only be int or tuple, but was {} (size={})".format(type(size), size)
-            )
-    elif cast_structure_for_speed and structure.dtype != np.float32:
-        structure = structure.astype(np.float32)
 
     if mode == 'auto':
         # FIXME: Get new time coefficients for faster conv2 function now being used.
@@ -1698,7 +1692,7 @@ def imerode_slow(array, structure=None, size=None, iterations=1, mode='auto',
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def imdilate_slow(array, structure=None, size=None, iterations=1, mode='auto',
+def imdilate_slow(array, nhood, iterations=1, mode='auto',
                   cast_structure_for_speed=True, allow_flipped_processing=True):
     """
     Dilate an array with the provided binary structure.
@@ -1707,15 +1701,11 @@ def imdilate_slow(array, structure=None, size=None, iterations=1, mode='auto',
     ----------
     array : ndarray, 2D
         Array to dilate.
-    structure : None or (ndarray, 2D, smaller shape than `array`)
-        Binary array with True/1-valued elements specifying the structure for dilation.
-        `structure` must either have boolean data type or contain only the values 0 and 1.
-        If None, `size` must be provided.
-    size : None, positive int less than shortest side length of `array`,
-           or array shape tuple smaller than shape of `array`
-        Side length or shape of structure (of ones)
-        to be used as structure for dilation.
-        If None, `structure` must be provided.
+    nhood : positive int, tuple like `array.shape`, or (ndarray, 2D)
+        If an integer / tuple, specifies the side length / shape
+        of structure (of ones) to be used as structure for dilation.
+        If ndarray, must be a binary array with True/1-valued elements
+        specifying the structure for dilation.
     iterations : positive int
         Number of times to perform the dilation.
     mode : str; 'auto', 'conv', 'skimage', 'scipy', or 'scipy_grey'
@@ -1783,25 +1773,23 @@ def imdilate_slow(array, structure=None, size=None, iterations=1, mode='auto',
     """
     mode_choices = ('auto', 'conv', 'skimage', 'scipy', 'scipy_grey')
 
-    if size is None and structure is None:
-        raise InvalidArgumentError("Either `size` or `structure` must be provided")
-    if (     structure is not None
-        and (structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1))) ):
-        raise InvalidArgumentError("`structure` contains values other than 0 and 1")
+    structure = None
+    if type(nhood) == int:
+        structure = np.ones((nhood, nhood), dtype=np.float32)
+    elif type(nhood) == tuple:
+        structure = np.ones(nhood, dtype=np.float32)
+    elif type(nhood) == np.ndarray:
+        structure = nhood
+        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+            raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
+        if cast_structure_for_speed and structure.dtype != np.float32:
+            structure = structure.astype(np.float32)
+    else:
+        raise InvalidArgumentError("`nhood` type may only be int, tuple, or ndarray, "
+                                   "but was {} (nhood={})".format(type(nhood), nhood))
+
     if mode not in mode_choices:
         raise UnsupportedMethodError("'mode' must be one of {}, but was '{}'".format(mode_choices, mode))
-
-    if structure is None:
-        if type(size) == int:
-            structure = np.ones((size, size), dtype=np.float32)
-        elif type(size) == tuple:
-            structure = np.ones(size, dtype=np.float32)
-        else:
-            raise InvalidArgumentError(
-                "`size` type may only be int or tuple, but was {} (size={})".format(type(size), size)
-            )
-    elif cast_structure_for_speed and structure.dtype != np.float32:
-        structure = structure.astype(np.float32)
 
     if mode == 'auto':
         # FIXME: Get new time coefficients for faster conv2 function now being used.
@@ -1877,31 +1865,27 @@ def imdilate_slow(array, structure=None, size=None, iterations=1, mode='auto',
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def imerode(array, structure=None, size=None, iterations=1,
-            allow_flipped_processing=True):
+def imerode(array, nhood, iterations=1, allow_flipped_processing=True):
     """
     Erode an array with the provided binary structure.
 
     See documentation for `imerode_imdilate_cv2`.
 
     """
-    return imerode_imdilate_cv2(array, structure, size, iterations,
-                                allow_flipped_processing, erode=True)
+    return imerode_imdilate_cv2(array, nhood, iterations, allow_flipped_processing, erode=True)
 
 
-def imdilate(array, structure=None, size=None, iterations=1,
-             allow_flipped_processing=True):
+def imdilate(array, nhood, iterations=1, allow_flipped_processing=True):
     """
     Dilate an array with the provided binary structure.
 
     See documentation for `imerode_imdilate_cv2`.
 
     """
-    return imerode_imdilate_cv2(array, structure, size, iterations,
-                                allow_flipped_processing, erode=False)
+    return imerode_imdilate_cv2(array, nhood, iterations, allow_flipped_processing, erode=False)
 
 
-def imerode_imdilate_cv2(array, structure=None, size=None, iterations=1,
+def imerode_imdilate_cv2(array, nhood, iterations=1,
                          allow_flipped_processing=True, erode=True):
     """
     Erode/Dilate an array with the provided binary structure.
@@ -1910,15 +1894,11 @@ def imerode_imdilate_cv2(array, structure=None, size=None, iterations=1,
     ----------
     array : ndarray, 2D
         Array to erode/dilate.
-    structure : None or (ndarray, 2D, smaller shape than `array`)
-        Binary array with True/1-valued elements specifying the structure for erosion/dilation.
-        `structure` must either have boolean data type or contain only the values 0 and 1.
-        If None, `size` must be provided.
-    size : None, positive int less than shortest side length of `array`,
-           or array shape tuple smaller than shape of `array`
-        Side length or shape of structure (of ones)
-        to be used as structure for erosion/dilation.
-        If None, `structure` must be provided.
+    nhood : positive int, tuple like `array.shape`, or (ndarray, 2D)
+        If an integer / tuple, specifies the side length / shape
+        of structure (of ones) to be used as structure for erosion/dilation.
+        If ndarray, must be a binary array with True/1-valued elements
+        specifying the structure for erosion/dilation.
     iterations : positive int
         Number of times to perform the erosion/dilation.
     allow_flipped_processing : bool
@@ -1955,11 +1935,18 @@ def imerode_imdilate_cv2(array, structure=None, size=None, iterations=1,
     .. [3] https://www.mathworks.com/help/images/ref/imdilate.html
 
     """
-    if size is None and structure is None:
-        raise InvalidArgumentError("Either `size` or `structure` must be provided")
-    if (     structure is not None
-        and (structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1))) ):
-        raise InvalidArgumentError("`structure` contains values other than 0 and 1")
+    structure = None
+    if type(nhood) == int:
+        structure = np.ones((nhood, nhood), dtype=np.uint8)
+    elif type(nhood) == tuple:
+        structure = np.ones(nhood, dtype=np.uint8)
+    elif type(nhood) == np.ndarray:
+        structure = nhood
+        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+            raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
+    else:
+        raise InvalidArgumentError("`nhood` type may only be int, tuple, or ndarray, "
+                                   "but was {} (nhood={})".format(type(nhood), nhood))
 
     cv2_dtypes = [np.uint8, np.int16, np.uint16, np.float32, np.float64]
 
@@ -1987,20 +1974,10 @@ def imerode_imdilate_cv2(array, structure=None, size=None, iterations=1,
             # Fall back to old (slower) imdilate/imerode functions.
             warn(dtype_errmsg + "\n-> Falling back to slower methods")
             fn = imerode_slow if erode else imdilate_slow
-            return fn(array, structure, size, iterations, allow_flipped_processing=allow_flipped_processing)
+            return fn(array, nhood, iterations, allow_flipped_processing=allow_flipped_processing)
 
-    # Create structure if input is size,
-    # else check structure data type.
-    if structure is None:
-        if type(size) == int:
-            structure = np.ones((size, size), dtype=np.uint8)
-        elif type(size) == tuple:
-            structure = np.ones(size, dtype=np.uint8)
-        else:
-            raise InvalidArgumentError(
-                "`size` type may only be int or tuple, but was {} (size={})".format(type(size), size)
-            )
-    elif structure.dtype != np.uint8:
+    # Check structure data type.
+    if structure.dtype != np.uint8:
         warn("Fast erosion/dilation method only allows structure dtype np.uint8, but was {}".format(structure.dtype)
              + "\n-> Casting structure from {} to uint8".format(structure.dtype))
         structure = structure.astype(np.uint8)
@@ -2155,7 +2132,7 @@ def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
     return result
 
 
-def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
+def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbins=None,
                 scale_from='dtype_max', symmetric_border=True, allow_modify_array=False):
     """
     Calculate local entropy of a grayscale image.
@@ -2174,8 +2151,11 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
     ----------
     array : ndarray, 2D
         Array for which to calculate local entropy.
-    kernel : positive int less than shortest side length of `array`,
-             or array shape tuple smaller than shape of `array`
+    nhood : positive int, tuple like `array.shape`, or (ndarray, 2D)
+        If an integer / tuple, specifies the side length / shape
+        of structure (of ones) to be used as structure for filter.
+        If ndarray, must be a binary array with True/1-valued elements
+        specifying the structure for filter.
     bin_bitdepth : None or `1 <= int <= 16`
         Scale `array` data to fit in `2^bin_bitdepth` bins for
         entropy calculation if range of values is greater than
@@ -2237,6 +2217,19 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
     .. [3] https://www.mathworks.com/help/images/ref/entropy.html
 
     """
+    structure = None
+    if type(nhood) == int:
+        structure = np.ones((nhood, nhood), dtype=np.uint8)
+    elif type(nhood) == tuple:
+        structure = np.ones(nhood, dtype=np.uint8)
+    elif type(nhood) == np.ndarray:
+        structure = nhood
+        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+            raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
+    else:
+        raise InvalidArgumentError("`nhood` type may only be int, tuple, or ndarray, "
+                                   "but was {} (nhood={})".format(type(nhood), nhood))
+
     if bin_bitdepth is None and nbins is None:
         raise InvalidArgumentError("Either `bin_bitdepth` or `nbins` must be provided")
     if nbins is None:
@@ -2333,14 +2326,14 @@ def entropyfilt(array, kernel=np.ones((9, 9)), bin_bitdepth=8, nbins=None,
 
     # Edge settings
     if symmetric_border:
-        pady_top, padx_lft = (np.array(kernel.shape) - 1) / 2
-        pady_bot, padx_rht = np.array(kernel.shape) / 2
+        pady_top, padx_lft = (np.array(structure.shape) - 1) / 2
+        pady_bot, padx_rht = np.array(structure.shape) / 2
         pady_top, padx_lft = int(pady_top), int(padx_lft)
         pady_bot, padx_rht = int(pady_bot), int(padx_rht)
         bin_array = np.pad(bin_array, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'symmetric')
 
     # Perform entropy filter.
-    result = entropy(bin_array, kernel)
+    result = entropy(bin_array, structure)
 
     # Crop result if necessary.
     if symmetric_border:

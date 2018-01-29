@@ -59,9 +59,9 @@ fprintf(2, ['' ...
         'remove [selection_1] [selection_2] ... [selection_n]\n' ...
         'delete [selection_1] [selection_2] ... [selection_n]\n' ...
         'refresh\n' ...
-        'view {img/ras} {noimg} {nohist} [selection_1] [selection_2] ... [selection_n]\n' ...
-        'compare {img/ras} {noimg} {nohist} {showcast} {split} {difflate} [selection_1 selection_2]\n' ...
-        'auto {img/ras} {noimg} {nohist} {showcast}\n' ...
+        'view {img/ras} {noimg} {nohist} {small} [selection_1] [selection_2] ... [selection_n]\n' ...
+        'compare {img/ras} {noimg} {nohist} {showcast} {split} {difflate} {small} [selection_1 selection_2]\n' ...
+        'auto {img/ras} {noimg} {nohist} {showcast} {small}\n' ...
         'figclose :: close all figures\n' ...
         'quit :: exit without closing figures\n' ...
         'close :: close all figures and exit\n']);
@@ -267,7 +267,7 @@ while ~ready
                 display_casting = false;
                 display_split = false;
                 display_difflate = false;
-                display_fullscreen = true;
+                display_small = false;
                 if length(command_args) > 1
                     check_options = command_args(2:length(command_args));
                     if ~isempty(cell2mat(arrayfun(@(x) find(strcmp(x, ["image", "img"])), check_options, 'UniformOutput', false)))
@@ -295,9 +295,9 @@ while ~ready
                     if ~isempty(cell2mat(arrayfun(@(x) find(strcmp(x, ["difflate"])), check_options, 'UniformOutput', false)))
                         display_difflate = true;
                     end
-%                     if ~isempty(cell2mat(arrayfun(@(x) find(strcmp(x, ["fullscreen"])), check_options, 'UniformOutput', false)))
-%                         display_fullscreen = true;
-%                     end
+                    if ~isempty(cell2mat(arrayfun(@(x) find(strcmp(x, ["small"])), check_options, 'UniformOutput', false)))
+                        display_small = true;
+                    end
                 end
                 if image_type ~= -1
                     set_image_type = true;
@@ -330,9 +330,9 @@ while ~ready
                     
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
                     fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i);\n", ...
-                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen);
+                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
                     try
-                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram, display_casting, display_split, display_difflate, display_fullscreen);
+                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
                     catch ME
                         fprintf(2, "*** Caught the following error during compare/view ***\n");
                         fprintf(2, "%s\n", getReport(ME));
