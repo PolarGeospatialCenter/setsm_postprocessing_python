@@ -32,6 +32,7 @@ class RasterDimensionError(Exception):
 
 def check_arggroups(arggroup_list, check='exist'):
     # TODO: Write docstring.
+    # FIXME: Find a better home for this function?
 
     check_choices = ('exist', 'full')
     if check not in check_choices:
@@ -58,6 +59,7 @@ def check_arggroups(arggroup_list, check='exist'):
 
 def verify_arggroups(arggroup_list):
     # TODO: Write docstring.
+    # FIXME: Find a better home for this function?
     if (   (check_arggroups(arggroup_list, check='exist').count(True) != 1)
         or (check_arggroups(arggroup_list, check='full').count(True)  != 1)):
         return False
@@ -80,7 +82,7 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False):
             mask = mask_v2(demFile)
         elif maskFileSuffix == 'mask2a':
             mask = mask_v2a(demFile)
-        rat.saveArrayAsTiff(mask, maskFile, like_rasterFile=demFile, nodataVal=0, dtype_out=np.uint8)
+        rat.saveArrayAsTiff(mask, maskFile, like_rasterFile=demFile, nodata_val=0, dtype_out=np.uint8)
 
 
 def mask_v1(matchFile, noentropy=False):
@@ -158,7 +160,7 @@ def mask_v1(matchFile, noentropy=False):
         np.logical_or(edgemask, entropy_mask, out=edgemask)
     edgemask = getEdgeMask(edgemask, min_data_cluster=Amin, hull_concavity=cf, crop=crop)
     rat.saveArrayAsTiff(edgemask, matchFile.replace('matchtag.tif', 'edgemask.tif'),
-                        like_rasterFile=matchFile, nodataVal=0, dtype_out=np.uint8)
+                        like_rasterFile=matchFile, nodata_val=0, dtype_out=np.uint8)
 
     match_array[~edgemask] = 0
     del edgemask
@@ -179,7 +181,7 @@ def mask_v1(matchFile, noentropy=False):
     del match_array
     datamask = clean_mask(datamask, remove_pix=Amin, fill_pix=Amax, in_place=True)
     rat.saveArrayAsTiff(datamask, matchFile.replace('matchtag.tif', 'datamask.tif'),
-                        like_rasterFile=matchFile, nodataVal=0, dtype_out=np.uint8)
+                        like_rasterFile=matchFile, nodata_val=0, dtype_out=np.uint8)
 
 
 def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500):

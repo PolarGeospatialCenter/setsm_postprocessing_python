@@ -548,7 +548,7 @@ def sia_one(array, flavor=None, matchkey=None, descr='', compare=False, concurre
 def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
                proj_ref=None, geotrans_rot_tup=(0, 0),
                like_rasterFile=None,
-               nodataVal=None, dtype_out=None):
+               nodata_val=None, dtype_out=None):
     testFile = getTestFileFromFname(fname)
     if testFile is None:
         return
@@ -561,7 +561,7 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
     rat.saveArrayAsTiff(Z, testFile,
                         X, Y, proj_ref, geotrans_rot_tup,
                         like_rasterFile,
-                        nodataVal, dtype_out)
+                        nodata_val, dtype_out)
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
@@ -599,7 +599,7 @@ def sra(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concur
         Z_copy[np.where(np.isnan(Z_copy))] = nodata
     else:
         Z_copy = Z
-    saveRaster(Z_copy, X, Y, fname=testFname, proj_ref=proj_ref, nodataVal=nodata, dtype_out=fmtstr)
+    saveRaster(Z_copy, X, Y, fname=testFname, proj_ref=proj_ref, nodata_val=nodata, dtype_out=fmtstr)
 
 
 def waitForComparison(expected_imgnum):
@@ -645,7 +645,7 @@ def getFP(demFile):
     demFile = findFile(demFile)
 
     Z, X, Y = rat.extractRasterParams(demFile, 'z', 'x', 'y')
-    fp_vertices = rat.getFPvertices(Z, X, Y, nodataVal=-9999)
+    fp_vertices = rat.getFPvertices(Z, X, Y, nodata_val=-9999)
     num = len(fp_vertices[0])
 
     test_str = (
@@ -669,7 +669,7 @@ def saveDBP(demFile):
     shapefileFile = demFile.replace('dem.tif', 'dem_boundary.shp')
 
     Z, X, Y, proj_ref = rat.extractRasterParams(demFile, 'z', 'x', 'y', 'proj_ref')
-    poly = rat.getDataBoundariesPoly(Z, X, Y, nodataVal=-9999)
+    poly = rat.getDataBoundariesPoly(Z, X, Y, nodata_val=-9999)
     if not poly:
         raise TestingError("Failed to create data cluster boundaries polygon")
 

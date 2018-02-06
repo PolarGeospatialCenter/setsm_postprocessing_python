@@ -5,9 +5,9 @@ function test_ibc
 compare = true;
 
 %% MAKE CHANGES HERE %%
-tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/tif_results/8m';
-tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python_linked/tif_results/8m';
-tifFnameSearch = '*_datamask.tif';
+tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/tif_results/2m';
+tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python_linked/tif_results/2m';
+tifFnameSearch = '*_mask.tif';
 
 tifDir_1_name = 'MATLAB';
 tifDir_2_name = 'Python';

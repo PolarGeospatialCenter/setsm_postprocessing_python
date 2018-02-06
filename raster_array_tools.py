@@ -13,7 +13,6 @@ from collections import deque
 from itertools import product
 from PIL import Image
 from subprocess import check_call
-from traceback import print_exc
 from warnings import warn
 
 import cv2
@@ -31,6 +30,7 @@ from skimage.filters.rank import entropy
 from skimage.util import unique_rows
 
 # TODO: Remove `test` include once testing is complete.
+from DecimatePoly import DecimatePoly
 import test
 
 _outline = open("outline.c", "r").read()
@@ -261,7 +261,7 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
 def saveArrayAsTiff(array, dest,
                     X=None, Y=None, proj_ref=None, geotrans_rot_tup=(0, 0),
                     like_rasterFile=None,
-                    nodataVal=None, dtype_out=None):
+                    nodata_val=None, dtype_out=None):
     # FIXME: Rewrite docstring in new standard.
     """
     Saves a NumPy 2D array as a single-band raster image in GeoTiff format.
@@ -300,8 +300,8 @@ def saveArrayAsTiff(array, dest,
 
     if dtype_out is not None:
         if dtype_in != dtype_out:
-            raise InvalidArgumentError("Input array data type ({}) differs from desired "
-                                       "output data type ({})".format(dtype_in, dtype_out(1).dtype))
+            warn("Input array data type ({}) differs from desired "
+                 "output data type ({})".format(dtype_in, dtype_out(1).dtype))
     else:
         dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_in)
         if dtype_gdal is None:
@@ -346,8 +346,8 @@ def saveArrayAsTiff(array, dest,
     ###################################################
     args = [r'C:\OSGeo4W64\bin\gdal_translate', dest_temp, dest]
 
-    if nodataVal is not None:
-        args.extend(['-a_nodata', str(nodataVal)])  # Create internal nodata mask.
+    if nodata_val is not None:
+        args.extend(['-a_nodata', str(nodata_val)])  # Create internal nodata mask.
 
     args.extend(['-co', 'BIGTIFF=IF_SAFER'])        # Will create BigTIFF
                                                     # :: if the resulting file *might* exceed 4GB.
@@ -376,7 +376,39 @@ def fix_array_if_rotation_was_applied(array, rotation_flag):
     return np.rot90(array, 2) if rotation_flag else array
 
 
+def rot90_pixcoords(coords, shape_in, k=1):
+    row_in, col_in = coords.T
+    k = k % 4
+    if k == 0:
+        row_out = row_in
+        col_out = col_in
+    elif k == 1:
+        row_out = (shape_in[1]-1) - col_in
+        col_out = row_in
+    elif k == 2:
+        row_out = (shape_in[0]-1) - row_in
+        col_out = (shape_in[1]-1) - col_in
+    elif k == 3:
+        row_out = col_in
+        col_out = (shape_in[0]-1) - row_in
+    return np.array([row_out, col_out]).T
+
+
+def flip_pixcoords(coords, shape_in, axis=0):
+    row_in, col_in = coords.T
+    if axis == 0:
+        row_out = (shape_in[0]-1) - row_in
+        col_out = col_in
+    elif axis == 1:
+        row_out = row_in
+        col_out = (shape_in[1]-1) - col_in
+    else:
+        raise InvalidArgumentError("`axis` must be 0 or 1")
+    return np.array([row_out, col_out]).T
+
+
 def array_round_proper(array, in_place):
+    # TODO: Rewrite docstring in new standard.
     # Round half up for positive X.5,
     # round half down for negative X.5.
 
@@ -393,6 +425,7 @@ def array_round_proper(array, in_place):
 
 
 def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
+    # TODO: Rewrite docstring in new standard.
     # This function is meant to replicate MATLAB array type casting.
 
     # The trivial case
@@ -411,6 +444,7 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
 
 
 def astype_cropped(array, dtype_out, allow_modify_array=False):
+    # TODO: Rewrite docstring in new standard.
     # Check for overflow and underflow before converting data types,
     # cropping values to the range of `dtype_out`.
 
@@ -429,43 +463,52 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
     return array_clipped.astype(dtype_out)
 
 
-def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan):
+def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):
+    # TODO: Rewrite docstring in new standard.
     # Rows and columns of Zi outside the domain of Z are made NaN.
     # Assume X and Y coordinates are monotonically increasing/decreasing
     # so hopefully we only need to work a short way inwards from the edges.
 
     Xi_size = Xi.size
     Yi_size = Yi.size
-    Xmin = np.min(X)
-    Xmax = np.max(X)
-    Ymin = np.min(Y)
-    Ymax = np.max(Y)
 
-    if X[0] == Xmin:
+    Xmin = min(X[0], X[-1])
+    Ymax = max(Y[0], Y[-1])
+
+    x_lfttest_val = X[0]
+    x_rgttest_val = X[-1]
+    y_toptest_val = Y[0]
+    y_bottest_val = Y[-1]
+
+    if x_lfttest_val == Xmin:
         # X-coords increase from left to right.
-        x_lfttest_val = Xmin
         x_lfttest_op = operator.lt
-        x_rgttest_val = Xmax
         x_rgttest_op = operator.gt
     else:
         # X-coords decrease from left to right.
-        x_lfttest_val = Xmax
         x_lfttest_op = operator.gt
-        x_rgttest_val = Xmin
         x_rgttest_op = operator.lt
 
-    if Y[0] == Ymax:
+    if y_toptest_val == Ymax:
         # Y-coords decrease from top to bottom.
-        y_toptest_val = Ymax
         y_toptest_op = operator.gt
-        y_bottest_val = Ymin
         y_bottest_op = operator.lt
     else:
         # Y-coords increase from top to bottom.
-        y_toptest_val = Ymin
         y_toptest_op = operator.lt
-        y_bottest_val = Ymax
         y_bottest_op = operator.gt
+
+    if coord_grace:
+        x_grace = (X[1] - X[0]) / 64
+        y_grace = (Y[1] - Y[0]) / 16
+        x_lfttest_val -= x_grace
+        x_rgttest_val += x_grace
+        y_toptest_val -= y_grace
+        y_bottest_val += y_grace
+        x_lfttest_op = operator.le if x_lfttest_op(0, 1) else operator.ge
+        x_rgttest_op = operator.le if x_rgttest_op(0, 1) else operator.ge
+        y_toptest_op = operator.le if y_toptest_op(0, 1) else operator.ge
+        y_bottest_op = operator.le if y_bottest_op(0, 1) else operator.ge
 
     i = 0
     while x_lfttest_op(Xi[i], x_lfttest_val) and i < Xi_size:
@@ -487,7 +530,8 @@ def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan):
     return Zi
 
 
-def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False):
+def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
+    # TODO: Rewrite docstring in new standard.
     """
     Performs a resampling of the input NumPy 2D array [Z],
     from initial grid coordinates [X, Y] to final grid coordinates [Xi, Yi]
@@ -498,7 +542,9 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False):
     """
     interp_dict = {
         'nearest'   : gdal.GRA_NearestNeighbour,
+        'linear'    : gdal.GRA_Bilinear,
         'bilinear'  : gdal.GRA_Bilinear,
+        'cubic'     : gdal.GRA_Cubic,
         'bicubic'   : gdal.GRA_Cubic,
         'spline'    : gdal.GRA_CubicSpline,
         'lanczos'   : gdal.GRA_Lanczos,
@@ -508,7 +554,7 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False):
     try:
         interp_gdal = interp_dict[interp]
     except KeyError:
-        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.vals(), interp))
+        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.keys(), interp))
 
     dtype_in = Z.dtype
     promote_dtype = None
@@ -545,18 +591,18 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False):
     Zi = ds_out.GetRasterBand(1).ReadAsArray()
 
     if not extrapolate:
-        interp2_fill_extrapolate(X, Y, Zi, Xi, Yi)
+        interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, extrap_val)
 
     return Zi
 
 
-def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False,
+def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan,
                   griddata=False,
                   SBS=False,
-                  RGI=False, extrap=True, RGI_fillVal=None,
+                  RGI=False, RGI_extrap=True, RGI_fillVal=None,
                   CLT=False, CLT_fillVal=np.nan,
                   RBS=False):
-    # TODO: Test this function.
+    # TODO: Rewrite docstring in new standard.
     """
     Aims to provide similar functionality to interp2_gdal using SciPy's
     interpolation library. However, initial tests show that interp2_gdal
@@ -565,13 +611,19 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False,
     griddata, SBS, and CLT interpolation methods are not meant to be used
     for the resampling of a large grid as is done here.
     """
-    order = {
+    order_dict = {
+        'nearest'  : 0,
         'linear'   : 1,
+        'bilinear' : 1,
         'quadratic': 2,
         'cubic'    : 3,
+        'bicubic'  : 3,
         'quartic'  : 4,
         'quintic'  : 5,
     }
+    order = order_dict[interp]
+
+    method_set = True in (griddata, SBS, RGI, CLT, RBS)
 
     if griddata:
         # Supports nearest, linear, and cubic interpolation methods.
@@ -592,20 +644,20 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False,
         xx,  yy  = np.meshgrid(X, Y)
         xxi, yyi = np.meshgrid(Xi, Yi)
         fn = scipy.interpolate.SmoothBivariateSpline(xx.flatten(), yy.flatten(), Z.flatten(),
-                                                     kx=order[interp], ky=order[interp])
+                                                     kx=order, ky=order)
         Zi = fn.ev(xxi, yyi)
         Zi.resize((Yi.size, Xi.size))
 
-    elif (interp == 'nearest') or ((interp == 'linear') and np.any(np.isnan(Z))) or RGI:
+    elif RGI or (not method_set and (order == 0 or (order == 1 and np.any(np.isnan(Z))))):
         # Supports nearest and linear interpolation methods.
         xxi, yyi = np.meshgrid(Xi, Yi[::-1])
         pi = np.column_stack((yyi.flatten(), xxi.flatten()))
         fn = scipy.interpolate.RegularGridInterpolator((Y[::-1], X), Z, method=interp,
-                                                       bounds_error=(not extrap), fill_value=RGI_fillVal)
+                                                       bounds_error=(not RGI_extrap), fill_value=RGI_fillVal)
         Zi = fn(pi, method=interp)
         Zi.resize((Yi.size, Xi.size))
 
-    elif ((interp == 'cubic') and np.any(np.isnan(Z))) or CLT:
+    elif CLT or (not method_set and (order == 3 and np.any(np.isnan(Z)))):
         # Performs cubic interpolation of data,
         # but includes logic to first perform a nearest resampling of input NaNs.
         # Produces the same error as scipy.interpolate.griddata when used on large arrays.
@@ -626,11 +678,11 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False,
             Zi = fn(pi)
             Zi.resize((Yi.size, Xi.size))
 
-    elif (interp in ('quadratic', 'quartic')) or RBS:
+    elif RBS or (not method_set and (order in (2, 4))):
         # Supports all 5 orders of spline interpolation.
         # Can't handle NaN input; results in all NaN output.
         fn = scipy.interpolate.RectBivariateSpline(Y[::-1], X, Z,
-                                                   kx=order[interp], ky=order[interp])
+                                                   kx=order, ky=order)
         Zi = fn(Yi[::-1], Xi, grid=True)
 
     else:
@@ -641,7 +693,7 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False,
         Zi = fn(Xi, Yi)
 
     if not extrapolate:
-        interp2_fill_extrapolate(X, Y, Zi, Xi, Yi)
+        interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, extrap_val)
 
     return Zi
 
@@ -1466,6 +1518,8 @@ def moving_average(array, nhood, shape='same', conv_depth='default',
 
 
 def conv_binary_structure_prevent_overflow(array, structure):
+    # TODO: Write docstring.
+
     # Get upper bound on minimum positive bitdepth for convolution.
     conv_bitdepth_pos = math.log(np.prod(structure.shape)+1, 2)
     dtype_bitdepths_pos = (1, 7, 8, 15, 16, 31, 32, 63, 64)
@@ -2948,138 +3002,53 @@ def getWindow(array, window_shape, x_y_tup, one_based_index=True):
 ################################
 
 
-def getFPvertices(array, X, Y,
-                  tolerance_start=100, nodataVal=np.nan, method='convhull'):
-    """
-    Polygonizes the generalized (hull) boundary of all data clusters in a
-    NumPy 2D array with supplied grid coordinates [X, Y] (ranges in 1D array form)
-    and simplifies this boundary until it contains 80 or fewer vertices.
-    These 'footprint' vertices are returned as a tuple containing lists
-    of all x-coordinates and all y-coordinates of these (ordered) points.
-    """
-    if nodataVal != np.nan:
-        array_data = (array != nodataVal)
+def getFPvertices(array, Y=None, X=None, label=0, label_type='nodata', replicate_matlab=False):
+    # TODO: Write docstring.
+
+    if (Y is None and X is None) or (Y is not None and X is not None):
+        pass
     else:
-        array_data = ~np.isnan(array)
+        raise InvalidArgumentError("`Y` and `X` must both be None or both be set")
 
-    # Get the data boundary ring.
-    if method == 'convhull':
-        # Fill interior nodata holes.
-        array_filled = sp_ndimage.morphology.binary_fill_holes(array_data)
-        try:
-            ring = getFPring_nonzero(array_filled, X, Y)
-        except MemoryError:
-            print "MemoryError on call to getFPring_convhull in raster_array_tools:"
-            print_exc()
-            print "-> Defaulting to getFPring_nonzero"
-            del array_filled
-            ring = getFPring_nonzero(array_data, X, Y)
+    label_type_choices = ('data', 'nodata')
+    if label_type not in label_type_choices:
+        raise InvalidArgumentError("`label_type` must be one of {}, "
+                                   "but was {}".format(label_type_choices, label_type))
 
-    elif method == 'nonzero':
-        ring = getFPring_nonzero(array_data, X, Y)
-
+    # Determine which pixels are considered "data" for footprinting.
+    array_data = None
+    if (array.dtype == np.bool
+        and ((label_type == 'nodata' and label == 0)
+             or (label_type == 'data' and label == 1))):
+        array_data = array
+    elif np.isnan(label):
+        array_data = np.isnan(array) if label_type == 'data' else ~np.isnan(array)
     else:
-        raise UnsupportedMethodError("method='{}'".format(method))
+        array_data = (array == label) if label_type == 'data' else (array != label)
 
-    del array_data
-    if 'array_filled' in vars():
-        del array_filled
+    # Get pixel coords of the convex hull of array data.
+    data_boundary = bwboundaries_array(array_data, connectivity=8, noholes=True)
+    boundary_pix = np.argwhere(data_boundary)
+    if replicate_matlab:
+        boundary_pix = rot90_pixcoords(flip_pixcoords(boundary_pix, array.shape, axis=0), array.shape, 3)
+    chull = scipy.spatial.ConvexHull(boundary_pix)
+    chull_pix = chull.points[chull.vertices]
+    chull_pix = np.vstack((chull_pix, chull_pix[0]))
 
-    numVertices = ring.GetPointCount()
-    if numVertices > 80:
-        poly = ogr.Geometry(ogr.wkbPolygon)
-        poly.AddGeometry(ring)
+    # Get simplified footprint pixel coords in (2, N) array.
+    fp_pix, _ = DecimatePoly(chull_pix, B_tol=1)
+    if replicate_matlab:
+        fp_pix = flip_pixcoords(rot90_pixcoords(fp_pix, list(array.shape)[::-1], 1), array.shape, axis=0)
+    fp_pix = fp_pix.T.astype(np.int64)
 
-        # Simplify the geometry until it has 80 or fewer points.
-        toler = tolerance_start
-        while numVertices > 80:
-            poly = poly.SimplifyPreserveTopology(toler)
-            ring = poly.GetGeometryRef(0)
-            numVertices = ring.GetPointCount()
-            if numVertices > 400:
-                toler += 1000
-            elif numVertices > 200:
-                toler += 500
-            elif numVertices > 100:
-                toler += 300
-            else:
-                toler += 200
-
-    boundary_points = ring.GetPoints()
-
-    points_xlist = map(lambda point_tup: point_tup[0], boundary_points)
-    points_ylist = map(lambda point_tup: point_tup[1], boundary_points)
-
-    return points_xlist, points_ylist
+    # Return pixel coords or point coords (from provided grid coordinates).
+    return fp_pix if Y is None else np.array([Y[fp_pix[0]], X[fp_pix[1]]])
 
 
-def getFPring_convhull(array_filled, X, Y):
-    """
-    Traces the boundary of a (large) pre-hole-filled data mass in array_filled
-    using a convex hull function.
-    Returns an OGRGeometry object in ogr.wkbLinearRing format representing
-    footprint vertices of the data mass, using [X, Y] grid coordinates.
-    """
-    # Derive data cluster boundaries (in array representation).
-    data_boundary = (array_filled != sp_ndimage.binary_erosion(array_filled))
-
-    boundary_points = np.argwhere(data_boundary)
-    del data_boundary
-
-    # Convex hull method.
-    convex_hull = scipy.spatial.ConvexHull(boundary_points)
-    hull_points = boundary_points[convex_hull.vertices]
-    del convex_hull
-
-    # Assemble the geometry.
-    ring = ogr.Geometry(ogr.wkbLinearRing)
-    for p in hull_points:
-        ring.AddPoint_2D(X[p[1]], Y[p[0]])  # Make points (x-coord, y-coord)
-    # Close the ring.
-    ring.AddPoint_2D(X[hull_points[0][1]],
-                     Y[hull_points[0][0]])
-
-    return ring
-
-
-def getFPring_nonzero(array_data, X, Y):
-    """
-    Traces a simplified boundary of a (large) pre-hole-filled data mass
-    in array_filled by making one scan across the columns of the array
-    and recording the top and bottom data points found in each column.
-    Returns an OGRGeometry object in ogr.wkbLinearRing format representing
-    footprint vertices of the data mass, using [X, Y] grid coordinates.
-    """
-    # Scan left to right across the columns in the binary data array,
-    # building top and bottom routes that are simplified because they
-    # cannot represent the exact shape of some 'eaten-out' edges.
-    top_route = []
-    bottom_route = []
-    for colNum in range(array_data.shape[1]):
-        rowNum_data = np.nonzero(array_data[:, colNum])[0]
-        if rowNum_data.size > 0:
-            top_route.append((rowNum_data[0], colNum))
-            bottom_route.append((rowNum_data[-1], colNum))
-
-    # Prepare the two routes (check endpoints) for connection.
-    bottom_route.reverse()
-    if top_route[-1] == bottom_route[0]:
-        del top_route[-1]
-    if bottom_route[-1] != top_route[0]:
-        bottom_route.append(top_route[0])
-
-    # Assemble the geometry.
-    ring = ogr.Geometry(ogr.wkbLinearRing)
-    for p in top_route:
-        ring.AddPoint_2D(X[p[1]], Y[p[0]])  # Make points (x-coord, y-coord)
-    for p in bottom_route:
-        ring.AddPoint_2D(X[p[1]], Y[p[0]])  # Make points (x-coord, y-coord)
-
-    return ring
-
-
-def getDataBoundariesPoly(array, X, Y, nodataVal=np.nan, coverage='all',
+def getDataBoundariesPoly(array, X, Y, nodata_val=np.nan, coverage='all',
                           erode=False, BBS=True):
+    # TODO: Rewrite docstring in new standard.
+    # FIXME: Upgrade this function!
     """
     Polygonizes the boundaries of all data clusters in a NumPy 2D array,
     using supplied [X, Y] grid coordinates (ranges in 1D array form) for vertices.
@@ -3089,10 +3058,10 @@ def getDataBoundariesPoly(array, X, Y, nodataVal=np.nan, coverage='all',
     If BBS=True, Bi-directional Boundary Skewing preprocessing is done.
     --Utilizes a fast boundary tracing method: outline.c
     """
-    if nodataVal != np.nan:
-        data_array = (array != nodataVal)
-    else:
+    if np.isnan(nodata_val):
         data_array = ~np.isnan(array)
+    else:
+        data_array = (array != nodata_val)
 
     if BBS:
         # Pad data array with zeros and extend grid coordinates arrays
@@ -3183,6 +3152,7 @@ def getDataBoundariesPoly(array, X, Y, nodataVal=np.nan, coverage='all',
 
 
 def outline(array, every, start=None, pass_start=False, complete_ring=True):
+    # TODO: Rewrite docstring in new standard.
     """
     Taking an (binary) array as input, finds the first set node in the array
     (by scanning down each column as it scans left to right across the array)
@@ -3241,6 +3211,7 @@ def outline(array, every, start=None, pass_start=False, complete_ring=True):
 
 def connectEdges(edge_collection, allow_modify_deque_input=True):
     # TODO: Test function.
+    # TODO: Rewrite docstring in new standard.
     """
     Takes a collection of edges, each edge being an ordered collection of vertex numbers,
     and recursively connects them by linking edges with endpoints that have matching vertex numbers.
@@ -3256,10 +3227,11 @@ def connectEdges(edge_collection, allow_modify_deque_input=True):
         edges_input = [deque(e) for e in edge_collection]
 
     while True:
+        num_edges_in = len(edges_input)
         edges_output = []
         for edge_in in edges_input:
             edge_in_end_l, edge_in_end_r = edge_in[0], edge_in[-1]
-            connected = False
+            edge_in_added = False
             for edge_out in edges_output:
                 if edge_out[0] == edge_in_end_l:
                     edge_out.popleft()
@@ -3283,9 +3255,9 @@ def connectEdges(edge_collection, allow_modify_deque_input=True):
                     edge_out.extend(edge_in)
                     edge_in_added = True
                     break
-            if not connected:
+            if not edge_in_added:
                 edges_output.append(edge_in)
-        if len(edges_output) == len(edges_input):
+        if len(edges_output) == num_edges_in:
             return edges_output
         else:
             edges_input = edges_output

@@ -13,6 +13,8 @@ from traceback import print_exc
 import ogr
 import numpy as np
 from scipy import interpolate
+from skimage.morphology import convex_hull_image
+from sklearn.linear_model import LinearRegression
 
 import raster_array_tools as rat
 from mask_scene import getDataDensityMap
@@ -69,12 +71,12 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
     """
 
     # Order scenes in north-south or east-west direction by aspect ratio.
-    print "ordering {} scenes".format(len(demFiles))
+    print "Ordering {} scenes".format(len(demFiles))
     demFiles_ordered = orderPairs(demdir, demFiles)
 
     # Initialize output stats.
     trans = np.zeros((3, len(demFiles_ordered)))
-    rmse = np.zeros(len(demFiles_ordered))
+    rmse = np.zeros((1, len(demFiles_ordered)))
 
     # Get projection reference of the first scene to be used in equality checks
     # with the projection reference of all scenes that follow.
@@ -96,12 +98,12 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             else:
                 maskFile = demFile.replace('dem.tif', maskFileSuffix+'.tif')
         else:
-            print "no mask applied"
+            print "No mask applied"
 
         print "scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile)
 
         try:
-            if maskFileSuffix == 'legacy':
+            if maskFileSuffix == 'edgemask/datamask':
                 x, y, z, m, o, md, me = loaddata(demFile, matchFile, orthoFile, dataMaskFile, edgeMaskFile)
             else:
                 x, y, z, m, o, md = loaddata(demFile, matchFile, orthoFile, maskFile)
@@ -113,11 +115,11 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Check for no data.
         if ~md.any():
-            print "no data, skipping"
+            print "No data, skipping"
             continue
 
         # Apply masks.
-        if maskFileSuffix == 'legacy':
+        if maskFileSuffix == 'edgemask/datamask':
             x, y, z, m, o = applyMasks(x, y, z, m, o, md, me)
         x, y, z, m, o = applyMasks(x, y, z, m, o, md)
 
@@ -177,51 +179,52 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         r1 = np.where(y[-1] == Y)[0][0] + 1
 
         # Crop to overlap.
-        Xsub = X[c0:c1]
-        Ysub = Y[r0:r1]
-        Zsub = Z[r0:r1, c0:c1]
-        Msub = M[r0:r1, c0:c1]
-        Osub = O[r0:r1, c0:c1]
+        Xsub = np.copy(X[c0:c1])
+        Ysub = np.copy(Y[r0:r1])
+        Zsub = np.copy(Z[r0:r1, c0:c1])
+        Msub = np.copy(M[r0:r1, c0:c1])
+        Osub = np.copy(O[r0:r1, c0:c1])
 
         # NEW MOSAICKING CODE
 
         cmin = 1000  # Minimum data cluster area for 2m.
 
         # Crop to just region of overlap.
-        A = (~np.isnan(Zsub) & ~np.isnan(z)).astype(np.float32)
+        A = (~np.isnan(Zsub) & ~np.isnan(z))
+        # A = A.astype(np.float32)
 
         # Check for segment break.
         if np.sum(A) <= cmin:
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
-            rmse = rmse[:i]
+            rmse = rmse[:, i]
             break
 
-        A[A == 0] = np.nan
+        # A[A == 0] = np.nan
         r, c = cropnans(A, buff)
 
         # Make overlap mask removing isolated pixels.
-        Z_cropped_nodata =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
-        z_cropped_data   = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
+        strip_nodata =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
+        scene_data   = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
         # Nodata in strip and data in scene is a one.
-        A = rat.bwareaopen(Z_cropped_nodata & z_cropped_data, cmin, in_place=True).astype(np.float32)
+        A = rat.bwareaopen(strip_nodata & scene_data, cmin, in_place=True).astype(np.float32)
 
         # Check for redundant scene.
         if np.sum(A) <= cmin:
-            print "redundant scene, skipping "
+            print "Redundant scene, skipping"
             continue
 
         # Data in strip and nodata in scene is a two.
-        A[rat.bwareaopen(~Z_cropped_nodata & ~z_cropped_data, cmin, in_place=True)] = 2
+        A[rat.bwareaopen(~strip_nodata & ~scene_data, cmin, in_place=True)] = 2
 
         # Check for segment break.
         if np.sum(A) <= cmin:
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
-            rmse = rmse[:i]
+            rmse = rmse[:, i]
             break
 
-        del z_cropped_data, Z_cropped_nodata
+        del strip_nodata, scene_data
 
         # FIXME: What does the following commented out code
         # -f     (taken from Ian's scenes2strips.m) do?
@@ -234,8 +237,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Locate pixels on outside of boundary of overlap region.
         Ar_nonzero = (Ar != 0)
-        B = rat.bwboundaries_array(Ar_nonzero, noholes=True)
-        B = np.where(B)
+        B = np.where(rat.bwboundaries_array(Ar_nonzero, noholes=True))
 
         cz_rows, cz_cols = [], []
         for cc in [
@@ -249,17 +251,10 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         if len(cz_rows) > 0:
             # Pixels outside of the convex hull of input points for interpolate.griddata
-            # currently can't be extrapolated (by default they are filled with NaN),
-            # so I do a trick here where I use interpolate.SmoothBivariateSpline to interpolate
-            # from the boundary coordinates a value between 1 and 2 for every zero corner in Ar
-            # (there are usually two) before doing the main interpolation.
+            # currently can't be extrapolated linear-ly (by default they are filled with NaN),
+            # so change corner pixels that are zero to NaN.
             corner_zeros = (np.array(cz_rows), np.array(cz_cols))
-            # FIXME: Check the following casting.
-            fn = interpolate.SmoothBivariateSpline(B[0], B[1], Ar[B].astype(np.float64), kx=2, ky=2)
-            Ar_interp = fn.ev(corner_zeros[0], corner_zeros[1])
-            Ar_interp[Ar_interp < 1] = 1
-            Ar_interp[Ar_interp > 2] = 2
-            Ar[corner_zeros] = Ar_interp
+            Ar[corner_zeros] = np.nan
 
             # Add the corner coordinates to the list of boundary coordinates,
             # which will be used for interpolation.
@@ -267,17 +262,27 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             Bx = np.concatenate((B[1], corner_zeros[1]))
             B = (By, Bx)
 
-            del corner_zeros, fn, By, Bx
+            del corner_zeros, By, Bx
         del cz_rows, cz_cols
 
         # Use the coordinates and values of boundary pixels
-        # to interpolate values for pixels with value zero.
+        # to interpolate values for pixels with zero value.
         Ar_zero_coords = np.where(~Ar_nonzero)
-        # FIXME: Check the following casting.
-        Ar_interp = interpolate.griddata(B, Ar[B].astype(np.float64), Ar_zero_coords, 'linear')
+        Ar_interp = interpolate.griddata(B, Ar[B], Ar_zero_coords, 'linear')
         Ar[Ar_zero_coords] = Ar_interp
 
-        del Ar_interp, Ar_nonzero, Ar_zero_coords
+        del Ar_nonzero, Ar_zero_coords, Ar_interp
+
+        # Fill in the regions outside the convex hull of the boundary points
+        # using a nearest extrapolation of all points on the boundary of the
+        # overlap region (including the gaps that were just interpolated).
+        Ar_outer = np.isnan(Ar)
+        Ar_outer_coords = np.where(Ar_outer)
+        B = np.where(rat.bwboundaries_array(~Ar_outer))
+        Ar_extrap = interpolate.griddata(B, Ar[B], Ar_outer_coords, 'nearest')
+        Ar[Ar_outer_coords] = Ar_extrap
+
+        del Ar_outer, Ar_outer_coords, Ar_extrap
 
         Ar = rat.imresize(Ar, A.shape, 'bilinear')
         Ar[(A == 1) & (Ar != 1)] = 1
@@ -301,14 +306,17 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         W[W < 0] = 0
 
         # Remove <25% edge of coverage from each in pair.
-        # FIXME: Each throws "RuntimeWarning: invalid value encountered in less_equal".
-        Zsub[W == 0] = np.nan
-        Msub[W == 0] = 0
-        Osub[W == 0] = 0
+        strip_nodata = (W == 0)
+        Zsub[strip_nodata] = np.nan
+        Msub[strip_nodata] = 0
+        Osub[strip_nodata] = 0
 
-        z[W >= 1] = np.nan
-        m[W >= 1] = 0
-        o[W >= 1] = 0
+        scene_nodata = (W >= 1)
+        z[scene_nodata] = np.nan
+        m[scene_nodata] = 0
+        o[scene_nodata] = 0
+
+        del strip_nodata, scene_nodata
 
         # Coregistration
 
@@ -316,18 +324,18 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         P1 = getDataDensityMap(   m[r[0]:r[1], c[0]:c[1]]) > 0.9
 
         # Coregister this scene to the strip mosaic.
-        trans[:, i], rmse[i] = coregisterdems(
+        trans[:, i], rmse[0, i] = coregisterdems(
             Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
                x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
             P0, P1
         )[[1, 2]]
 
         # Check for segment break.
-        if np.isnan(rmse[i]) or rmse[i] > max_coreg_rmse:
+        if np.isnan(rmse[0, i]) or rmse[0, i] > max_coreg_rmse:
             print "Unable to coregister, breaking segment"
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
-            rmse = rmse[:i]
+            rmse = rmse[:, :i]
             break
 
         # Interpolation grid
@@ -341,7 +349,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             yi = np.round(yi, 4)
 
         # Interpolate the floating data to the reference grid.
-        zi = rat.interp2_gdal(xi, yi, z-trans[0,i], Xsub, Ysub, 'linear')
+        zi = rat.interp2_gdal(xi, yi, z-trans[0, i], Xsub, Ysub, 'linear')
         del z
 
         # Interpolate the mask to the same grid.
@@ -350,7 +358,6 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         mi = mi.astype(np.bool)
         del m
 
-        # TODO: Investigate ortho interpolation.
         # Interpolate ortho to same grid.
         oi = o.astype(np.float32)
         oi[oi == 0] = np.nan  # Set border to NaN so it won't be interpolated.
@@ -362,15 +369,14 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # Remove border 0's introduced by NaN interpolation.
         M3 = ~np.isnan(zi)
         M3 = rat.imerode(M3, 6)  # border cutline
-
         zi[~M3] = np.nan
-        mi[~M3] = 0
+        mi[~M3] = 0  # also apply to matchtag
         del M3
 
         # Remove border on orthos separately.
-        M4 = (oi != 0)
+        M4 = ~np.isnan(oi)
         M4 = rat.imerode(M4, 6)
-        oi[~M4] = 0
+        oi[~M4] = np.nan
         del M4
 
         # Make weighted elevation grid.
@@ -446,11 +452,11 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         m1 = varargin[0]
         m2 = varargin[1]
 
-    rx = x1[1] - x1[0]  # coordinate spacing
-    p  = np.zeros(3)    # initial trans variable
-    pn = p.copy()       # iteration variable
-    d0 = np.inf         # initial rmse
-    it = 1              # iteration step
+    rx = x1[1] - x1[0]     # coordinate spacing
+    p  = np.zeros((3, 1))  # initial trans variable
+    pn = p.copy()          # iteration variable
+    d0 = np.inf            # initial rmse
+    it = 1                 # iteration step
 
     while it:
 
@@ -485,18 +491,17 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         if not np.any(~np.isnan(dz)):
             print "No overlap"
             z2out = z2
-            p = np.full(3, np.nan)
+            p = np.full((3, 1), np.nan)
             d0 = np.nan
             break
 
         # Filter NaNs and outliers.
-        # FIXME: The following throws "RuntimeWarning: invalid value encountered in less_equal".
         n = (~np.isnan(sx) & ~np.isnan(sy)
              & (abs(dz - np.nanmedian(dz)) <= np.nanstd(dz)))
 
         if not np.any(n):
             sys.stdout.write("regression failure, all overlap filtered\n")
-            p = np.full(3, np.nan)  # initial trans variable
+            p = np.full((3, 1), np.nan)  # initial trans variable
             d0 = np.nan
             z2out = z2
             break
@@ -534,18 +539,25 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         X = np.column_stack((np.ones(dz[n].size), sx[n], sy[n]))
 
         # Solve for new adjustment.
-        px = np.linalg.lstsq(X, dz[n])[0]
+        px = np.array([np.linalg.lstsq(X, dz[n], rcond=None)[0]]).T
+
+        # # Solve for new adjustment.
+        # reg = LinearRegression()
+        # reg = reg.fit(np.array([sx[n], sy[n]]).T, dz[n])
+        # px = np.array([np.insert(reg.coef_, 0, reg.intercept_)]).T
+
         pn = p + px
 
         # Display offsets.
-        sys.stdout.write("offset(z,x,y): {:.3f}, {:.3f}, {:.3f}\n".format(pn[0], pn[1], pn[2]))
+        sys.stdout.write("offset(z,x,y): {:.3f}, {:.3f}, {:.3f}\n".format(
+            pn[0, 0], pn[1, 0], pn[2, 0]))
 
         if np.any(abs(pn[1:]) > maxp):
             sys.stdout.write(
                 "maximum horizontal offset reached, "
                 "returning median vertical offset: {:.3f}\n".format(meddz)
             )
-            p = np.array([meddz, 0, 0])
+            p = np.array([[meddz, 0, 0]]).T
             d0 = d00
             z2out = z2 - meddz
             break
@@ -553,7 +565,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         # Update iteration vars.
         it += 1
 
-    return np.array([z2out, p, d0])
+    return np.array([z2out, p.T[0], d0])
 
 
 def rectFootprint(*geoms):
@@ -653,26 +665,28 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
         raise SpatialRefError("demFile '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
                               demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
 
+    # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
+    z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
+
     m = rat.extractRasterParams(matchFile, 'array').astype(np.bool)
     if m.shape != z.shape:
         warnings.warn("matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
                      + "\nInterpolating to dem dimensions")
         x, y = rat.extractRasterParams(matchFile, 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
-        m[np.isnan(m)] = 0  # Convert back to bool.
+        m[np.isnan(m)] = 0  # Convert back to bool/uint8.
         m = m.astype(np.bool)
 
     if os.path.isfile(orthoFile):
-        o = rat.extractRasterParams(orthoFile, 'array').astype(np.uint16)
+        o = rat.extractRasterParams(orthoFile, 'array')
         if o.shape != z.shape:
             warnings.warn("orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
                           + "\nInterpolating to dem dimensions")
             x, y = rat.extractRasterParams(orthoFile, 'x', 'y')
-            # TODO: Is the following line necessary?
-            o[np.isnan(o)] = np.nan  # Set border to NaN so it won't be interpolated.
+            o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
             o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
             o[np.isnan(o)] = 0  # Convert back to uint16.
-            o = o.astype(np.uint16)
+            o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
     else:
         o = np.zeros(z.shape, dtype=np.uint16)
 
@@ -689,9 +703,6 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
         if me.shape != z.shape:
             raise RasterDimensionError("edgemaskFile '{}' dimensions {} do not match dem dimensions {}".format(
                                        maskFile, me.shape, z.shape))
-
-    # A pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
-    z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
 
     if edgemaskFile is not None:
         return x_dem, y_dem, z, m, o, md, me
@@ -724,7 +735,7 @@ def cropnans(matrix, buff=0):
     """
     Crop matrix of bordering NaNs.
     """
-    data = ~np.isnan(matrix)
+    data = ~np.isnan(matrix) if matrix.dtype != np.bool else matrix
     if ~np.any(data):
         return None, None  # This shouldn't happen on call from applyMasks.
 
@@ -770,7 +781,7 @@ def regrid(x, y, z, m, o):
     o[np.isnan(z)] = np.nan  # Set border to NaN so it won't be interpolated.
     o = rat.interp2_gdal(x, y, o, xi, yi, 'cubic')
     o[np.isnan(o)] = 0  # Convert back to uint16.
-    o = o.astype(np.uint16)
+    o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
 
     return xi, yi, zi, m, o
 
@@ -798,23 +809,18 @@ def expandCoverage(Z, M, O, R1, direction):
     must be passed in for direction.
     """
 
-    # NumPy FutureWarning stating that
-    # numpy.full(shapeTup, False/0) will return an array of dtype('bool'/'int64')
-    # can be ignored since returned arrays are explicitly cast to wanted types.
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        if direction in ('left', 'right'):
-            # R1 is X1
-            Z1 = np.full((Z.shape[0], R1.size), np.nan).astype(np.float32)
-            M1 = np.full((M.shape[0], R1.size), False).astype(np.bool)
-            O1 = np.full((O.shape[0], R1.size), 0).astype(np.uint16)
-            axis_num = 1
-        else:
-            # R1 is Y1
-            Z1 = np.full((R1.size, Z.shape[1]), np.nan).astype(np.float32)
-            M1 = np.full((R1.size, M.shape[1]), False).astype(np.bool)
-            O1 = np.full((R1.size, O.shape[1]), 0).astype(np.uint16)
-            axis_num = 0
+    if direction in ('left', 'right'):
+        # R1 is X1
+        Z1 = np.full((Z.shape[0], R1.size), np.nan, dtype=np.float32)
+        M1 = np.full((M.shape[0], R1.size), False,  dtype=np.bool)
+        O1 = np.full((O.shape[0], R1.size), 0,      dtype=np.uint16)
+        axis_num = 1
+    else:
+        # R1 is Y1
+        Z1 = np.full((R1.size, Z.shape[1]), np.nan, dtype=np.float32)
+        M1 = np.full((R1.size, M.shape[1]), False,  dtype=np.bool)
+        O1 = np.full((R1.size, O.shape[1]), 0,      dtype=np.uint16)
+        axis_num = 0
 
     Z, M, O = batchConcatenate([[Z1,Z], [M1,M], [O1,O]],
                                direction, axis_num)

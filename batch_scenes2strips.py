@@ -10,6 +10,8 @@ import subprocess
 import sys
 from datetime import datetime
 
+from numpy import array_equal, array_str, int64
+
 from mask_scene import generateMasks
 from raster_array_tools import saveArrayAsTiff, getFPvertices
 from scenes2strips import scenes2strips
@@ -223,12 +225,12 @@ def main():
             strip_orthoFile = strip_demFile.replace('dem.tif', 'ortho.tif')
             strip_metaFile  = strip_demFile.replace('dem.tif', 'meta.txt')
 
-            saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodataVal=-9999, dtype_out='float32')
-            saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodataVal=0,     dtype_out='uint8')
-            saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodataVal=0,     dtype_out='int16')
+            saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999, dtype_out='float32')
+            saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
+            saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodata_val=0,     dtype_out='int16')
 
             proj4 = spat_ref.ExportToProj4()
-            fp_vertices = getFPvertices(Z, X, Y, nodataVal=-9999)
+            fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
             time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
             writeStripMeta(strip_metaFile, srcdir, mosaicked_sceneDemFnames, trans, rmse, proj4, fp_vertices, time)
 
@@ -251,30 +253,36 @@ def shouldDoMasking(matchFile, maskFileSuffix='mask'):
 
 def writeStripMeta(o_metaFile, scenedir, dem_list,
                    trans, rmse, proj4, fp_vertices, strip_time):
+
+    if fp_vertices.dtype != int64 and array_equal(fp_vertices, fp_vertices.astype(int64)):
+        fp_vertices = fp_vertices.astype(int64)
+
+    # FIXME: Four lines in the following meta string have trailing space to replicate MATLAB.
+    # -f     Remove these?
     strip_info = (
-"""Strip Metadata
+"""Strip Metadata 
 Creation Date: {}
 Strip creation date: {}
 Strip projection (proj4): '{}'
 
 Strip Footprint Vertices
-X: {}
-Y: {}
+X: {} 
+Y: {} 
 
-Mosaicking Alignment Statistics (meters)
+Mosaicking Alignment Statistics (meters) 
 scene, rmse, dz, dx, dy
 """.format(
         datetime.today().strftime("%d-%b-%Y %H:%M:%S"),
         strip_time,
         proj4,
-        str(fp_vertices[0]).replace(',', '')[1:-1],
-        str(fp_vertices[1]).replace(',', '')[1:-1],
+        array_str(fp_vertices[1], max_line_width=float('inf'))[1:-1],
+        array_str(fp_vertices[0], max_line_width=float('inf'))[1:-1],
         )
     )
 
     for i in range(len(dem_list)):
         line = "{} {:.2f} {:.4f} {:.4f} {:.4f}\n".format(
-            dem_list[i], rmse[i], trans[0, i], trans[1, i], trans[2, i])
+            dem_list[i], rmse[0, i], trans[0, i], trans[1, i], trans[2, i])
         strip_info += line
 
     strip_info += "\nScene Metadata \n\n"
