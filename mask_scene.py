@@ -362,8 +362,8 @@ def mask_v2a(demFile, avg_kernel_size=5,
     for dk in dk_list:
         dk_nodata = np.isnan(dk)
         dk[dk_nodata] = 0
-        mean_dk = rat.moving_average(dk, kernel=avg_kernel)
-        stdev_dk = rat.moving_average(np.square(dk), kernel=avg_kernel) - np.square(mean_dk)
+        mean_dk = rat.moving_average(dk, avg_kernel)
+        stdev_dk = rat.moving_average(np.square(dk), avg_kernel) - np.square(mean_dk)
         stdev_dk[stdev_dk < 0] = 0
         stdev_dk = np.sqrt(stdev_dk)
         dk_nodata_list.append(dk_nodata)

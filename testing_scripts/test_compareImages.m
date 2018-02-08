@@ -1,4 +1,4 @@
-function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, display_image, display_histogram, display_casting, display_split, display_difflate, display_small)
+function [arr1, arr2, diff, diff_bool] = test_compareImages(imgFile1, imgFile2, figtitle, isRaster, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small)
 % test_compareImages Reads two input image files into arrays and compares them. If only one image file is given, the image is displayed.
 
 if ~exist('figtitle', 'var') || isempty(figtitle)
@@ -6,6 +6,12 @@ if ~exist('figtitle', 'var') || isempty(figtitle)
 end
 if ~exist('isRaster', 'var') || isempty(isRaster)
     isRaster = false;
+end
+if ~exist('nodata_val', 'var') || isempty(nodata_val)
+    nodata_val = [];
+end
+if ~exist('mask_nans', 'var') || isempty(mask_nans)
+    mask_nans = false;
 end
 if ~exist('display_image', 'var') || isempty(display_image)
     display_image = true;
@@ -75,7 +81,7 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
         
         [~, imgFname2, ~] = fileparts(imgFile2);
         
-        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFname1, imgFname2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
+        [diff, diff_bool] = test_compareArrays(arr1, arr2, imgFname1, imgFname2, figtitle, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
     end    
 end
 
@@ -84,17 +90,37 @@ if single
     if ~display_small
         figure_args_extra = [figure_args_extra, {'units','normalized','outerposition',[0 0 1 1]}];
     end
+    
+    if ~isempty(nodata_val)
+        arr1_nodata = (arr1 == nodata_val);
+        if any(arr1_nodata(:))
+            if ~any(strcmp(class(arr1), ["single", "double"]))
+                arr1 = single(arr1);
+            end
+            arr1(arr1_nodata) = NaN;
+        end
+    end
+    
+    arr1_nancount = [];
+    if any(strcmp(class(arr1), ["single", "double"]))
+        arr1_nans = isnan(arr1);
+        arr1_nancount = sum(arr1_nans(:));
+    end
 
     if display_histogram
-        if any(strcmp(class(arr1), ["single", "double"]))
-            arr1(isnan(arr1)) = -inf;
+        arr1_for_hist = arr1;
+        if exist('arr1_nans', 'var') && arr1_nancount > 0
+            arr1_for_hist(arr1_nans) = -inf;
         end
         figure('Name', sprintf('HIST: %s', figtitle));
-        test_histArray(arr1, imgFname1);
+        test_histArray(arr1_for_hist, imgFname1);
     end
+    
     if display_image
         figure_args = [{'Name', sprintf('VIEW: %s', figtitle)}, figure_args_extra];
         figure(figure_args{:});
-        test_viewArray(arr1, imgFname1, true);
+        test_viewArray(arr1, imgFname1, true, arr1_nancount);
     end
+    
+    fprintf("---------------------------------------------\n");
 end

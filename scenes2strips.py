@@ -251,8 +251,9 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         if len(cz_rows) > 0:
             # Pixels outside of the convex hull of input points for interpolate.griddata
-            # currently can't be extrapolated linear-ly (by default they are filled with NaN),
-            # so change corner pixels that are zero to NaN.
+            # currently can't be extrapolated linear-ly (by default they are filled with NaN).
+            # Let this region be filled with NaN, but we get a better edge on the convex hull
+            # by changing corner pixels that are zero to NaN.
             corner_zeros = (np.array(cz_rows), np.array(cz_cols))
             Ar[corner_zeros] = np.nan
 

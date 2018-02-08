@@ -92,6 +92,26 @@ def oneBandImageToArrayZXY_projRef(rasterFile):
 
 
 def openRaster(rasterFile_or_ds):
+    """
+    Open a raster image as a GDAL dataset object.
+
+    Parameters
+    ----------
+    rasterFile_or_ds : str (file path) or osgeo.gdal.Dataset
+        File path of the raster image to open as a GDAL dataset object,
+        or the GDAL dataset itself.
+
+    Returns
+    -------
+    openRaster : osgeo.gdal.Dataset
+        The raster image as a GDAL dataset.
+
+    Notes
+    -----
+    If `rasterFile_or_ds` is a GDAL dataset,
+    it is returned without modification.
+
+    """
     ds = None
     if type(rasterFile_or_ds) == gdal.Dataset:
         ds = rasterFile_or_ds
@@ -106,6 +126,36 @@ def openRaster(rasterFile_or_ds):
 
 
 def getCornerCoords(gt, shape):
+    """
+    Retrieve the georeferenced corner coordinates of a raster image.
+
+    The corner coordinates of the raster are calculated from
+    the rasters's geometric transformation specifications and
+    the dimensions of the raster.
+
+    Parameters
+    ----------
+    gt : numeric tuple `(top_left_x, dx_x, dx_y, top_left_y, dy_x, dy_y)`
+        The affine geometric transformation ("geotransform" or "geo_trans")
+        describing the relationship between pixel coordinates and
+        georeferenced coordinates.
+        Pixel coordinates start at `(0, 0)` [row, col] for the top left pixel
+        in the raster image, increasing down rows and right across columns.
+        Georeferenced coordinates `(x_geo, y_geo)` are calculated for pixels
+        in the image by the pixel coordinates `(pix_row, pix_col)` as follows:
+        `x_geo = top_left_x + pix_row*dx_x + pix_col*dx_y`
+        `y_geo = top_left_y + pix_row*dy_x + pix_col*dy_y`
+    shape : tuple of positive int, 2 elements
+        Dimensions of the raster image in (num_rows, num_cols) format.
+
+    Returns
+    -------
+    getCornerCoords : ndarray (5, 2)
+        Georeferenced corner coordinates of the raster image,
+        in (x, y) coordinate pairs, starting and ending at the
+        top left corner, clockwise.
+
+    """
     top_left_x = np.full((5, 1), gt[0])
     top_left_y = np.full((5, 1), gt[3])
     top_left_mat = np.concatenate((top_left_x, top_left_y), axis=1)
@@ -127,9 +177,9 @@ def getCornerCoords(gt, shape):
     return top_left_mat + np.dot(raster_XY_size_mat, gt_mat)
 
 
-def coordsToWkt(corner_coords):
+def coordsToWkt(coord_pairs):
     return 'POLYGON (({}))'.format(
-        ','.join([" ".join([str(c) for c in cc]) for cc in corner_coords])
+        ','.join([" ".join([str(c) for c in xy]) for xy in coord_pairs])
     )
 
 
@@ -300,7 +350,7 @@ def saveArrayAsTiff(array, dest,
 
     if dtype_out is not None:
         if dtype_in != dtype_out:
-            warn("Input array data type ({}) differs from desired "
+            warn("Input array data type ({}) differs from "
                  "output data type ({})".format(dtype_in, dtype_out(1).dtype))
     else:
         dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_in)
@@ -350,7 +400,7 @@ def saveArrayAsTiff(array, dest,
         args.extend(['-a_nodata', str(nodata_val)])  # Create internal nodata mask.
 
     args.extend(['-co', 'BIGTIFF=IF_SAFER'])        # Will create BigTIFF
-                                                    # :: if the resulting file *might* exceed 4GB.
+                                                    # if the resulting file *might* exceed 4GB.
     args.extend(['-co', 'COMPRESS=LZW'])            # Do LZW compression on output image.
     args.extend(['-co', 'TILED=YES'])               # Force creation of tiled TIFF files.
 

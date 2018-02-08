@@ -1,4 +1,4 @@
-function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_small)
+function [diff, diff_bool] = test_compareArrays(arr1, arr2, title1, title2, figtitle, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small)
 % Computes difference maps between two input image arrays and displays them with the original images. To better allow for comparison of nodata (NaN) pixel locations, all NaN values in both input arrays are converted to -Inf before differencing (arr2 - arr1).
 
 if ~exist('title1', 'var') || isempty(title1)
@@ -9,6 +9,12 @@ if ~exist('title2', 'var') || isempty(title2)
 end
 if ~exist('figtitle', 'var') || isempty(figtitle)
     figtitle = '';
+end
+if ~exist('nodata_val', 'var') || isempty(nodata_val)
+    nodata_val = [];
+end
+if ~exist('mask_nans', 'var') || isempty(mask_nans)
+    mask_nans = false;
 end
 if ~exist('display_image', 'var') || isempty(display_image)
     display_image = true;
@@ -34,34 +40,60 @@ if ~isequal(size(arr1), size(arr2))
     error('Input arrays for comparison differ in shape.');
 end
 
+if ~isempty(nodata_val)
+    arr1_nodata = (arr1 == nodata_val);
+    if any(arr1_nodata(:))
+        if ~any(strcmp(class(arr1), ["single", "double"]))
+            arr1 = single(arr1);
+        end
+        arr1(arr1_nodata) = NaN;
+    end
+    arr2_nodata = (arr2 == nodata_val);
+    if any(arr2_nodata(:))
+        if ~any(strcmp(class(arr2), ["single", "double"]))
+            arr2 = single(arr2);
+        end
+        arr2(arr2_nodata) = NaN;
+    end
+end
+
+arr1_dtype_in = class(arr1);
+arr2_dtype_in = class(arr2);
+arr1_dtype_out = [];
+arr2_dtype_out = [];
+has_nans = false;
 arr1_casted = false;
 arr2_casted = false;
-arr1_dtype = class(arr1);
-arr2_dtype = class(arr2);
+
 class_order = ["logical", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "single", "double"];
 array_ranks = cellfun(@(x) find(strcmp(class(x), class_order)), {arr1, arr2});
 compare_rank = max(array_ranks);
 compare_dtype = class_order(compare_rank);
-
 if strcmp(compare_dtype, 'logical') || contains(compare_dtype, 'uint')
     compare_rank = compare_rank + 1;
     compare_dtype = class_order(compare_rank);
 end
-if ~strcmp(arr1_dtype, compare_dtype)
+
+if strcmp(arr1_dtype_in, compare_dtype)
+    arr1_dtype_out = arr1_dtype_in;
+else
     if display_casting
         arr1_precast = arr1;
-        arr1_precast_dtype = arr1_dtype;
+        arr1_precast_dtype = arr1_dtype_in;
     end
-    arr1_dtype = [arr1_dtype, sprintf(' -> %s', compare_dtype)];
+    arr1_dtype_out = [arr1_dtype_in, sprintf(' -> %s', compare_dtype)];
     eval(sprintf('arr1 = %s(arr1);', compare_dtype));
     arr1_casted = true;
 end
-if ~strcmp(arr2_dtype, compare_dtype)
+
+if strcmp(arr2_dtype_in, compare_dtype)
+    arr2_dtype_out = arr2_dtype_in;
+else
     if display_casting
         arr2_precast = arr2;
-        arr2_precast_dtype = arr2_dtype;
+        arr2_precast_dtype = arr2_dtype_in;
     end
-    arr2_dtype = [arr2_dtype, sprintf(' -> %s', compare_dtype)];
+    arr2_dtype_out = [arr2_dtype_in, sprintf(' -> %s', compare_dtype)];
     eval(sprintf('arr2 = %s(arr2);', compare_dtype));
     arr2_casted = true;
 end
@@ -73,22 +105,59 @@ else
     flag_arr1_cast = arr1_casted;
     flag_arr2_cast = arr2_casted;
 end
-fprintf("--> '%s' array class: ", title1);  
-fprintf(flag_arr1_cast + 1, "%s\n",  arr1_dtype);
-fprintf("--> '%s' array class: ", title2);  
-fprintf(flag_arr2_cast + 1, "%s\n",  arr2_dtype);
+
+if any(strcmp(arr1_dtype_in, ["single", "double"]))
+    arr1_nans = isnan(arr1);
+    arr1_nancount = sum(arr1_nans(:));
+    if arr1_nancount > 0
+        has_nans = true;
+        if ~mask_nans
+            arr1(arr1_nans) = -inf;
+        end
+    end
+end
+if any(strcmp(arr2_dtype_in, ["single", "double"]))
+    arr2_nans = isnan(arr2);
+    arr2_nancount = sum(arr2_nans(:));
+    if arr2_nancount > 0
+        has_nans = true;
+        if ~mask_nans
+            arr2(arr2_nans) = -inf;
+        end
+    end
+end
+    
+fprintf("--> (UL) '%s' array class: ", title1);
+fprintf(flag_arr1_cast + 1, "%s",  arr1_dtype_out);
+if exist('arr1_nancount', 'var')
+    fprintf(" (%e NaNs)", arr1_nancount);
+end
+fprintf("\n");
+
+fprintf("--> (UR) '%s' array class: ", title2);
+fprintf(flag_arr2_cast + 1, "%s",  arr2_dtype_out);
+if exist('arr2_nancount', 'var')
+    fprintf(" (%e NaNs)", arr2_nancount);
+end
+fprintf("\n");
 
 has_nans = false;
 if any(cellfun(@(x) any(strcmp(class(x), ["single", "double"])), {arr1, arr2}))
     arr1_nans = isnan(arr1);
+    arr1_nancount = sum(arr1_nans(:));
     arr2_nans = isnan(arr2);
-    if any(arr1_nans(:))
+    arr2_nancount = sum(arr2_nans(:));
+    if arr1_nancount > 0
         has_nans = true;
-        arr1(arr1_nans) = -inf;
+        if ~mask_nans
+            arr1(arr1_nans) = -inf;
+        end
     end
-    if any(arr2_nans(:))
+    if arr2_nancount > 0
         has_nans = true;
-        arr2(arr2_nans) = -inf;
+        if ~mask_nans
+            arr2(arr2_nans) = -inf;
+        end
     end
 end
 
@@ -104,8 +173,16 @@ end
 UL_nans = 0;
 UR_nans = 0;
 if has_nans
-    UL_nans = sum(diff(:) == inf);
-    UR_nans = sum(diff(:) == -inf);
+    if ~mask_nans
+        UL_nans = sum(diff(:) == inf);
+        UR_nans = sum(diff(:) == -inf);
+    else
+        both_nans = arr1_nans & arr2_nans;
+        UL_nans = xor(arr1_nans, both_nans);
+        UR_nans = xor(arr2_nans, both_nans);
+        UL_nans = sum(UL_nans(:));
+        UR_nans = sum(UR_nans(:));
+    end
 end
 diff(isnan(diff)) = 0;
 
@@ -188,9 +265,9 @@ for i = 1:length(vals_diff_bool)
     fprintf(vals_diff_bool(i) + 1, ...
         " (%d, %e)", vals_diff_bool(i), cnts_diff_bool(i));
 end
-fprintf("\n---------------------------------------------\n");
-
+fprintf("\n");
 if UL_nans > 0 || UR_nans > 0
-    fprintf(2, "[(UL unique NaNs, %d) (UR unique NaNs, %d)]\n", ...
+    fprintf(2, "[(UL unique NaNs, %e) (UR unique NaNs, %e)]\n", ...
         UL_nans, UR_nans);
 end
+fprintf("---------------------------------------------\n");

@@ -225,12 +225,16 @@ def main():
             strip_orthoFile = strip_demFile.replace('dem.tif', 'ortho.tif')
             strip_metaFile  = strip_demFile.replace('dem.tif', 'meta.txt')
 
-            saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999, dtype_out='float32')
             saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
+            del M
             saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodata_val=0,     dtype_out='int16')
+            del O
+            saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999, dtype_out='float32')
+
+            fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
+            del Z, X, Y
 
             proj4 = spat_ref.ExportToProj4()
-            fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
             time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
             writeStripMeta(strip_metaFile, srcdir, mosaicked_sceneDemFnames, trans, rmse, proj4, fp_vertices, time)
 

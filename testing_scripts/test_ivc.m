@@ -60,7 +60,7 @@ fprintf(2, ['' ...
         'delete [selection_1] [selection_2] ... [selection_n]\n' ...
         'refresh\n' ...
         'view {img/ras} {noimg} {nohist} {small} [selection_1] [selection_2] ... [selection_n]\n' ...
-        'compare {img/ras} {noimg} {nohist} {showcast} {split} {difflate} {small} [selection_1 selection_2]\n' ...
+        'compare {img/ras} {noimg} {nohist} {masknans} {showcast} {split} {difflate} {small} [selection_1 selection_2]\n' ...
         'auto {img/ras} {noimg} {nohist} {showcast} {small}\n' ...
         'figclose :: close all figures\n' ...
         'quit :: exit without closing figures\n' ...
@@ -262,6 +262,8 @@ while ~ready
                 % Handle options for view/compare/auto.
                 set_image_type = false;
                 image_type = -1;
+                nodata_val = [];
+                mask_nans = false;
                 display_image = true;
                 display_histogram = true;
                 display_casting = false;
@@ -279,6 +281,9 @@ while ~ready
                             error('CUSTOM MESSAGE');
                         end
                         image_type = 1;
+                    end
+                    if ~isempty(cell2mat(arrayfun(@(x) find(strcmp(x, ["masknans"])), check_options, 'UniformOutput', false)))
+                        mask_nans = true;
                     end
                     if ~isempty(cell2mat(arrayfun(@(x) find(strcmp(x, ["noimg"])), check_options, 'UniformOutput', false)))
                         display_image = false;
@@ -329,10 +334,10 @@ while ~ready
                     end
                     
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
-                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i);\n", ...
-                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
+                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i);\n", ...
+                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
                     try
-                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
+                        test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
                     catch ME
                         fprintf(2, "*** Caught the following error during compare/view ***\n");
                         fprintf(2, "%s\n", getReport(ME));

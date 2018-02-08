@@ -2,16 +2,48 @@ function test_ibc
 % Image Batch Compare :: A command line program for comparing images between two directories that contain an identical number of TIF files (with matching filename pairs between the two) that meet a certain search criteria set in code.
 
 
-compare = true;
-
-%% MAKE CHANGES HERE %%
-tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/tif_results/2m';
-tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python_linked/tif_results/2m';
-tifFnameSearch = '*_mask.tif';
+%%%%%% MAKE CHANGES HERE %%%%%%
 
 tifDir_1_name = 'MATLAB';
 tifDir_2_name = 'Python';
-%%%%%%%%%%%%%%%%%%%%%%%
+
+
+tifFnameSearch = '*_dem.tif';
+
+
+% tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/tif_results/8m';
+% tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/tif_results/python_masks';
+
+% tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/tif_results/2m';
+% tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python/tif_results/python_masks';
+
+
+% tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/strips/2m';
+% tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python/strips/strips_pymask';
+
+% tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/strips/strips2a';
+% tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/strips/strips2a_matmask';
+
+tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/strips/strips2a';
+tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/strips/strips2a_pymask';
+
+
+% nodata_val = [];
+nodata_val = -9999;
+mask_nans = true;
+
+display_image = true;
+display_histogram = true;
+
+display_casting = false;
+display_split = false;
+display_difflate = false;
+display_small = false;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+compare = true;
 
 if ~exist('tifDir_1', 'var') || isempty(tifDir_1)
     compare = false;
@@ -78,13 +110,6 @@ for i=1:num_tifs
 end
 fprintf('\n');
 
-display_image = true;
-display_histogram = false;
-display_casting = false;
-display_split = false;
-display_difflate = false;
-display_small = false;
-
 index = 0;
 while (0 <= index) && (index <= num_tifs)
     if index > 0
@@ -96,10 +121,20 @@ while (0 <= index) && (index <= num_tifs)
             img_2 = char(tifFiles_2(index));
         end
 
-        if compare
-            test_compareArrays(imread(img_1), imread(img_2), tifDir_1_name, tifDir_2_name, figtitle, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
-        else
-            test_compareImages(img_1, '', figtitle, 0, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
+        try
+            if compare
+                test_compareArrays(imread(img_1), imread(img_2), tifDir_1_name, tifDir_2_name, figtitle, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
+            else
+                test_compareImages(img_1, '', figtitle, 0, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
+            end
+        catch ME
+            if strcmp(ME.message, 'Input arrays for comparison differ in shape.')
+                fprintf('\n');
+                fprintf(2, ME.message);
+                fprintf('\n\n');
+            else
+                rethrow(ME);
+            end
         end
     end
     
