@@ -403,7 +403,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     mask = ~rat.bwareaopen(~mask, max_hole_fill, in_place=True)
 
     # Remove border effect.
-    mask = mask | rat.imdilate(dem_nodata, dilate_bad)
+    mask = (mask | rat.imdilate(dem_nodata, dilate_bad))
 
     # remove small data gaps.
     mask = ~rat.bwareaopen(~mask, max_hole_fill, in_place=True)
@@ -640,7 +640,7 @@ def getSlopeMask(dem_array,
     mean_slope_array = rat.moving_average(grade, avg_kernel_size, conv_depth='single')
 
     # Mask mean slopes greater than 1.
-    mask = mean_slope_array < 1
+    mask = (mean_slope_array < 1)
 
     if dilate_bad is not None:
         # Dilate high mean slope pixels and set to false.

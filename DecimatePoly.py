@@ -1,13 +1,13 @@
-#!/usr/bin/env python2
-# -*- coding: UTF-8 -*-
 
-# Translated from MATLAB code by Erik Husby (husby036@umn.edu), 2018
-
-# Source file: DecimatePoly.m
+# Source file: DecimatePoly.m, "Decimate Polygon" package (MATLAB)
 # Source author: Anton Semechko (a.semechko@gmail.com)
-# Source date: Jan.2011
+# Source date: Jan. 2011
+# Source URL: https://www.mathworks.com/matlabcentral/fileexchange/34639-decimate-polygon
 
-# Source docstring:
+# Translator: Erik Husby (husby036@umn.edu)
+# Translation date: Feb. 2018
+
+# Source file header:
 """
 function [C_out,i_rem]=DecimatePoly(C,opt)
 % Reduce the complexity of a 2D simple (i.e. non-self intersecting), closed
@@ -62,7 +62,61 @@ class InvalidArgumentError(Exception):
 
 
 def DecimatePoly(C, B_tol=None, P_tol=None):
+    """
+    Reduce the complexity of a 2D simple (i.e. non-self intersecting), closed
+    piecewise linear contour by specifying boundary offset tolerance.
+    IMPORTANT: This function may not preserve the topology of the original
+    polygon.
 
+    Parameters
+    ----------
+    C : ndarray (N,2)
+        N-by-2 array of polygon coordinates, such that the first,
+        `C[0,:]`, and last, `C[-1,:]`, points are the same.
+    B_tol : None, or float > 0
+        Maximum acceptable offset from the original boundary.
+        Must be expressed in the same length units as the coords in `C`.
+        If None, the default setting is `B_tol=Emin/2`, where `Emin` is
+        the length of the shortest edge.
+    P_tol : None, or 0 < float < 1
+        Fraction of the total number of polygon's vertices to be retained.
+
+    Returns
+    -------
+    (C_out, i_rem) tuple
+    C_out : ndarray (N,2)
+        M-by-2 array of polygon coordinates.
+        The first, `C_out[0,:]`, and last, `C_out[-1,:]`, points are the same.
+    i_rem : ndarray (N,)
+        N-by-1 boolean array used to indicate which of the corresponding
+        vertices of `C` were removed during decimation.
+
+    Notes
+    -----
+    Only one decimation criterion, `B_tol` or `P_tol`, may be provided (one
+    must be left `None`). If neither are provided, the `B_tol` criterion is
+    used with its default setting.
+
+    ALGORITHM:
+    1) For every vertex compute the boundary offset error.
+    2) Rank all vertics according to the error score from step 1.
+    3) Remove the vertex with the lowest error.
+    4) Recompute and accumulate the errors for the two neighbours adjacent to
+       the deleted vertex and go back to step 2.
+    5) Repeat step 2 to 4 until no more vertices can be removed or the number
+       of vertices has reached the desired number.
+
+    This function is part of a translation to Python by Erik Husby
+    (husby036@umn.edu) of MATLAB code originally written by Anton Semechko and
+    posted on the MathWorks File Exchange, last updated 23 Jan 2012. [1]
+    See translation note in "Compute the distance offset errors" section for
+    one slight difference in functionality between source and translation.
+
+    References
+    ----------
+    .. [1] https://www.mathworks.com/matlabcentral/fileexchange/34639-decimate-polygon
+
+    """
     # Check the input args
     C = CheckInputArgs(C, B_tol, P_tol)
 
@@ -103,8 +157,11 @@ def DecimatePoly(C, B_tol=None, P_tol=None):
 
     # Find the closest point to the current vertex on the new edge
     t = np.sum(D21*D31, axis=1) / dE_new2
-    # TODO: Determine if we want to clip t or not.
-    # t = np.clip(t, 0, 1)
+    # TRANSLATION NOTE:
+    # The following clip of t behaves differently than in the source.
+    # See comments posted by "Erik Husby, 9 Feb 2018" on MathWorks
+    # File Exchange (reference [1] in docstring).
+    t = np.clip(t, 0, 1)
     t = np.reshape(t, (t.size, 1))
     V = np.roll(C, 1, axis=0) + t*D31
 
@@ -198,11 +255,15 @@ def DecimatePoly(C, B_tol=None, P_tol=None):
 # ==========================================================================
 def RecomputeErrors(V):
     """
-    % Recompute the distance offset error for a small subset of polygonal
-    % vertices.
-    %
-    %   - V     : 3-by-2 array of triangle vertices, where V(2,:) is the vertex
-    %             marked for removal.
+    Recompute the distance offset error for a small subset of polygonal
+    vertices.
+
+    Parameters
+    ----------
+    V : ndarray (3,2)
+        Array of triangle vertices, where V[1,:] is the vertex marked for
+        removal.
+
     """
     # Compute the distance offset error.
     D31 = V[2, :] - V[0, :]
@@ -222,6 +283,7 @@ def RecomputeErrors(V):
 # ==========================================================================
 def PolyPerim(C):
     # Polygon perimeter.
+
     dE = C[1:, :] - C[:-1, :]
     dE = np.sqrt(np.sum(np.square(dE), axis=1))
     P = np.sum(dE)
@@ -232,6 +294,7 @@ def PolyPerim(C):
 # ==========================================================================
 def PolyArea(C):
     # Polygon area.
+
     dx = C[1:, 0] - C[:-1, 0]
     dy = C[1:, 1] + C[:-1, 1]
     A = abs(np.sum(dx*dy) / 2)

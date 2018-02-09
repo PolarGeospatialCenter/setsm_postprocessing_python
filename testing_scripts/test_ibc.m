@@ -8,11 +8,11 @@ tifDir_1_name = 'MATLAB';
 tifDir_2_name = 'Python';
 
 
-tifFnameSearch = '*_dem.tif';
+tifFnameSearch = '*_mask2a.tif';
 
 
 % tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/tif_results/8m';
-% tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/tif_results/python_masks';
+tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/tif_results/8m';
 
 % tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/tif_results/2m';
 % tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python/tif_results/python_masks';
@@ -24,8 +24,8 @@ tifFnameSearch = '*_dem.tif';
 % tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/strips/strips2a';
 % tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/strips/strips2a_matmask';
 
-tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/strips/strips2a';
-tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/strips/strips2a_pymask';
+% tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/strips/strips2a';
+% tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/strips/strips2a_pymask';
 
 
 % nodata_val = [];
