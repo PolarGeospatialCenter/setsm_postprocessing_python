@@ -14,7 +14,6 @@ from warnings import warn
 
 import ogr, osr
 import numpy as np
-from io import BytesIO
 from PIL import Image
 from scipy.misc import imread as scipy_imread
 from tifffile import imread, imsave

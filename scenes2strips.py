@@ -13,13 +13,9 @@ from traceback import print_exc
 import ogr
 import numpy as np
 from scipy import interpolate
-from skimage.morphology import convex_hull_image
-from sklearn.linear_model import LinearRegression
 
 import raster_array_tools as rat
 from mask_scene import getDataDensityMap
-
-import test
 
 
 # The spatial reference of the strip, set at the beginning of scenes2strips()
@@ -541,11 +537,6 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
 
         # Solve for new adjustment.
         px = np.array([np.linalg.lstsq(X, dz[n], rcond=None)[0]]).T
-
-        # # Solve for new adjustment.
-        # reg = LinearRegression()
-        # reg = reg.fit(np.array([sx[n], sy[n]]).T, dz[n])
-        # px = np.array([np.insert(reg.coef_, 0, reg.intercept_)]).T
 
         pn = p + px
 
