@@ -17,9 +17,6 @@ from scipy import ndimage as sp_ndimage
 
 import raster_array_tools as rat
 
-# TODO: Remove `test` include once testing is complete.
-import test
-
 
 class InvalidArgumentError(Exception):
     def __init__(self, msg):

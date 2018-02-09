@@ -96,6 +96,7 @@ def main():
         # Find unique strip IDs (<catid1_catid2>).
         stripids = list(set([os.path.basename(s)[14:47] for s in scene_dems]))
         stripids.sort()
+        print "{} pair ids".format(len(stripids))
 
         del scene_dems
 
@@ -143,9 +144,7 @@ def main():
                 print '{}, {}'.format(i, cmd)
 
             if not args.dryrun:
-                # TODO: Switch to the following subprocess call once testing is complete:
-                # subprocess.call(cmd, shell=True)
-                subprocess.call(cmd)
+                subprocess.call(cmd, shell=True)
 
     else:
         # Process a single strip.

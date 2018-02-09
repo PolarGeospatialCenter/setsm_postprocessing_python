@@ -8,11 +8,10 @@ import copy
 import math
 import operator
 import os
-import warnings
+import subprocess
 from collections import deque
 from itertools import product
 from PIL import Image
-from subprocess import check_call
 from warnings import warn
 
 import cv2
@@ -29,9 +28,7 @@ from skimage import morphology as sk_morphology
 from skimage.filters.rank import entropy
 from skimage.util import unique_rows
 
-# TODO: Remove `test` include once testing is complete.
 from DecimatePoly import DecimatePoly
-import test
 
 _outline = open("outline.c", "r").read()
 _outline_every1 = open("outline_every1.c", "r").read()
@@ -40,7 +37,6 @@ _outline_every1 = open("outline_every1.c", "r").read()
 RASTER_PARAMS = ['ds', 'shape', 'z', 'array', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
 
 
-# warnings.simplefilter('always', UserWarning)
 gdal.UseExceptions()
 
 class RasterIOError(Exception):
@@ -394,7 +390,7 @@ def saveArrayAsTiff(array, dest,
     ###################################################
     # Run gdal_translate with the following arguments #
     ###################################################
-    args = [r'C:\OSGeo4W64\bin\gdal_translate', dest_temp, dest]
+    args = ['gdal_translate', dest_temp, dest]
 
     if nodata_val is not None:
         args.extend(['-a_nodata', str(nodata_val)])  # Create internal nodata mask.
@@ -404,8 +400,9 @@ def saveArrayAsTiff(array, dest,
     args.extend(['-co', 'COMPRESS=LZW'])            # Do LZW compression on output image.
     args.extend(['-co', 'TILED=YES'])               # Force creation of tiled TIFF files.
 
-    # print "Running: {}".format(' '.join(args))
-    check_call(args)
+    cmd = ' '.join(args)
+    print "Running: {}".format(cmd)
+    subprocess.call(cmd, shell=True)
     os.remove(dest_temp)  # Delete the intermediate image.
 
 

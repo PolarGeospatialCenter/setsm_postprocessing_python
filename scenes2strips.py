@@ -536,7 +536,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         X = np.column_stack((np.ones(dz[n].size), sx[n], sy[n]))
 
         # Solve for new adjustment.
-        px = np.array([np.linalg.lstsq(X, dz[n], rcond=None)[0]]).T
+        px = np.array([np.linalg.lstsq(X, dz[n])[0]]).T
 
         pn = p + px
 
