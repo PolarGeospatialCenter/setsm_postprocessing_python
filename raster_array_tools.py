@@ -2828,7 +2828,11 @@ def concave_hull_image(image, concavity, fill=True, alpha_cutoff_mode='unique',
     boundary_points = np.argwhere(data_boundary)
 
     if debug:
-        import matplotlib.pyplot as plt
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError as e:
+            print "matplotlib package is necessary for `debug={}`".format(debug)
+            raise e
     else:
         del data_boundary
 
@@ -3021,12 +3025,18 @@ def concave_hull_image(image, concavity, fill=True, alpha_cutoff_mode='unique',
     if fill:
         mask = sp_ndimage.morphology.binary_fill_holes(mask)
 
-    # TODO: Remove the following before sharing algorithm.
     if debug in (True, 4):
+        try:
+            from tifffile import imsave
+        except ImportError as e:
+            print "`tifffile` package is required for `debug={}`".format(debug)
+            raise e
         debug_mask = np.zeros(image.shape, dtype=np.int8)
         debug_mask[mask] = 1
         debug_mask[data_boundary] += 2
-        test.saveImage(debug_mask, 'debug_concave_hull_image')
+        debug_maskFile = '~/debug_scenes2strips/concave_hull_image.tif'
+        imsave(debug_maskFile, debug_mask)
+        print "'{}' saved".format(debug_maskFile)
 
     return mask
 

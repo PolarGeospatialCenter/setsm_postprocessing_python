@@ -4,6 +4,7 @@
 
 
 import argparse
+import filecmp
 import glob
 import os
 import subprocess
@@ -53,29 +54,44 @@ def main():
         help="Run filtering and mosaicking for a single strip with id "
              "<catid1_catid2> (as parsed from scene dem filenames).")
 
-    # Parse arguments.
+    # Parse and validate arguments.
     args = parser.parse_args()
     scriptpath = os.path.abspath(sys.argv[0])
     scriptdir = os.path.abspath(os.path.dirname(scriptpath))
-    srcdir = os.path.abspath(args.src)
-    dstdir = os.path.abspath(args.dst) if args.dst is not None else None
-    if dstdir is None:
+    srcdir = args.src
+    dstdir = args.dst
+    qsubpath = args.qsubscript
+
+    if os.path.isdir(srcdir):
+        srcdir = os.path.abspath(srcdir)
+    else:
+        parser.error("src must be a directory")
+
+    if dstdir is not None:
+        if os.path.isdir(srcdir):
+            dstdir = os.path.abspath(dstdir)
+        else:
+            parser.error("dst must be a directory")
+    else:
         # Set default dst dir.
         split_ind = srcdir.rfind('tif_results')
         if split_ind == -1:
             parser.error("src path does not contain 'tif_results', so default dst cannot be set")
         dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
         print "dst dir set to: {}".format(dstdir)
-    qsubpath = (os.path.abspath(args.qsubscript) if args.qsubscript is not None
-           else os.path.abspath(os.path.join(scriptdir, 'qsub_scenes2strips.sh')))
 
-    # Validate arguments.
-    if not os.path.isdir(srcdir):
-        parser.error("src must be a directory")
-    if dstdir == srcdir:
-        parser.error("src dir is the same as the dst dir: {}".format(dstdir))
-    if not os.path.isfile(qsubpath):
-        parser.error("qsubscript path is not valid: {}".format(qsubpath))
+    if filecmp.cmp(srcdir, dstdir):
+        parser.error("src dir is the same as the dst dir: {}".format(srcdir))
+
+    if qsubpath is not None:
+        if os.path.isfile(qsubpath):
+            qsubpath = os.path.abspath(qsubpath)
+        else:
+            parser.error("qsubscript path is not a valid file path: {}".format(qsubpath))
+    else:
+        # Set default qsubpath.
+        qsubpath = os.path.abspath(os.path.join(scriptdir, 'qsub_scenes2strips.sh'))
+
     if args.rema2a and (args.edgemask or args.noentropy):
         parser.error("rema2a and (edgemask or noentropy) filters are incompatible")
 
