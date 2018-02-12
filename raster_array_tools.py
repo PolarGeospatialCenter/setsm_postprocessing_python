@@ -22,7 +22,6 @@ import shapely.geometry
 import shapely.ops
 from osgeo import gdal_array
 from scipy import ndimage as sp_ndimage
-from scipy.spatial import ConvexHull
 from skimage.draw import polygon_perimeter
 from skimage import morphology as sk_morphology
 from skimage.filters.rank import entropy
@@ -2512,7 +2511,7 @@ def convex_hull_image(image, offset_coordinates=True, tolerance=1e-10):
         coords = unique_rows(coords)
 
     # Find the convex hull
-    hull = ConvexHull(coords)
+    hull = scipy.spatial.ConvexHull(coords)
     vertices = hull.points[hull.vertices]
 
     # If 2D, use fast Cython function to locate convex hull pixels
