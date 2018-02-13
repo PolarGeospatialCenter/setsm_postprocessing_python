@@ -57,7 +57,7 @@ def main():
     # Parse and validate arguments.
     args = parser.parse_args()
     scriptpath = os.path.abspath(sys.argv[0])
-    scriptdir = os.path.abspath(os.path.dirname(scriptpath))
+    scriptdir = os.path.dirname(os.path.abspath(scriptpath))
     srcdir = args.src
     dstdir = args.dst
     qsubpath = args.qsubscript

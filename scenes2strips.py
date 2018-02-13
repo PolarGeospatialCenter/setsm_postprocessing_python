@@ -193,7 +193,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         if np.sum(A) <= cmin:
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
-            rmse = rmse[:, i]
+            rmse = rmse[:, :i]
             break
 
         # A[A == 0] = np.nan
@@ -217,7 +217,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         if np.sum(A) <= cmin:
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
-            rmse = rmse[:, i]
+            rmse = rmse[:, :i]
             break
 
         del strip_nodata, scene_data
