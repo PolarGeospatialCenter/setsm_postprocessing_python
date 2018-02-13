@@ -546,7 +546,7 @@ def sia_one(array, flavor=None, matchkey=None, descr='', compare=False, concurre
 
 def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
                proj_ref=None, geotrans_rot_tup=(0, 0),
-               like_rasterFile=None,
+               like_raster=None,
                nodata_val=None, dtype_out=None):
     testFile = getTestFileFromFname(fname)
     if testFile is None:
@@ -559,7 +559,7 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
 
     rat.saveArrayAsTiff(Z, testFile,
                         X, Y, proj_ref, geotrans_rot_tup,
-                        like_rasterFile,
+                        like_raster,
                         nodata_val, dtype_out)
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 

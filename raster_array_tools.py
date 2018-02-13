@@ -86,13 +86,13 @@ def oneBandImageToArrayZXY_projRef(rasterFile):
     return Z, X, Y, proj_ref
 
 
-def openRaster(rasterFile_or_ds):
+def openRaster(file_or_ds):
     """
     Open a raster image as a GDAL dataset object.
 
     Parameters
     ----------
-    rasterFile_or_ds : str (file path) or osgeo.gdal.Dataset
+    file_or_ds : str (file path) or osgeo.gdal.Dataset
         File path of the raster image to open as a GDAL dataset object,
         or the GDAL dataset itself.
 
@@ -108,15 +108,15 @@ def openRaster(rasterFile_or_ds):
 
     """
     ds = None
-    if type(rasterFile_or_ds) == gdal.Dataset:
-        ds = rasterFile_or_ds
-    elif type(rasterFile_or_ds) == str:
-        if not os.path.isfile(rasterFile_or_ds):
-            raise RasterIOError("No such rasterFile: '{}'".format(rasterFile_or_ds))
-        ds = gdal.Open(rasterFile_or_ds, gdal.GA_ReadOnly)
+    if type(file_or_ds) == gdal.Dataset:
+        ds = file_or_ds
+    elif type(file_or_ds) == str:
+        if not os.path.isfile(file_or_ds):
+            raise RasterIOError("No such rasterFile: '{}'".format(file_or_ds))
+        ds = gdal.Open(file_or_ds, gdal.GA_ReadOnly)
     else:
-        raise InvalidArgumentError("Invalid input type for `rasterFile_or_ds`: {}".format(
-                                   type(rasterFile_or_ds)))
+        raise InvalidArgumentError("Invalid input type for `file_or_ds`: {}".format(
+                                   type(file_or_ds)))
     return ds
 
 
@@ -186,6 +186,17 @@ def wktToCoords(wkt):
 
 
 def extractRasterParams(rasterFile_or_ds, *params):
+    """
+
+    Parameters
+    ----------
+    rasterFile_or_ds :
+    params :
+
+    Returns
+    -------
+
+    """
     ds = openRaster(rasterFile_or_ds)
     pset = set(params)
     invalid_pnames = pset.difference(set(RASTER_PARAMS))
@@ -305,18 +316,66 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
 
 def saveArrayAsTiff(array, dest,
                     X=None, Y=None, proj_ref=None, geotrans_rot_tup=(0, 0),
-                    like_rasterFile=None,
+                    like_raster=None,
                     nodata_val=None, dtype_out=None):
-    # FIXME: Rewrite docstring in new standard.
     """
-    Saves a NumPy 2D array as a single-band raster image in GeoTiff format.
-    Takes as input [X, Y] coordinate ranges of pixels in the raster grid as
-    NumPy 1D arrays and geotrans_rot_tup specifying rotation coefficients
-    in the output raster's geotransform tuple normally accessed via
-    {GDALDataset}.GetGeoTransform()[[2, 4]] in respective index order.
-    If like_rasterFile is provided, its geotransform and projection reference
-    may be used for the output dataset and [X, Y, geotrans_rot_tup, proj_ref]
-    should not be given.
+    Save a NumPy 2D array as a single-band raster image in GeoTiff format.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Array containing the values of pixels to be saved in the image,
+        one value per pixel.
+    dest : str (file path)
+        File path where the raster image will be saved.
+        If a file already exists at this path, it will be overwritten.
+    X : None or (ndarray, 1D)
+        Grid coordinates corresponding to all columns in the raster image,
+        from left to right, such that `X[j]` specifies the x-coordinate for
+        all pixels in `array[:, j]`.
+        If None, `like_raster` must be provided.
+    Y : None or (ndarray, 1D)
+        Grid coordinates corresponding to all rows in the raster image,
+        from top to bottom, such that `Y[i]` specifies the y-coordinate for
+        all pixels in `array[i, :]`
+        If None, `like_raster` must be provided.
+    proj_ref : None, str (WKT), or osr.SpatialReference
+        Projection reference of the raster image to be saved, specified as
+        either a WKT string or an osr.SpatialReference object.
+        If None, `like_raster` must be provided.
+    geotrans_rot_tup : None or tuple (2 floats)
+        The third and fifth elements of the geometric transformation tuple
+        that specify rotation from north-up of the raster image to be saved.
+        If a north-up output is desired, let both elements be zero.
+        See documentation for `getCornerCoords` for more information on the
+        geometric transformation tuple.
+        If None, `like_raster` must be provided.
+    like_raster : None, str (file path), or osgeo.gdal.Dataset
+        File path or GDAL dataset for a raster image of identical dimensions,
+        geographic location/extent, and spatial reference as the raster image
+        that will be saved.
+        If provided, `X`, `Y`, `proj_ref`, and `geotrans_rot_up` should not
+        be provided, as these metrics will be taken from the like raster.
+    nodata_val : None or int/float
+        Non-NaN value in `array` that will be classified as "no data" in the
+        output raster image.
+    dtype_out : data type as str (e.g. 'uint16'), NumPy data type
+                (e.g. np.uint16), or numpy.dtype object (e.g. from arr.dtype)
+        Numeric type of values in the output raster image.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    The OSGeo `gdal_translate` program [1] must be callable by name
+    from the current working directory at the time this function is called.
+
+    References
+    ----------
+    .. [1] http://www.gdal.org/gdal_translate.html
+
     """
     dtype_gdal = None
     if dtype_out is not None:
@@ -358,12 +417,12 @@ def saveArrayAsTiff(array, dest,
 
     shape = array.shape
     geo_trans = None
-    if like_rasterFile is not None:
-        ds_like = gdal.Open(like_rasterFile, gdal.GA_ReadOnly)
+    if like_raster is not None:
+        ds_like = openRaster(like_raster)
         if shape[0] != ds_like.RasterYSize or shape[1] != ds_like.RasterXSize:
             raise InvalidArgumentError("Shape of `like_rasterFile` '{}' ({}, {}) does not match "
-                                       "the shape of `array` ({})".format(
-                like_rasterFile, ds_like.RasterYSize, ds_like.RasterXSize, shape)
+                                       "the shape of `array` {}".format(
+                like_raster, ds_like.RasterYSize, ds_like.RasterXSize, shape)
             )
         geo_trans = ds_like.GetGeoTransform()
         if proj_ref is None:
