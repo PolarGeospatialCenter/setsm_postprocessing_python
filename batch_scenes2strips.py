@@ -70,6 +70,8 @@ def main():
     if dstdir is not None:
         if os.path.isdir(srcdir):
             dstdir = os.path.abspath(dstdir)
+            if filecmp.cmp(srcdir, dstdir):
+                parser.error("src dir is the same as the dst dir: {}".format(srcdir))
         else:
             parser.error("dst must be a directory")
     else:
@@ -79,9 +81,6 @@ def main():
             parser.error("src path does not contain 'tif_results', so default dst cannot be set")
         dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
         print "dst dir set to: {}".format(dstdir)
-
-    if filecmp.cmp(srcdir, dstdir):
-        parser.error("src dir is the same as the dst dir: {}".format(srcdir))
 
     if qsubpath is not None:
         if os.path.isfile(qsubpath):
