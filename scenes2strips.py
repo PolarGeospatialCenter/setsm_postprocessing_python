@@ -17,6 +17,9 @@ from scipy import interpolate
 import raster_array_tools as rat
 from mask_scene import getDataDensityMap
 
+import test
+import pdb
+
 
 # The spatial reference of the strip, set at the beginning of scenes2strips()
 # to the spatial reference of the first scene dem in order and used for
@@ -190,7 +193,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # A = A.astype(np.float32)
 
         # Check for segment break.
-        if np.sum(A) <= cmin:
+        if np.count_nonzero(A) <= cmin:
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
             rmse = rmse[:, :i]
@@ -206,7 +209,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         A = rat.bwareaopen(strip_nodata & scene_data, cmin, in_place=True).astype(np.float32)
 
         # Check for redundant scene.
-        if np.sum(A) <= cmin:
+        if np.count_nonzero(A) <= cmin:
             print "Redundant scene, skipping"
             continue
 
@@ -214,7 +217,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         A[rat.bwareaopen(~strip_nodata & ~scene_data, cmin, in_place=True)] = 2
 
         # Check for segment break.
-        if np.sum(A) <= cmin:
+        if np.count_nonzero(A) <= cmin:
             demFiles_ordered = demFiles_ordered[:i]
             trans = trans[:, :i]
             rmse = rmse[:, :i]
@@ -284,9 +287,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         Ar = rat.imresize(Ar, A.shape, 'bilinear')
         Ar[(A == 1) & (Ar != 1)] = 1
         Ar[(A == 2) & (Ar != 2)] = 2
-        A = Ar - 1
-        A[A < 0] = 0
-        A[A > 1] = 1
+        A = np.clip(Ar - 1, 0, 1)
         del Ar
 
         W = (~np.isnan(Zsub)).astype(np.float32)
@@ -298,9 +299,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         f0 = 0.25  # overlap fraction where ref z weight goes to zero
         f1 = 0.55  # overlap fraction where ref z weight goes to one
 
-        W = (1/(f1-f0))*W - f0/(f1-f0)
-        W[W > 1] = 1
-        W[W < 0] = 0
+        W = np.clip((1/(f1-f0))*W - f0/(f1-f0))
 
         # Remove <25% edge of coverage from each in pair.
         strip_nodata = (W == 0)
@@ -308,7 +307,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         Msub[strip_nodata] = 0
         Osub[strip_nodata] = 0
 
-        scene_nodata = (W >= 1)
+        scene_nodata = (W == 1)
         z[scene_nodata] = np.nan
         m[scene_nodata] = 0
         o[scene_nodata] = 0
@@ -494,7 +493,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
 
         # Filter NaNs and outliers.
         n = (~np.isnan(sx) & ~np.isnan(sy)
-             & (abs(dz - np.nanmedian(dz)) <= np.nanstd(dz)))
+             & (np.abs(dz - np.nanmedian(dz)) <= np.nanstd(dz)))
 
         if not np.any(n):
             sys.stdout.write("regression failure, all overlap filtered\n")
@@ -544,7 +543,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         sys.stdout.write("offset(z,x,y): {:.3f}, {:.3f}, {:.3f}\n".format(
             pn[0, 0], pn[1, 0], pn[2, 0]))
 
-        if np.any(abs(pn[1:]) > maxp):
+        if np.any(np.abs(pn[1:]) > maxp):
             sys.stdout.write(
                 "maximum horizontal offset reached, "
                 "returning median vertical offset: {:.3f}\n".format(meddz)
@@ -558,36 +557,6 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         it += 1
 
     return np.array([z2out, p.T[0], d0])
-
-
-def rectFootprint(*geoms):
-    """
-    Returns the smallest rectangular footprint that contains all input polygons,
-    all as OGRGeometry objects.
-    """
-    minx = np.inf
-    miny = np.inf
-    maxx = -np.inf
-    maxy = -np.inf
-
-    for geom in geoms:
-        cc = rat.wktToCoords(geom.ExportToWkt())
-        cc_x = cc[:, 0]
-        cc_y = cc[:, 1]
-        minx = min(minx, np.min(cc_x))
-        miny = min(miny, np.min(cc_y))
-        maxx = max(maxx, np.max(cc_x))
-        maxy = max(maxy, np.max(cc_y))
-
-    fp_wkt = 'POLYGON (({} {},{} {},{} {},{} {},{} {}))'.format(
-        minx, maxy,
-        maxx, maxy,
-        maxx, miny,
-        minx, miny,
-        minx, maxy
-    )
-
-    return ogr.Geometry(wkt=fp_wkt)
 
 
 def orderPairs(demdir, fnames):
@@ -644,6 +613,36 @@ def orderPairs(demdir, fnames):
             break
 
     return [fnames[i] for i in ordered_fname_indices]
+
+
+def rectFootprint(*geoms):
+    """
+    Returns the smallest rectangular footprint that contains all input polygons,
+    all as OGRGeometry objects.
+    """
+    minx = np.inf
+    miny = np.inf
+    maxx = -np.inf
+    maxy = -np.inf
+
+    for geom in geoms:
+        cc = rat.wktToCoords(geom.ExportToWkt())
+        cc_x = cc[:, 0]
+        cc_y = cc[:, 1]
+        minx = min(minx, np.min(cc_x))
+        miny = min(miny, np.min(cc_y))
+        maxx = max(maxx, np.max(cc_x))
+        maxy = max(maxy, np.max(cc_y))
+
+    fp_wkt = 'POLYGON (({} {},{} {},{} {},{} {},{} {}))'.format(
+        minx, maxy,
+        maxx, maxy,
+        maxx, miny,
+        minx, miny,
+        minx, maxy
+    )
+
+    return ogr.Geometry(wkt=fp_wkt)
 
 
 def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
@@ -703,8 +702,9 @@ def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
 
 
 def applyMasks(x, y, z, m, o, md, me=None):
-    # TODO: Write docstring.
-
+    """
+    Apply masks to the scene DEM, matchtag, and ortho matrices.
+    """
     z[~md] = np.nan
     m[~md] = 0
     if me is not None:
@@ -754,8 +754,11 @@ def cropnans(matrix, buff=0):
 
 
 def regrid(x, y, z, m, o):
-    # TODO: Write docstring.
-
+    # TODO: Test this function.
+    """
+    Interpolate scene DEM, matchtag, and ortho matrices
+    to a new set of x-y grid coordinates.
+    """
     dx = x[1] - x[0]
     dy = y[1] - y[0]
 
@@ -778,42 +781,32 @@ def regrid(x, y, z, m, o):
     return xi, yi, zi, m, o
 
 
-def batchConcatenate(pairs, direction, axis_num):
-    # TODO: Write docstring.
-
-    if direction in ('left', 'up'):
-        for i in range(len(pairs)):
-            pairs[i] = np.concatenate(pairs[i], axis=axis_num)
-    else:
-        for i in range(len(pairs)):
-            pairs[i].reverse()
-            pairs[i] = np.concatenate(pairs[i], axis=axis_num)
-
-    return pairs
-
-
 def expandCoverage(Z, M, O, R1, direction):
     """
-    Expands strip coverage for Z, M, and O
+    Expand strip coverage for DEM, matchtag, and ortho matrices
     based upon the direction of expansion.
     When (X1/Y1) is passed in for R1,
     (('left' or 'right') / ('up' or 'down'))
     must be passed in for direction.
     """
-
-    if direction in ('left', 'right'):
-        # R1 is X1
-        Z1 = np.full((Z.shape[0], R1.size), np.nan, dtype=np.float32)
-        M1 = np.full((M.shape[0], R1.size), False,  dtype=np.bool)
-        O1 = np.full((O.shape[0], R1.size), 0,      dtype=np.uint16)
-        axis_num = 1
-    else:
-        # R1 is Y1
+    if direction in ('up', 'down'):
+        # R1 is Y1.
         Z1 = np.full((R1.size, Z.shape[1]), np.nan, dtype=np.float32)
         M1 = np.full((R1.size, M.shape[1]), False,  dtype=np.bool)
         O1 = np.full((R1.size, O.shape[1]), 0,      dtype=np.uint16)
         axis_num = 0
+    else:
+        # R1 is X1.
+        Z1 = np.full((Z.shape[0], R1.size), np.nan, dtype=np.float32)
+        M1 = np.full((M.shape[0], R1.size), False,  dtype=np.bool)
+        O1 = np.full((O.shape[0], R1.size), 0,      dtype=np.uint16)
+        axis_num = 1
 
-    Z, M, O = batchConcatenate([[Z1,Z], [M1,M], [O1,O]],
-                               direction, axis_num)
+    if direction in ('left', 'up'):
+        pairs = [[Z1, Z], [M1, M], [O1, O]]
+    else:
+        pairs = [[Z, Z1], [M, M1], [O, O1]]
+
+    Z, M, O = [np.concatenate(p, axis=axis_num) for p in pairs]
+
     return Z, M, O

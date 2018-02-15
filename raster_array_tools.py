@@ -459,7 +459,6 @@ def saveArrayAsTiff(array, dest,
     args.extend(['-co', 'TILED=YES'])               # Force creation of tiled TIFF files.
 
     cmd = ' '.join(args)
-    print "Running: {}".format(cmd)
     subprocess.call(cmd, shell=True)
     os.remove(dest_temp)  # Delete the intermediate image.
 
