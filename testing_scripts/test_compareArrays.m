@@ -141,26 +141,6 @@ if exist('arr2_nancount', 'var')
 end
 fprintf("\n");
 
-has_nans = false;
-if any(cellfun(@(x) any(strcmp(class(x), ["single", "double"])), {arr1, arr2}))
-    arr1_nans = isnan(arr1);
-    arr1_nancount = sum(arr1_nans(:));
-    arr2_nans = isnan(arr2);
-    arr2_nancount = sum(arr2_nans(:));
-    if arr1_nancount > 0
-        has_nans = true;
-        if ~mask_nans
-            arr1(arr1_nans) = -inf;
-        end
-    end
-    if arr2_nancount > 0
-        has_nans = true;
-        if ~mask_nans
-            arr2(arr2_nans) = -inf;
-        end
-    end
-end
-
 try
     diff = arr2 - arr1;
 catch ME

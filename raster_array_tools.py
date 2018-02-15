@@ -884,7 +884,7 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
     try:
         interp_pil = interp_dict[interp]
     except KeyError:
-        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.vals(), interp))
+        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.values(), interp))
 
     dtype_out_choices = ('default', 'input')
     if dtype_out not in dtype_out_choices:
@@ -1074,7 +1074,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
             interp_cv2 = interp_dict[interp]
         except KeyError:
             raise InvalidArgumentError("For `method=cv2`, `interp` must be one of {}, "
-                                       "but was '{}'".format(interp_dict.vals(), interp))
+                                       "but was '{}'".format(interp_dict.values(), interp))
         result = cv2.resize(array, tuple(list(new_shape)[::-1]), interpolation=interp_cv2)
 
     elif method == 'gdal':

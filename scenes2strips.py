@@ -299,7 +299,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         f0 = 0.25  # overlap fraction where ref z weight goes to zero
         f1 = 0.55  # overlap fraction where ref z weight goes to one
 
-        W = np.clip((1/(f1-f0))*W - f0/(f1-f0))
+        W = np.clip((1/(f1-f0))*W - f0/(f1-f0), 0, 1)
 
         # Remove <25% edge of coverage from each in pair.
         strip_nodata = (W == 0)
