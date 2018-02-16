@@ -264,6 +264,9 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         B = np.where(rat.bwboundaries_array(~Ar_outer))
         Ar_extrap = interpolate.griddata(B, Ar[B], Ar_outer_coords, 'nearest')
         Ar[Ar_outer_coords] = Ar_extrap
+        # Nearest extrapolation is granular, so it is smoothed.
+        Ar_smooth = rat.moving_average(Ar, 5)
+        Ar[Ar_outer] = Ar_smooth[Ar_outer]
 
         del Ar_outer, Ar_outer_coords, Ar_extrap
 

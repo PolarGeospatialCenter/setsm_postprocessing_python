@@ -1531,8 +1531,8 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
     return fix_array_if_rotation_was_applied(result, rotation_flag)
 
 
-def filter2(array, kernel, shape='full', zero_border=True, conv_depth='default',
-            nan_over_zero=True, allow_flipped_processing=True):
+def filt2(array, kernel, shape='same', conv_depth='default', zero_border=False,
+          fix_float_zeros=True, nan_over_zero=True, allow_flipped_processing=True):
     """
     Apply the (convolution) filter kernel to an array in 2D.
 
@@ -1545,12 +1545,12 @@ def filter2(array, kernel, shape='full', zero_border=True, conv_depth='default',
     and performing the multiplications/additions.
 
     """
-    return conv2(array, np.rot90(kernel, 2), shape, zero_border, conv_depth,
-                 nan_over_zero, allow_flipped_processing)
+    return conv2(array, np.rot90(kernel, 2), shape, conv_depth, zero_border,
+                 fix_float_zeros, nan_over_zero, allow_flipped_processing)
 
 
-def moving_average(array, nhood, shape='same', conv_depth='default',
-                   allow_flipped_processing=True):
+def moving_average(array, nhood, shape='same', conv_depth='default', zero_border=False,
+                   fix_float_zeros=True, nan_over_zero=True, allow_flipped_processing=True):
     """
     Calculate the moving average over an array.
 
@@ -1567,6 +1567,12 @@ def moving_average(array, nhood, shape='same', conv_depth='default',
         See documentation for `conv2`.
     conv_depth : str; 'default', 'single', or 'double'
         Specifies the floating data type of the convolution kernel.
+        See documentation for `conv2`.
+    zero_border : bool
+        See documentation for `conv2`.
+    fix_float_zeros : bool
+        See documentation for `conv2`.
+    nan_over_zero : bool
         See documentation for `conv2`.
     allow_flipped_processing : bool
         See documentation for `conv2` function.
@@ -1617,8 +1623,8 @@ def moving_average(array, nhood, shape='same', conv_depth='default',
 
     conv_kernel = np.rot90(np.divide(structure, np.sum(structure), dtype=float_dtype), 2)
 
-    return conv2(array, conv_kernel, shape, conv_depth=conv_depth,
-                 allow_flipped_processing=allow_flipped_processing)
+    return conv2(array, conv_kernel, shape, conv_depth, zero_border,
+                 fix_float_zeros, nan_over_zero, allow_flipped_processing)
 
 
 def conv_binary_structure_prevent_overflow(array, structure):
