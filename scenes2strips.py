@@ -17,9 +17,6 @@ from scipy import interpolate
 import raster_array_tools as rat
 from mask_scene import getDataDensityMap
 
-import test
-import pdb
-
 
 # The spatial reference of the strip, set at the beginning of scenes2strips()
 # to the spatial reference of the first scene dem in order and used for
@@ -103,9 +100,9 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         try:
             if maskFileSuffix == 'edgemask/datamask':
-                x, y, z, m, o, md, me = loaddata(demFile, matchFile, orthoFile, dataMaskFile, edgeMaskFile)
+                x, y, z, m, o, md, me = loadData(demFile, matchFile, orthoFile, dataMaskFile, edgeMaskFile)
             else:
-                x, y, z, m, o, md = loaddata(demFile, matchFile, orthoFile, maskFile)
+                x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile)
         except:
             print "Data read error:"
             print_exc()
@@ -190,7 +187,6 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Crop to just region of overlap.
         A = (~np.isnan(Zsub) & ~np.isnan(z))
-        # A = A.astype(np.float32)
 
         # Check for segment break.
         if np.count_nonzero(A) <= cmin:
@@ -199,15 +195,16 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             rmse = rmse[:, :i]
             break
 
-        # A[A == 0] = np.nan
-        r, c = cropnans(A, buff)
+        r, c = cropBorder(A, 0, buff)
 
         # Make overlap mask removing isolated pixels.
         strip_nodata =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
         scene_data   = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
+
         # Nodata in strip and data in scene is a one.
         A = rat.bwareaopen(strip_nodata & scene_data, cmin, in_place=True).astype(np.float32)
 
+        # TODO: Remove redundant scenes from strip metadata.
         # Check for redundant scene.
         if np.count_nonzero(A) <= cmin:
             print "Redundant scene, skipping"
@@ -216,21 +213,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # Data in strip and nodata in scene is a two.
         A[rat.bwareaopen(~strip_nodata & ~scene_data, cmin, in_place=True)] = 2
 
-        # Check for segment break.
-        if np.count_nonzero(A) <= cmin:
-            demFiles_ordered = demFiles_ordered[:i]
-            trans = trans[:, :i]
-            rmse = rmse[:, :i]
-            break
-
         del strip_nodata, scene_data
-
-        # FIXME: What does the following commented out code
-        # -f     (taken from Ian's scenes2strips.m) do?
-        # %     tic
-        # %     % USING REGIONFILL - Requires matlab 2015a or newer
-        # %     A = regionfill(A,A==0) -1;
-        # %     toc
 
         Ar = rat.imresize(A, 0.1, 'nearest')
 
@@ -325,8 +308,9 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             rmse = rmse[:, :i]
             break
 
-        P1 = getDataDensityMap(   m[r[0]:r[1], c[0]:c[1]]) > 0.9
+        P1 = getDataDensityMap(m[r[0]:r[1], c[0]:c[1]]) > 0.9
 
+        # TODO: Remove redundant scenes from strip metadata.
         # Check for redundant scene.
         if not np.any(P1):
             print "Redundant scene, skipping"
@@ -421,7 +405,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
     # Crop to data.
     if 'Z' in vars() and np.any(~np.isnan(Z)):
-        rcrop, ccrop = cropnans(Z)
+        rcrop, ccrop = cropBorder(Z, np.nan)
         if rcrop is not None:
             X = X[ccrop[0]:ccrop[1]]
             Y = Y[rcrop[0]:rcrop[1]]
@@ -658,7 +642,7 @@ def rectFootprint(*geoms):
     return ogr.Geometry(wkt=fp_wkt)
 
 
-def loaddata(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
+def loadData(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     """
     Load data files and perform basic conversions.
     """
@@ -725,7 +709,7 @@ def applyMasks(x, y, z, m, o, md, me=None):
 
     # If there is any good data, crop the matrices of bordering NaNs.
     if np.any(~np.isnan(z)):
-        rowcrop, colcrop = cropnans(z)
+        rowcrop, colcrop = cropBorder(z, np.nan)
 
         x = x[colcrop[0]:colcrop[1]]
         y = y[rowcrop[0]:rowcrop[1]]
@@ -736,11 +720,18 @@ def applyMasks(x, y, z, m, o, md, me=None):
     return x, y, z, m, o
 
 
-def cropnans(matrix, buff=0):
+def cropBorder(matrix, border_val, buff=0):
     """
-    Crop matrix of bordering NaNs.
+    Crop matrix of a bordering value.
     """
-    data = ~np.isnan(matrix) if matrix.dtype != np.bool else matrix
+    data = None
+    if np.isnan(border_val):
+        data = ~np.isnan(matrix)
+    elif border_val == 0 and matrix.dtype == np.bool:
+        data = matrix
+    else:
+        data = (matrix != border_val)
+
     if ~np.any(data):
         return None, None  # This shouldn't happen on call from applyMasks.
 
