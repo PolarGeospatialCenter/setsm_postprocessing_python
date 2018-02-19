@@ -136,7 +136,7 @@ def mask_v1(matchFile, noentropy=False):
             setsmVersion = 2.03082016
     print "Using settings for SETSM Version = {}".format(setsmVersion)
 
-    match_array, res = rat.extractRasterParams(matchFile, 'array', 'res')
+    match_array, res = rat.extractRasterData(matchFile, 'array', 'res')
 
     if setsmVersion < 2.01292016:
         n = int(math.floor(21*2/res))   # data density kernel window size
@@ -227,12 +227,12 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
     maxDN = meta['image_1_max'] if wv_correct_flag else None
 
     # Extract raster data.
-    dem_array, image_shape, image_gt = rat.extractRasterParams(demFile, 'array', 'shape', 'geo_trans')
+    dem_array, image_shape, image_gt = rat.extractRasterData(demFile, 'array', 'shape', 'geo_trans')
     image_dx = image_gt[1]
     image_dy = image_gt[5]
     image_res = abs(image_dx)
-    match_array = rat.extractRasterParams(matchFile, 'array')
-    ortho_array = rat.extractRasterParams(orthoFile, 'array')
+    match_array = rat.extractRasterData(matchFile, 'array')
+    ortho_array = rat.extractRasterData(orthoFile, 'array')
 
     # Raster size consistency checks
     if match_array.shape != image_shape:
@@ -329,7 +329,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
 
     # Read DEM data and extract information for slope/cloud masking.
 
-    dem_array, image_gt = rat.extractRasterParams(demFile, 'array', 'geo_trans')
+    dem_array, image_gt = rat.extractRasterData(demFile, 'array', 'geo_trans')
     image_dx = image_gt[1]
     image_dy = image_gt[5]
     image_res = abs(image_dx)
@@ -373,7 +373,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     del stdev_dk_list, dk_nodata_list
 
     # Read matchtag and make data density map.
-    match_array = rat.extractRasterParams(matchFile, 'array')
+    match_array = rat.extractRasterData(matchFile, 'array')
     data_density_map = getDataDensityMap(match_array, avg_kernel_size, conv_depth='single')
     data_density_map[dem_nodata] = np.nan
 
@@ -509,7 +509,7 @@ def getEntropyMask(orthoFile,
             print "wv_correct not applied"
 
     # Read ortho.
-    ortho_array, image_shape, image_res = rat.extractRasterParams(orthoFile, 'array', 'shape', 'res')
+    ortho_array, image_shape, image_res = rat.extractRasterData(orthoFile, 'array', 'shape', 'res')
 
     background_mask = (ortho_array == 0)  # image background mask
 

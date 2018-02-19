@@ -633,7 +633,7 @@ def readImage(imgFile='testImage_ml.tif'):
 
 
 def readRasterZ(rasterFile='testRaster_ml.tif'):
-    return rat.extractRasterParams(findFile(rasterFile), 'z')
+    return rat.extractRasterData(findFile(rasterFile), 'z')
 
 
 def doMasking(matchFile):
@@ -643,7 +643,7 @@ def doMasking(matchFile):
 def getFP(demFile):
     demFile = findFile(demFile)
 
-    Z, X, Y = rat.extractRasterParams(demFile, 'z', 'x', 'y')
+    Z, X, Y = rat.extractRasterData(demFile, 'z', 'x', 'y')
     fp_vertices = rat.getFPvertices(Z, X, Y, nodata_val=-9999)
     num = len(fp_vertices[0])
 
@@ -667,7 +667,7 @@ def saveDBP(demFile):
     demFile = findFile(demFile)
     shapefileFile = demFile.replace('dem.tif', 'dem_boundary.shp')
 
-    Z, X, Y, proj_ref = rat.extractRasterParams(demFile, 'z', 'x', 'y', 'proj_ref')
+    Z, X, Y, proj_ref = rat.extractRasterData(demFile, 'z', 'x', 'y', 'proj_ref')
     poly = rat.getDataBoundariesPoly(Z, X, Y, nodata_val=-9999)
     if not poly:
         raise TestingError("Failed to create data cluster boundaries polygon")

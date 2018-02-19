@@ -185,16 +185,59 @@ def wktToCoords(wkt):
     return eval(eval_str)
 
 
-def extractRasterParams(rasterFile_or_ds, *params):
+def extractRasterData(rasterFile_or_ds, *params):
     """
+    Extract information from a single-band raster image file.
 
     Parameters
     ----------
-    rasterFile_or_ds :
-    params :
+    rasterFile_or_ds : str (file path) or osgeo.gdal.Dataset
+        File path of the raster image to open as a GDAL dataset object,
+        or the GDAL dataset itself.
+    params : str
+        Names of parameters to be extracted from the raster dataset.
+        'array'/'z' ------ matrix of image pixel values as ndarray (2D)
+        'shape'----------- pixel shape of image as tuple (nrows, ncols)
+        'x' -------------- georeferenced grid coordinates corresponding to
+                           each column of pixels in image as ndarray (1D)
+        'y' -------------- georeferenced grid coordinates corresponding to
+                           each row of pixels in image as ndarray (1D)
+        'dx' ------------- x length of each pixel in georeferenced pixel-grid coordinates,
+                           corresponding to x[1] - x[0] from 'x' param (dx may be negative)
+        'dy' ------------- y length of each pixel in georeferenced pixel-grid coordinates,
+                           corresponding to y[1] - y[0] from 'y' param (dy may be negative)
+        'res' ------------ (absolute) resolution of square pixels in image
+                           (NaN if pixels are not square)
+        'geo_trans' ------ affine geometric transformation
+                           (see documentation for `getCornerCoords`)
+        'corner_coords' -- georeferenced corner coordinates of image extent
+                           (see documentation for `getCornerCoords`)
+        'proj_ref' ------- projection definition string in OpenGIS WKT format
+                           (None if projection definition is not available)
+        'spat_ref' ------- spatial reference as osgeo.osr.SpatialReference object
+                           (None if spatial reference is not available)
+        'geom' ----------- polygon geometry of image extent as osgeo.ogr.Geometry object
+        'geom_sr' -------- polygon geometry of image extent as osgeo.ogr.Geometry object
+                           with spatial reference assigned (if available)
 
     Returns
     -------
+    extractRasterData : tuple
+        Tuple of parameter data with length equal to the number
+        of parameter name arguments given in the function call.
+        The order of returned parameter data corresponds directly to
+        the order of the parameter name arguments.
+        If only one parameter name argument is provided,
+        the parameter data is returned not in a tuple.
+
+    Examples
+    --------
+    >>> f = 'my_raster.tif'
+    >>> image_data, resolution = extractRasterData(f, 'array', 'res')
+    >>> resolution
+    2
+    >>> extractRasterData(f, 'dy')
+    -2
 
     """
     ds = openRaster(rasterFile_or_ds)
@@ -512,7 +555,6 @@ def flip_pixcoords(coords, shape_in, axis=0):
 
 
 def array_round_proper(array, in_place):
-    # TODO: Rewrite docstring in new standard.
     # Round half up for positive X.5,
     # round half down for negative X.5.
 
@@ -529,7 +571,6 @@ def array_round_proper(array, in_place):
 
 
 def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
-    # TODO: Rewrite docstring in new standard.
     # This function is meant to replicate MATLAB array type casting.
 
     # The trivial case
@@ -548,7 +589,6 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
 
 
 def astype_cropped(array, dtype_out, allow_modify_array=False):
-    # TODO: Rewrite docstring in new standard.
     # Check for overflow and underflow before converting data types,
     # cropping values to the range of `dtype_out`.
 
@@ -873,18 +913,21 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
     array_backup = array
     array_dtype_in = array.dtype
 
+    interp_choices = ('nearest', 'box', 'bilinear', 'hamming', 'bicubic', 'lanczos')
     interp_dict = {
         'nearest'  : Image.NEAREST,
         'box'      : Image.BOX,
+        'linear'   : Image.BILINEAR,
         'bilinear' : Image.BILINEAR,
         'hamming'  : Image.HAMMING,
+        'cubic'    : Image.BICUBIC,
         'bicubic'  : Image.BICUBIC,
         'lanczos'  : Image.LANCZOS,
     }
     try:
         interp_pil = interp_dict[interp]
     except KeyError:
-        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.values(), interp))
+        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_choices, interp))
 
     dtype_out_choices = ('default', 'input')
     if dtype_out not in dtype_out_choices:
@@ -3330,8 +3373,8 @@ def outline(array, every, start=None, pass_start=False, complete_ring=True):
 
 
 def connectEdges(edge_collection, allow_modify_deque_input=True):
-    # TODO: Test function.
     # TODO: Rewrite docstring in new standard.
+    # TODO: Test function.
     """
     Takes a collection of edges, each edge being an ordered collection of vertex numbers,
     and recursively connects them by linking edges with endpoints that have matching vertex numbers.

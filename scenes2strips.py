@@ -77,7 +77,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
     # Get projection reference of the first scene to be used in equality checks
     # with the projection reference of all scenes that follow.
     global __STRIP_SPAT_REF__
-    __STRIP_SPAT_REF__ = rat.extractRasterParams(os.path.join(demdir, demFiles_ordered[0]), 'spat_ref')
+    __STRIP_SPAT_REF__ = rat.extractRasterData(os.path.join(demdir, demFiles_ordered[0]), 'spat_ref')
 
     # File loop.
     for i in range(len(demFiles_ordered)):
@@ -572,7 +572,7 @@ def orderPairs(demdir, fnames):
 
     # Get rectangular parameters and geometries.
     for i in range(len(fnames)):
-        cc, geom = rat.extractRasterParams(os.path.join(demdir, fnames[i]), 'corner_coords', 'geom')
+        cc, geom = rat.extractRasterData(os.path.join(demdir, fnames[i]), 'corner_coords', 'geom')
         cc_x = cc[:, 0]
         cc_y = cc[:, 1]
         R0[i, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]
@@ -651,7 +651,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     """
     global __STRIP_SPAT_REF__
 
-    z, x_dem, y_dem, spat_ref = rat.extractRasterParams(demFile, 'array', 'x', 'y', 'spat_ref')
+    z, x_dem, y_dem, spat_ref = rat.extractRasterData(demFile, 'array', 'x', 'y', 'spat_ref')
     if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
         raise SpatialRefError("demFile '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
                               demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
@@ -659,21 +659,21 @@ def loadData(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
     z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
 
-    m = rat.extractRasterParams(matchFile, 'array').astype(np.bool)
+    m = rat.extractRasterData(matchFile, 'array').astype(np.bool)
     if m.shape != z.shape:
         warnings.warn("matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
                      + "\nInterpolating to dem dimensions")
-        x, y = rat.extractRasterParams(matchFile, 'x', 'y')
+        x, y = rat.extractRasterData(matchFile, 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.isnan(m)] = 0  # Convert back to bool/uint8.
         m = m.astype(np.bool)
 
     if os.path.isfile(orthoFile):
-        o = rat.extractRasterParams(orthoFile, 'array')
+        o = rat.extractRasterData(orthoFile, 'array')
         if o.shape != z.shape:
             warnings.warn("orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
                           + "\nInterpolating to dem dimensions")
-            x, y = rat.extractRasterParams(orthoFile, 'x', 'y')
+            x, y = rat.extractRasterData(orthoFile, 'x', 'y')
             o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
             o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
             o[np.isnan(o)] = 0  # Convert back to uint16.
@@ -682,7 +682,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
         o = np.zeros(z.shape, dtype=np.uint16)
 
     if maskFile is not None:
-        md = rat.extractRasterParams(maskFile, 'array').astype(np.bool)
+        md = rat.extractRasterData(maskFile, 'array').astype(np.bool)
         if md.shape != z.shape:
             raise RasterDimensionError("maskFile '{}' dimensions {} do not match dem dimensions {}".format(
                                        maskFile, md.shape, z.shape))
@@ -690,7 +690,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
         md = np.ones(z.shape, dtype=np.bool)
 
     if edgemaskFile is not None:
-        me = rat.extractRasterParams(edgemaskFile, 'array').astype(np.bool)
+        me = rat.extractRasterData(edgemaskFile, 'array').astype(np.bool)
         if me.shape != z.shape:
             raise RasterDimensionError("edgemaskFile '{}' dimensions {} do not match dem dimensions {}".format(
                                        maskFile, me.shape, z.shape))
