@@ -608,7 +608,6 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
 
 
 def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):
-    # TODO: Rewrite docstring in new standard.
     # Rows and columns of Zi outside the domain of Z are made NaN.
     # Assume X and Y coordinates are monotonically increasing/decreasing
     # so hopefully we only need to work a short way inwards from the edges.
@@ -675,14 +674,43 @@ def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True)
 
 
 def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
-    # TODO: Rewrite docstring in new standard.
     """
-    Performs a resampling of the input NumPy 2D array [Z],
-    from initial grid coordinates [X, Y] to final grid coordinates [Xi, Yi]
-    (all four ranges as NumPy 1D arrays) using the desired interpolation method.
-    To best match output with MATLAB's interp2 function, extrapolation of
-    row and column data outside the [X, Y] domain of the input 2D array [Z]
-    is manually wiped away and set to NaN by default when borderNaNs=True.
+    Resample array data from one set of x-y grid coordinates to another.
+
+    Parameters
+    ----------
+    X : ndarray, 1D
+        Grid coordinates corresponding to all columns in the raster image,
+        from left to right, such that `X[j]` specifies the x-coordinate for
+        all pixels in `Z[:, j]`.
+    Y : ndarray, 1D
+        Grid coordinates corresponding to all rows in the raster image,
+        from top to bottom, such that `Y[i]` specifies the y-coordinate for
+        all pixels in `Z[i, :]`.
+    Z : ndarray, 2D
+        Array containing values to be resampled.
+    Xi : ndarray, 1D
+        New grid x-coordinates, like `X` array.
+    Yi : ndarray, 1D
+        New grid y-coordinates, like `Y` array.
+    interp : str
+        Interpolation/resampling method, must be one of the following:
+        'nearest', 'linear', 'cubic', 'spline', 'lanczos', 'average', 'mode'
+    extrapolate : bool
+        Whether or not to interpolate values for pixels with new grid coords
+        `Xi` and `Yi` that fall outside the range of old grid coords `X` and `Y`.
+        If True, allow the interpolation method to set the values of these pixels.
+        If False, set the values of these pixels to `extrap_val`.
+    extrap_val : int/float
+        (Option only applies when `extrapolate=True`.)
+        Value to fill any regions of the output array where new grid coords
+        `Xi` and `Yi` fall outside the range of old grid coords `X` and `Y`.
+
+    Returns
+    -------
+    interp2_gdal : ndarray, 2D, same shape and type as `Z`
+        The resampled array.
+
     """
     interp_dict = {
         'nearest'   : gdal.GRA_NearestNeighbour,
