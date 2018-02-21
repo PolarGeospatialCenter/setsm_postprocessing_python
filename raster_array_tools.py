@@ -172,13 +172,45 @@ def getCornerCoords(gt, shape):
     return top_left_mat + np.dot(raster_XY_size_mat, gt_mat)
 
 
-def coordsToWkt(coord_pairs):
+def coordsToWkt(point_coords):
+    """
+    Retrieve a WKT polygon representation of an ordered list of
+    point coordinates.
+
+    Parameters
+    ----------
+    point_coords : 2D sequence of floats/ints like ndarray
+                   of shape (npoints, ndim)
+        Ordered list of points, each represented by a list of
+        coordinates that define its position in space.
+
+    Returns
+    -------
+    coordsToWkt : str
+        WKT polygon representation of `point_coords`.
+
+    """
     return 'POLYGON (({}))'.format(
-        ','.join([" ".join([str(c) for c in xy]) for xy in coord_pairs])
+        ','.join([" ".join([str(c) for c in xy]) for xy in point_coords])
     )
 
 
 def wktToCoords(wkt):
+    """
+    Create a list of point coordinates from a WKT polygon string.
+
+    Parameters
+    ----------
+    wkt : str
+        WKT polygon representation of points with coordinate data
+        to be extracted.
+
+    Returns
+    -------
+    wktToCoords : ndarray of shape (npoints, ndim)
+        Ordered list of point coordinates extracted from `wkt`.
+
+    """
     eval_str = 'np.array({})'.format(
         wkt.replace('POLYGON ','').replace('(','[').replace(')',']').replace(',','],[').replace(' ',',')
     )
@@ -513,6 +545,37 @@ def saveArrayAsTiff(array, dest,
 
 
 def rotate_arrays_if_kernel_has_even_sidelength(array, kernel):
+    """
+    Return 180-degree rotated views into the provided arrays
+    if `kernel` has an even side length.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Primary array associated with `kernel`.
+    kernel : ndarray, 2D
+        Kernel array.
+
+    Returns
+    -------
+    rotate_arrays_if_kernel_has_even_sidelength : tuple
+        Tuple containing views into `array` and `kernel`,
+        and a flag that is True if the views of these two
+        arrays have been rotated by 180 degrees.
+
+    See Also
+    --------
+    fix_array_if_rotation_was_applied
+
+    Notes
+    -----
+    The sole purpose of this function is to assist other
+    functions in this array utility suite in their attempts
+    to mimic the behavior of corresponding MATLAB functions
+    at the pixel level when dealing with a kernel/structure
+    that has an even side length.
+
+    """
     for s in kernel.shape:
         if s % 2 == 0:
             return np.rot90(array, 2), np.rot90(kernel, 2), True
@@ -520,11 +583,100 @@ def rotate_arrays_if_kernel_has_even_sidelength(array, kernel):
 
 
 def fix_array_if_rotation_was_applied(array, rotation_flag):
+    """
+    Return 180-degree rotated view into the provided array
+    if `rotation_flag` is True.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Array that may or may not need undoing of rotation.
+    rotation_flag : bool
+        True if `array` rotation should be undone.
+        False if `array` does not need undoing of rotation.
+
+    Returns
+    -------
+    fix_array_if_rotation_was_applied : ndarray, 2D
+        View into `array` that may or may not have had
+        rotation undone.
+
+    See Also
+    --------
+    rotate_arrays_if_kernel_has_even_sidelength
+
+    Notes
+    -----
+    The sole purpose of this function is to assist other
+    functions in this array utility suite in their attempts
+    to mimic the behavior of corresponding MATLAB functions
+    at the pixel level when dealing with a kernel/structure
+    that has an even side length.
+
+    """
     return np.rot90(array, 2) if rotation_flag else array
 
 
 def rot90_pixcoords(coords, shape_in, k=1):
-    row_in, col_in = coords.T
+    """
+    Rotate 2D (row, col) pixel coordinates taken from an
+    array of a defined nrows x ncols shape by 90 degrees.
+
+    Rotation direction is counterclockwise.
+
+    Parameters
+    ----------
+    coords : 2D ndarray or list/tuple of two 1D ndarrays
+        2D (row, col) pixel coordinates.
+        May be in the format of the output of np.where
+        (2D ndarray, shape like (npoints, 2)) [1] or
+        np.argwhere (tuple of two 1D ndarrays, each of
+        size npoints) [2].
+    shape_in : tuple of positive int
+        Shape of array that pixel coordinates came from
+        before the desired rotation has been applied,
+        like (nrows, ncols) output of `array.shape`.
+    k : int
+        Number of times the coordinates are rotated by
+        90 degrees.
+
+    Returns
+    -------
+    rot90_pixcoords : same format, type, shape as `coords`
+        2D (row, col) pixel coordinates rotated from
+        the corresponding coordinates in `coords`.
+
+    See Also
+    --------
+    numpy.rot90 [3]
+    flip_pixcoords
+
+    Notes
+    -----
+    Say `coords` index into array 'a' to return values
+    of a set of pixels 'a_vals' as follows:
+    `a_vals = a[coords]`
+    Rotate both `a` and `coords` 90 degrees the same
+    number of times `k` to get array 'b' and pixel
+    coords 'coords_b' that index into 'b' to return
+    'b_vals'.
+    `b = numpy.rot90(a, k)`
+    `coords_b = rot90_pixcoords(coords, a.shape, k)`
+    `b_vals = b[coords_b]`
+    The values in 'a_vals' and 'b_vals' are identical.
+
+    References
+    ----------
+    .. [1] https://docs.scipy.org/doc/numpy/reference/generated/numpy.where.html
+    .. [2] https://docs.scipy.org/doc/numpy/reference/generated/numpy.argwhere.html
+    .. [3] https://docs.scipy.org/doc/numpy/reference/generated/numpy.rot90.html
+
+    """
+    if type(coords) == np.ndarray:
+        row_in, col_in = coords.T
+    else:
+        row_in, col_in = coords
+
     k = k % 4
     if k == 0:
         row_out = row_in
@@ -538,11 +690,71 @@ def rot90_pixcoords(coords, shape_in, k=1):
     elif k == 3:
         row_out = col_in
         col_out = (shape_in[0]-1) - row_in
-    return np.array([row_out, col_out]).T
+
+    if type(coords) == np.ndarray:
+        result = np.array([row_out, col_out]).T
+    else:
+        result = (row_out, col_out)
+
+    return result
 
 
 def flip_pixcoords(coords, shape_in, axis=0):
-    row_in, col_in = coords.T
+    """
+    Flip 2D (row, col) pixel coordinates taken from an
+    array of a defined nrows x ncols shape across an axis.
+
+    Parameters
+    ----------
+    coords : 2D ndarray or list/tuple of two 1D ndarrays
+        2D (row, col) pixel coordinates.
+        May be in the format of the output of np.where
+        (2D ndarray, shape like (npoints, 2)) [1] or
+        np.argwhere (tuple of two 1D ndarrays, each of
+        size npoints) [2].
+    shape_in : tuple of positive int
+        Shape of array that pixel coordinates came from,
+        like (nrows, ncols) output of `array.shape`.
+    axis : 0 or 1
+        If 0, flip coordinates vertically.
+        If 1, flip coordinates horizontally.
+
+    See Also
+    --------
+    numpy.rot90 [3]
+    rot90_pixcoords
+
+    Returns
+    -------
+    flip_pixcoords : same format, type, shape as `coords`
+        2D (row, col) pixel coordinates flipped from
+        the corresponding coordinates in `coords`.
+
+    Notes
+    -----
+    Say `coords` index into array 'a' to return values
+    of a set of pixels 'a_vals' as follows:
+    `a_vals = a[coords]`
+    Flip both `a` and `coords` over the same axis with
+    number `axis` to get array 'b' and pixel coords
+    'coords_b' that index into 'b' to return 'b_vals'.
+    `b = numpy.flip(a, axis)`
+    `coords_b = flip_pixcoords(coords, a.shape, axis)`
+    `b_vals = b[coords_b]`
+    The values in 'a_vals' and 'b_vals' are identical.
+
+    References
+    ----------
+    .. [1] https://docs.scipy.org/doc/numpy/reference/generated/numpy.where.html
+    .. [2] https://docs.scipy.org/doc/numpy/reference/generated/numpy.argwhere.html
+    .. [3] https://docs.scipy.org/doc/numpy/reference/generated/numpy.flip.html
+
+    """
+    if type(coords) == np.ndarray:
+        row_in, col_in = coords.T
+    else:
+        row_in, col_in = coords
+
     if axis == 0:
         row_out = (shape_in[0]-1) - row_in
         col_out = col_in
@@ -551,13 +763,34 @@ def flip_pixcoords(coords, shape_in, axis=0):
         col_out = (shape_in[1]-1) - col_in
     else:
         raise InvalidArgumentError("`axis` must be 0 or 1")
-    return np.array([row_out, col_out]).T
+
+    if type(coords) == np.ndarray:
+        result = np.array([row_out, col_out]).T
+    else:
+        result = (row_out, col_out)
+
+    return result
 
 
 def array_round_proper(array, in_place):
-    # Round half up for positive X.5,
-    # round half down for negative X.5.
+    """
+    Round data in a floating point array to the nearest integer,
+    rounding up for positive X.5 and down for negative X.5.
 
+    Parameters
+    ----------
+    array : ndarray of floating dtype
+        Floating point array to round.
+    in_place : bool
+        If True, round array in place.
+        If False, copy array before rounding.
+
+    Returns
+    -------
+    array_round_proper : ndarray of floating dtype
+        The rounded array.
+
+    """
     if not in_place:
         array = np.copy(array)
 
@@ -571,8 +804,31 @@ def array_round_proper(array, in_place):
 
 
 def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
-    # This function is meant to replicate MATLAB array type casting.
+    """
+    Cast a floating point array to an integer data type,
+    first rounding data values and cropping all values to
+    the minimum and maximum representable values for the
+    output data type.
 
+    Parameters
+    ----------
+    array : ndarray
+        Array containing data to be cast.
+    dtype_out : numpy data type (e.g. numpy.int32) or numpy.dtype
+        The data type `array` is to be cast to.
+    allow_modify_array : bool
+        If True, values in input `array` may be modified.
+
+    Returns
+    -------
+    astype_round_and_crop : ndarray of type `dtype_out`
+        The new array that has been cast from `array`.
+
+    Notes
+    -----
+    This function is meant to replicate MATLAB array type casting.
+
+    """
     # The trivial case
     if dtype_out == np.bool:
         return array.astype(dtype_out)
@@ -581,7 +837,7 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
     dtype_out_np = dtype_out if type(dtype_out) != np.dtype else dtype_out.type
 
     if isinstance(array_dtype_np(1), np.floating) and isinstance(dtype_out_np(1), np.integer):
-        # TODO: Consider replacing the following costly call with:
+        # TODO: Consider replacing the following potentially costly call with:
         # -t    np.around(array)
         array = array_round_proper(array, allow_modify_array)
 
@@ -589,9 +845,36 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
 
 
 def astype_cropped(array, dtype_out, allow_modify_array=False):
-    # Check for overflow and underflow before converting data types,
-    # cropping values to the range of `dtype_out`.
+    """
+    Cast an array to a new data type, first cropping all values
+    to the minimum and maximum representable values for the
+    output data type.
 
+    Parameters
+    ----------
+    array : ndarray
+        Array containing data to be cast.
+    dtype_out : numpy data type (e.g. numpy.int32) or numpy.dtype
+        The data type `array` is to be cast to.
+    allow_modify_array : bool
+        If True, values in input `array` may be modified.
+
+    Returns
+    -------
+    astype_cropped : ndarray of type `dtype_out`
+        The new array that has been cast from `array`.
+
+    Notes
+    -----
+    The purpose of this function is to prevent underflow and
+    underflow during casting, something numpy.ndarray.astype
+    does not do. [1]
+
+    References
+    ----------
+    .. [1] https://docs.scipy.org/doc/numpy/reference/generated/numpy.ndarray.astype.html
+
+    """
     # The trivial case
     if dtype_out == np.bool:
         return array.astype(dtype_out)
