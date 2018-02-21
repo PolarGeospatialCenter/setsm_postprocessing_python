@@ -129,16 +129,16 @@ def main():
             # If PBS, submit to scheduler.
             if args.pbs:
                 job_name = 's2s{:04g}'.format(i)
-                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6},p7={7},p8={8} {9}'.format(
+                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5}{6}{7}{8} {9}'.format(
                     job_name,
                     scriptpath,
                     srcdir,
                     args.res,
                     '"--dst {}"'.format(dstdir),
                     '"--stripid {}"'.format(stripid),
-                    '--edgemask' * args.edgemask,
-                    '--noentropy' * args.noentropy,
-                    '--rema2a' * args.rema2a,
+                    ',p6=--edgemask' * args.edgemask,
+                    ',p7=--noentropy' * args.noentropy,
+                    ',p8=--rema2a' * args.rema2a,
                     qsubpath
                 )
                 print cmd

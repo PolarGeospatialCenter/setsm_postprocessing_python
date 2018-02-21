@@ -712,6 +712,7 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
         The resampled array.
 
     """
+    interp_choices = ('nearest', 'linear', 'cubic', 'spline', 'lanczos', 'average', 'mode')
     interp_dict = {
         'nearest'   : gdal.GRA_NearestNeighbour,
         'linear'    : gdal.GRA_Bilinear,
@@ -726,7 +727,7 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
     try:
         interp_gdal = interp_dict[interp]
     except KeyError:
-        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.keys(), interp))
+        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_choices, interp))
 
     dtype_in = Z.dtype
     promote_dtype = None
@@ -1145,7 +1146,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
             interp_cv2 = interp_dict[interp]
         except KeyError:
             raise InvalidArgumentError("For `method=cv2`, `interp` must be one of {}, "
-                                       "but was '{}'".format(interp_dict.values(), interp))
+                                       "but was '{}'".format(interp_dict.keys(), interp))
         result = cv2.resize(array, tuple(list(new_shape)[::-1]), interpolation=interp_cv2)
 
     elif method == 'gdal':
@@ -1540,8 +1541,11 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
             del array_nans
 
     # Edge settings
-    if shape != 'same':
-        if shape == 'full':
+    if shape != 'same' or not zero_border:
+        # The following differences in where to split
+        # an even side length for a kernel is purely
+        # to mimic MATLAB's conv2 function.
+        if shape == 'full' or (shape == 'same' and not zero_border):
             pady_top, padx_lft = (np.array(kernel.shape) - 1) / 2
             pady_bot, padx_rht = np.array(kernel.shape) / 2
         elif shape == 'valid':
@@ -1575,18 +1579,18 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
     # Apply dilation of original NaN pixels to result.
     if fixnans_flag:
         array_nans_backup = array_nans
-        if shape != 'same' or not zero_border:
-            if shape == 'full':
-                array_nans = np.pad(array_nans, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'constant', constant_values=0)
-            elif shape == 'same':  # and not zero_border
-                array_nans = np.pad(array_nans, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'edge')
+
+        if shape == 'full':
+            array_nans = np.pad(array_nans, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'constant', constant_values=0)
+        elif shape == 'same' and not zero_border:
+            array_nans = np.pad(array_nans, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'edge')
 
         dilate_structure = np.ones(kernel.shape, dtype=np.uint8)
         if not nan_over_zero:
             dilate_structure[kernel == 0] = 0
 
         array_nans_dilate = imdilate(array_nans, dilate_structure)
-        if shape == 'valid':
+        if shape == 'valid' or (shape == 'same' and not zero_border):
             if pady_bot >= 0:
                 pady_bot = -pady_bot if pady_bot > 0 else None
             if padx_rht >= 0:
@@ -1595,7 +1599,7 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
 
         result[array_nans_dilate] = np.nan
 
-        # Return the input array to its original state.
+        # Restore the input array to its original state.
         if not array_casted:
             array_backup[array_nans_backup] = np.nan
 
@@ -1620,7 +1624,7 @@ def filt2(array, kernel, shape='same', conv_depth='default', zero_border=False,
                  fix_float_zeros, nan_over_zero, allow_flipped_processing)
 
 
-def moving_average(array, nhood, shape='same', conv_depth='default', zero_border=False,
+def moving_average(array, nhood, shape='same', conv_depth='default', zero_border=True,
                    fix_float_zeros=True, nan_over_zero=True, allow_flipped_processing=True):
     """
     Calculate the moving average over an array.
