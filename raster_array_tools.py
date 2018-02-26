@@ -197,7 +197,7 @@ def coordsToWkt(point_coords):
 
 def wktToCoords(wkt):
     """
-    Create a list of point coordinates from a WKT polygon string.
+    Create an array of point coordinates from a WKT polygon string.
 
     Parameters
     ----------
@@ -211,10 +211,10 @@ def wktToCoords(wkt):
         Ordered list of point coordinates extracted from `wkt`.
 
     """
-    eval_str = 'np.array({})'.format(
+    coords_list = eval(
         wkt.replace('POLYGON ','').replace('(','[').replace(')',']').replace(',','],[').replace(' ',',')
     )
-    return eval(eval_str)
+    return np.array(coords_list)
 
 
 def extractRasterData(rasterFile_or_ds, *params):
@@ -888,6 +888,46 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
     array_clipped = np.clip(array, dtype_out_min, dtype_out_max, array_clipped)
 
     return array_clipped.astype(dtype_out)
+
+
+def getDataArray(array, label=0, label_type='nodata'):
+    """
+    Classify values in an array as "data" or non-"data".
+
+    Parameters
+    ----------
+    array : ndarray
+        Array to be classified.
+    label : bool/int/float
+        Value of nodes in `array` that are classified as
+        "data" (if label_type=='data')
+        or non-"data" (if label_type=='nodata').
+    label_type : str; 'data' or 'nodata'
+        Whether `label` is a classification for "data"
+        or non-"data" nodes.
+
+    Returns
+    -------
+    getDataArray : ndarray of bool, same shape as `array`
+        Binary mask of `array` where "data" nodes are one
+        and non-"data" nodes are zero.
+
+    """
+    label_type_choices = ('data', 'nodata')
+    if label_type not in label_type_choices:
+        raise InvalidArgumentError("`label_type` must be one of {}, "
+                                   "but was {}".format(label_type_choices, label_type))
+
+    if (array.dtype == np.bool
+        and ((label_type == 'nodata' and label == 0)
+             or (label_type == 'data' and label == 1))):
+        data_array = array
+    elif np.isnan(label):
+        data_array = np.isnan(array) if label_type == 'data' else ~np.isnan(array)
+    else:
+        data_array = (array == label) if label_type == 'data' else (array != label)
+
+    return data_array
 
 
 def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):
@@ -3488,24 +3528,11 @@ def getFPvertices(array, Y=None, X=None, label=0, label_type='nodata', replicate
     else:
         raise InvalidArgumentError("`Y` and `X` must both be None or both be set")
 
-    label_type_choices = ('data', 'nodata')
-    if label_type not in label_type_choices:
-        raise InvalidArgumentError("`label_type` must be one of {}, "
-                                   "but was {}".format(label_type_choices, label_type))
-
     # Determine which pixels are considered "data" for footprinting.
-    array_data = None
-    if (array.dtype == np.bool
-        and ((label_type == 'nodata' and label == 0)
-             or (label_type == 'data' and label == 1))):
-        array_data = array
-    elif np.isnan(label):
-        array_data = np.isnan(array) if label_type == 'data' else ~np.isnan(array)
-    else:
-        array_data = (array == label) if label_type == 'data' else (array != label)
+    data_array = getDataArray(array, label, label_type)
 
     # Get pixel coords of the convex hull of array data.
-    data_boundary = bwboundaries_array(array_data, connectivity=8, noholes=True)
+    data_boundary = bwboundaries_array(data_array, connectivity=8, noholes=True)
     boundary_pix = np.argwhere(data_boundary)
     if replicate_matlab:
         boundary_pix = rot90_pixcoords(flip_pixcoords(boundary_pix, array.shape, axis=0), array.shape, 3)

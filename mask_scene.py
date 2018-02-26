@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 # -*- coding: UTF-8 -*-
 
-# Version 3.0; Ryan Shellberg, Erik Husby; Polar Geospatial Center, University of Minnesota; 2017
+# Version 3.0; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2017
 # Translated from MATLAB code written by Ian Howat, Ohio State University, 2017
 
 
@@ -28,9 +28,35 @@ class RasterDimensionError(Exception):
 
 
 def check_arggroups(arggroup_list, check='exist'):
-    # TODO: Write docstring.
-    # FIXME: Find a better home for this function?
+    """
+    Given a list of items, some of which may also be lists,
+    report whether or not each item is not None or contains
+    elements which are not None.
 
+    This function is meant to be called in the verification step
+    of functions that have multiple sets of optional arguments
+    which need to be filtered for proper usage.
+
+    Parameters
+    ----------
+    arggroup_list : tuple or list
+        Collection of items to be checked.
+    check : str; 'exist' or 'full'
+        Which metric to use when reporting the state of an item
+        in `arggroup_list` that is a collection of elements.
+        If 'exist', a collection that contains at least one
+        non-None element passes the check.
+        If 'full', a collection must contain only non-None
+        elements to pass the check.
+
+    Returns
+    -------
+    check_arggroups : list of bool, same length as `arggroup_list`
+        An ordered list of boolean elements corresponding to items
+        in `arggroup_list` reporting the results of the check on
+        each item.
+
+    """
     check_choices = ('exist', 'full')
     if check not in check_choices:
         raise InvalidArgumentError("`check` must be one of {}, but was '{}'".format(check_choices, check))
@@ -55,8 +81,30 @@ def check_arggroups(arggroup_list, check='exist'):
 
 
 def verify_arggroups(arggroup_list):
-    # TODO: Write docstring.
-    # FIXME: Find a better home for this function?
+    """
+    Given a list of items, some of which may also be lists,
+    report whether or not there is only one item that both
+    (1) is not None or contains some elements which are not
+    None, and (2) if that item is a list, it contains only
+    non-None elements.
+
+    This function is meant to be called in the verification step
+    of functions that have multiple sets of optional arguments
+    of which one is required to be provided, while the sets of
+    arguments are mutually exclusive.
+
+    Parameters
+    ----------
+    arggroup_list : tuple or list
+        Collection of items to be verified.
+
+    Returns
+    -------
+    verify_arggroups : bool
+        Flag indicating whether or not the argument groups
+        passes the described verification.
+
+    """
     if (   (check_arggroups(arggroup_list, check='exist').count(True) != 1)
         or (check_arggroups(arggroup_list, check='full').count(True)  != 1)):
         return False
@@ -65,8 +113,31 @@ def verify_arggroups(arggroup_list):
 
 
 def generateMasks(demFile, maskFileSuffix, noentropy=False):
-    # TODO: Write docstring.
+    """
+    Create and save scene masks.
 
+    Parameters
+    ----------
+    demFile : str (file path)
+        File path of the scene DEM image that is to be masked.
+    maskFileSuffix : str; 'edgemask/datamask', 'mask', or 'mask2a'
+        Type of mask(s) to create, and what filename suffix to use
+        when saving the mask(s) to disk.
+    noentropy : bool
+        (Option only applies when maskFileSuffix='edgemask/datamask'.)
+        If True, entropy filter is not applied.
+        If False, entropy filter is applied.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Mask is saved at `demFile.replace('dem.tif', maskFileSuffix+'.tif')`.
+    For maskFileSuffix='edgemask/datamask', two masks are saved.
+
+    """
     if maskFileSuffix == 'edgemask/datamask':
         matchFile = demFile.replace('dem.tif', 'matchtag.tif')
         stdout.write(matchFile+"\n")
@@ -84,8 +155,12 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False):
 
 def mask_v1(matchFile, noentropy=False):
     """
-    Creates edgemask and datamask of the matchtag array,
-    with or without entropy protection.
+    Creates an edgemask and datamask for regions of good data in
+    a scene from a matchtag image and saves the two mask files to disk.
+
+    Optionally, the corresponding ortho-ed spectral image may be
+    considered so that image regions with low data density in the
+    matchtag but low entropy values in the ortho image are masked.
 
     Parameters
     ----------
@@ -97,7 +172,7 @@ def mask_v1(matchFile, noentropy=False):
 
     Returns
     -------
-    void
+    None
 
     Notes
     -----
@@ -248,7 +323,7 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
 
     dem_nodata = np.isnan(dem_array)  # original background for rescaling
     dem_array[dem_array == -9999] = np.nan
-    data_density_map = getDataDensityMap(match_array, avg_kernel_size, conv_depth='single')
+    data_density_map = getDataDensityMap(match_array, avg_kernel_size)
     del match_array
 
     # Re-scale ortho data if WorldView correction is detected in the meta file.
@@ -374,7 +449,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
 
     # Read matchtag and make data density map.
     match_array = rat.extractRasterData(matchFile, 'array')
-    data_density_map = getDataDensityMap(match_array, avg_kernel_size, conv_depth='single')
+    data_density_map = getDataDensityMap(match_array, avg_kernel_size)
     data_density_map[dem_nodata] = np.nan
 
     # Locate probable cloud pixels.
@@ -411,9 +486,34 @@ def mask_v2a(demFile, avg_kernel_size=5,
     return ~mask
 
 
-def getDataDensityMap(array, kernel_size=11, conv_depth='single'):
-    # TODO: Write docstring.
-    return rat.moving_average(array, kernel_size, shape='same', conv_depth=conv_depth)
+def getDataDensityMap(array, kernel_size=11, label=0, label_type='nodata', conv_depth='single'):
+    """
+    Calculate the density of data points in an array.
+
+    Parameters
+    ----------
+    array : ndarray
+        Array for which the density of "data" pixels is to be calculated.
+    kernel_size : positive int
+        Side length of the neighborhood to use for calculating data density fraction.
+    label : bool/int/float
+        Value of nodes in `array` that are classified as "data" (if label_type=='data')
+        or non-"data" (if label_type=='nodata').
+    label_type : str; 'data' or 'nodata'
+        Whether `label` is a classification for "data" or non-"data" nodes.
+    conv_depth : str; 'single' or 'double'
+        The floating data type of the returned array.
+
+    Returns
+    -------
+    getDataDensityMap : ndarray of float (bit depth set by `conv_depth`),
+                        same shape as `array`
+        Data density map with each node of the array carrying the fraction of "data"
+        nodes in the surrounding `kernel_size` x `kernel_size` neighborhood of `array`.
+
+    """
+    data_array = rat.getDataArray(array, label, label_type)
+    return rat.moving_average(data_array, kernel_size, shape='same', conv_depth=conv_depth)
 
 
 def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3, conv_depth='single'):
@@ -428,6 +528,9 @@ def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3, conv_dep
         Side length of the neighborhood to use for calculating data density fraction.
     density_thresh : positive float
         Minimum data density fraction for a pixel to be set to 1 in the mask.
+    conv_depth : str; 'single' or 'double'
+        The floating data type of the data density map array that will be
+        compared against `density_thresh`.
 
     Returns
     -------
@@ -446,19 +549,20 @@ def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3, conv_dep
         To replicate functionality of DataDensityMask.m, pass the result of this function to clean_mask().
 
     """
-    return getDataDensityMap(match_array, kernel_size, conv_depth) >= density_thresh
+    return getDataDensityMap(match_array, kernel_size, conv_depth=conv_depth) >= density_thresh
 
 
 def getEntropyMask(orthoFile,
                    entropy_thresh=0.2, min_data_cluster=1000,
                    processing_res=8, kernel_size=None):
     """
-    Return array masking off areas of low entropy, such as water, in an orthorectified image.
+    Return an array masking off areas of low entropy, such as water,
+    in a spectral image.
 
     Parameters
     ----------
     orthoFile : str (file path)
-        File path of the ortho image to process.
+        File path of the image to process.
     entropy_thresh : positive float
         Minimum entropy threshold. 0.2 seems to be good for water.
     min_data_cluster : positive int
@@ -472,8 +576,8 @@ def getEntropyMask(orthoFile,
 
     Returns
     -------
-    getEntropyMask : ndarray of type bool, same shape as ortho image
-        The entropy mask masking off areas of low entropy in input orthoFile image.
+    getEntropyMask : ndarray of type bool, same shape as image array
+        Entropy mask masking off areas of low entropy in the image.
 
     Notes
     -----

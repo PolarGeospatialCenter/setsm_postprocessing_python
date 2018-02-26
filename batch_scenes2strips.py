@@ -57,14 +57,12 @@ def main():
     # Parse and validate arguments.
     args = parser.parse_args()
     scriptpath = os.path.abspath(sys.argv[0])
-    scriptdir = os.path.dirname(os.path.abspath(scriptpath))
-    srcdir = args.src
+    scriptdir = os.path.dirname(scriptpath)
+    srcdir = os.path.abspath(args.src)
     dstdir = args.dst
     qsubpath = args.qsubscript
 
-    if os.path.isdir(srcdir):
-        srcdir = os.path.abspath(srcdir)
-    else:
+    if not os.path.isdir(srcdir):
         parser.error("src must be a directory")
 
     if dstdir is not None:
