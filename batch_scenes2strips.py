@@ -157,7 +157,7 @@ def main():
                 print '{}, {}'.format(i, cmd)
 
             if not args.dryrun:
-                subprocess.call(cmd, shell=False)
+                subprocess.call(cmd, shell=True)
 
     else:
         # Process a single strip.
