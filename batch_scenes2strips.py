@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# Version 3.0; Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2017
+# Version 3.0; Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2018
 
 
 import argparse
@@ -13,7 +13,7 @@ from datetime import datetime
 
 from numpy import array_equal, array_str, int64
 
-from mask_scene import generateMasks
+from filter_scene import generateMasks
 from raster_array_tools import saveArrayAsTiff, getFPvertices
 from scenes2strips import scenes2strips
 
@@ -157,7 +157,7 @@ def main():
                 print '{}, {}'.format(i, cmd)
 
             if not args.dryrun:
-                subprocess.call(cmd, shell=True)
+                subprocess.call(cmd, shell=False)
 
     else:
         # Process a single strip.
@@ -273,7 +273,7 @@ def writeStripMeta(o_metaFile, scenedir, dem_list,
     if fp_vertices.dtype != int64 and array_equal(fp_vertices, fp_vertices.astype(int64)):
         fp_vertices = fp_vertices.astype(int64)
 
-    # FIXME: Four lines in the following meta string have trailing space to replicate MATLAB.
+    # FIXME: Four lines in the following meta template have trailing space to replicate MATLAB.
     # -f     Remove these?
     strip_info = (
 """Strip Metadata 
@@ -291,8 +291,8 @@ scene, rmse, dz, dx, dy
         datetime.today().strftime("%d-%b-%Y %H:%M:%S"),
         strip_time,
         proj4,
-        array_str(fp_vertices[1], max_line_width=float('inf'))[1:-1],
-        array_str(fp_vertices[0], max_line_width=float('inf'))[1:-1],
+        ' '.join(array_str(fp_vertices[1], max_line_width=float('inf')).strip()[1:-1].split()),
+        ' '.join(array_str(fp_vertices[0], max_line_width=float('inf')).strip()[1:-1].split()),
         )
     )
 

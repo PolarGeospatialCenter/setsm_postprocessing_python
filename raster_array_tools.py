@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2017
+# Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
 
 
 from __future__ import division
@@ -34,6 +34,7 @@ _outline_every1 = open("outline_every1.c", "r").read()
 
 
 RASTER_PARAMS = ['ds', 'shape', 'z', 'array', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
+DEBUG_CCHULLIMAGE_PATH = '~/debug_concave_hull_image.tif'
 
 
 gdal.UseExceptions()
@@ -98,7 +99,7 @@ def openRaster(file_or_ds):
 
     Returns
     -------
-    openRaster : osgeo.gdal.Dataset
+    ds : osgeo.gdal.Dataset
         The raster image as a GDAL dataset.
 
     Notes
@@ -145,7 +146,7 @@ def getCornerCoords(gt, shape):
 
     Returns
     -------
-    getCornerCoords : ndarray (5, 2)
+    corner_coords : ndarray (5, 2)
         Georeferenced corner coordinates of the raster image,
         in (x, y) coordinate pairs, starting and ending at the
         top left corner, clockwise.
@@ -186,7 +187,7 @@ def coordsToWkt(point_coords):
 
     Returns
     -------
-    coordsToWkt : str
+    wkt : str
         WKT polygon representation of `point_coords`.
 
     """
@@ -207,7 +208,7 @@ def wktToCoords(wkt):
 
     Returns
     -------
-    wktToCoords : ndarray of shape (npoints, ndim)
+    point_coords : ndarray of shape (npoints, ndim)
         Ordered list of point coordinates extracted from `wkt`.
 
     """
@@ -254,13 +255,13 @@ def extractRasterData(rasterFile_or_ds, *params):
 
     Returns
     -------
-    extractRasterData : tuple
-        Tuple of parameter data with length equal to the number
+    value_list : list
+        List of parameter data with length equal to the number
         of parameter name arguments given in the function call.
         The order of returned parameter data corresponds directly to
         the order of the parameter name arguments.
-        If only one parameter name argument is provided,
-        the parameter data is returned not in a tuple.
+        If only one parameter name argument is provided, the single
+        datum is returned itself, not in a list.
 
     Examples
     --------
@@ -558,7 +559,7 @@ def rotate_arrays_if_kernel_has_even_sidelength(array, kernel):
 
     Returns
     -------
-    rotate_arrays_if_kernel_has_even_sidelength : tuple
+    array_out, kernel_out, rotation_flag : tuple
         Tuple containing views into `array` and `kernel`,
         and a flag that is True if the views of these two
         arrays have been rotated by 180 degrees.
@@ -597,7 +598,7 @@ def fix_array_if_rotation_was_applied(array, rotation_flag):
 
     Returns
     -------
-    fix_array_if_rotation_was_applied : ndarray, 2D
+    array_out : ndarray, 2D
         View into `array` that may or may not have had
         rotation undone.
 
@@ -642,7 +643,7 @@ def rot90_pixcoords(coords, shape_in, k=1):
 
     Returns
     -------
-    rot90_pixcoords : same format, type, shape as `coords`
+    coords_out : same format, type, shape as `coords`
         2D (row, col) pixel coordinates rotated from
         the corresponding coordinates in `coords`.
 
@@ -726,7 +727,7 @@ def flip_pixcoords(coords, shape_in, axis=0):
 
     Returns
     -------
-    flip_pixcoords : same format, type, shape as `coords`
+    coords_out : same format, type, shape as `coords`
         2D (row, col) pixel coordinates flipped from
         the corresponding coordinates in `coords`.
 
@@ -787,7 +788,7 @@ def array_round_proper(array, in_place):
 
     Returns
     -------
-    array_round_proper : ndarray of floating dtype
+    array_round : ndarray of floating dtype
         The rounded array.
 
     """
@@ -821,7 +822,7 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
 
     Returns
     -------
-    astype_round_and_crop : ndarray of type `dtype_out`
+    array_out : ndarray of type `dtype_out`
         The new array that has been cast from `array`.
 
     Notes
@@ -861,7 +862,7 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
 
     Returns
     -------
-    astype_cropped : ndarray of type `dtype_out`
+    array_cropped : ndarray of type `dtype_out`
         The new array that has been cast from `array`.
 
     Notes
@@ -884,10 +885,10 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
     dtype_out_min = dtype_info_fn(dtype_out_np).min
     dtype_out_max = dtype_info_fn(dtype_out_np).max
 
-    array_clipped = array if allow_modify_array else None
-    array_clipped = np.clip(array, dtype_out_min, dtype_out_max, array_clipped)
+    array_cropped = array if allow_modify_array else None
+    array_cropped = np.clip(array, dtype_out_min, dtype_out_max, array_cropped)
 
-    return array_clipped.astype(dtype_out)
+    return array_cropped.astype(dtype_out)
 
 
 def getDataArray(array, label=0, label_type='nodata'):
@@ -900,15 +901,15 @@ def getDataArray(array, label=0, label_type='nodata'):
         Array to be classified.
     label : bool/int/float
         Value of nodes in `array` that are classified as
-        "data" (if label_type=='data')
-        or non-"data" (if label_type=='nodata').
+        "data" (if label_type='data')
+        or non-"data" (if label_type='nodata').
     label_type : str; 'data' or 'nodata'
         Whether `label` is a classification for "data"
         or non-"data" nodes.
 
     Returns
     -------
-    getDataArray : ndarray of bool, same shape as `array`
+    data_array : ndarray of bool, same shape as `array`
         Binary mask of `array` where "data" nodes are one
         and non-"data" nodes are zero.
 
@@ -1031,7 +1032,7 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
 
     Returns
     -------
-    interp2_gdal : ndarray, 2D, same shape and type as `Z`
+    Zi : ndarray, 2D, same shape and type as `Z`
         The resampled array.
 
     """
@@ -1244,7 +1245,7 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
 
     Returns
     -------
-    imresize_old : ndarray, 2D, same type as `array`
+    array_r : ndarray, 2D, same type as `array`
         The resized array.
 
     See Also
@@ -1342,20 +1343,20 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
         dtype_out_np = np.float32
 
     # Convert Pillow Image to NumPy array.
-    result = np.fromstring(image.tobytes(), dtype=dtype_out_np)
-    result = result.reshape((image.size[1], image.size[0]))
+    array_r = np.fromstring(image.tobytes(), dtype=dtype_out_np)
+    array_r = array_r.reshape((image.size[1], image.size[0]))
 
-    # Clean up result array.
-    if dtype_out == 'input' and result.dtype != array_dtype_in:
+    # Clean up resized array.
+    if dtype_out == 'input' and array_r.dtype != array_dtype_in:
         if round_proper:
-            result = astype_round_and_crop(result, array_dtype_in, allow_modify_array=True)
+            array_r = astype_round_and_crop(array_r, array_dtype_in, allow_modify_array=True)
         else:
-            result = astype_cropped(result, array_dtype_in, allow_modify_array=True)
+            array_r = astype_cropped(array_r, array_dtype_in, allow_modify_array=True)
     if one_dim_flag:
         result_size_1d = new_shape[0] if one_dim_axis == 0 else new_shape[1]
-        result = np.reshape(result, result_size_1d)
+        array_r = np.reshape(array_r, result_size_1d)
 
-    return result
+    return array_r
 
 
 def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
@@ -1396,7 +1397,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
 
     Returns
     -------
-    imresize_old : ndarray, 2D, same type as `array`
+    array_r : ndarray, 2D, same type as `array`
         The resized array.
 
     See Also
@@ -1470,7 +1471,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
         except KeyError:
             raise InvalidArgumentError("For `method=cv2`, `interp` must be one of {}, "
                                        "but was '{}'".format(interp_dict.keys(), interp))
-        result = cv2.resize(array, tuple(list(new_shape)[::-1]), interpolation=interp_cv2)
+        array_r = cv2.resize(array, tuple(list(new_shape)[::-1]), interpolation=interp_cv2)
 
     elif method == 'gdal':
         # Set up grid coordinate arrays, then run interp2_gdal.
@@ -1478,7 +1479,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
         Y = np.arange(array.shape[0]) + 1
         Xi = np.linspace(X[0], X[-1] + (X[1]-X[0]), num=(new_shape[1] + 1))[0:-1]
         Yi = np.linspace(Y[0], Y[-1] + (Y[1]-Y[0]), num=(new_shape[0] + 1))[0:-1]
-        result = interp2_gdal(X, Y, array, Xi, Yi, interp, extrapolate=False)
+        array_r = interp2_gdal(X, Y, array, Xi, Yi, interp, extrapolate=False)
 
     elif method == 'pil':
         return imresize(array, new_shape, interp)
@@ -1487,16 +1488,16 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
         PILmode = 'L' if array.dtype in (np.bool, np.uint8) else 'F'
         if PILmode == 'L' and array.dtype != np.uint8:
             array = array.astype(np.uint8)
-        result = scipy.misc.imresize(array, new_shape, interp, PILmode)
+        array_r = scipy.misc.imresize(array, new_shape, interp, PILmode)
 
-    # Clean up result array.
-    if result.dtype != dtype_out_np:
-        result = astype_round_and_crop(result, dtype_out_np, allow_modify_array=True)
+    # Clean up resized array.
+    if array_r.dtype != dtype_out_np:
+        array_r = astype_round_and_crop(array_r, dtype_out_np, allow_modify_array=True)
     if one_dim_flag:
         result_size_1d = new_shape[0] if one_dim_axis == 0 else new_shape[1]
-        result = np.reshape(result, result_size_1d)
+        array_r = np.reshape(array_r, result_size_1d)
 
-    return result
+    return array_r
 
 
 def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border=True,
@@ -1543,7 +1544,7 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
 
     Returns
     -------
-    conv2_slow : ndarray, 2D
+    array_c : ndarray, 2D
         A 2D array containing the convolution of the input array and kernel.
 
     See Also
@@ -1622,10 +1623,10 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
 
     # Perform convolution.
     method = scipy.signal.choose_conv_method(array, kernel, shape)
-    result = scipy.signal.convolve(array, kernel, shape, method)
-    if method != 'direct' and fix_float_zeros and isinstance(result.dtype.type(1), np.floating):
+    array_c = scipy.signal.convolve(array, kernel, shape, method)
+    if method != 'direct' and fix_float_zeros and isinstance(array_c.dtype.type(1), np.floating):
         # Fix FLOP error from FFT method where we assume zero was the desired result.
-        result[(-1.0e-12 < result) & (result < 10.0e-12)] = 0
+        array_c[(-1.0e-12 < array_c) & (array_c < 10.0e-12)] = 0
 
     # Apply dilation of original NaN pixels to result.
     if fixnans_flag:
@@ -1646,21 +1647,21 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
             padx_rht = -padx_rht if padx_rht > 0 else None
             array_nans_dilate = array_nans_dilate[pady_top:pady_bot, padx_lft:padx_rht]
 
-        result[array_nans_dilate] = np.nan
+        array_c[array_nans_dilate] = np.nan
 
         # Return the input array to its original state.
         array_backup[array_nans_backup] = np.nan
 
-    # Clean up the result array.
+    # Clean up result array.
     if shape == 'same' and not zero_border:
         pady_bot = -pady_bot if pady_bot > 0 else None
         padx_rht = -padx_rht if padx_rht > 0 else None
-        result = result[pady_top:pady_bot, padx_lft:padx_rht]
+        array_c = array_c[pady_top:pady_bot, padx_lft:padx_rht]
     # FIXME: Make returned data type function like conv2.
-    if default_double_out and result.dtype != dtype_out:
-        result = result.astype(dtype_out)
+    if default_double_out and array_c.dtype != dtype_out:
+        array_c = array_c.astype(dtype_out)
 
-    return fix_array_if_rotation_was_applied(result, rotation_flag)
+    return fix_array_if_rotation_was_applied(array_c, rotation_flag)
 
 
 def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
@@ -1717,7 +1718,7 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
 
     Returns
     -------
-    conv2 : ndarray, 2D
+    array_c : ndarray, 2D
         Array containing the convolution of input array and kernel.
 
     See Also
@@ -1880,16 +1881,16 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
             array = np.pad(array, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'constant', constant_values=0)
 
     # Perform convolution.
-    result = cv2.filter2D(array, ddepth, np.rot90(kernel, 2),
+    array_c = cv2.filter2D(array, ddepth, np.rot90(kernel, 2),
                           borderType=(cv2.BORDER_CONSTANT if zero_border else cv2.BORDER_REPLICATE))
-    if fix_float_zeros and isinstance(result.dtype.type(1), np.floating):
+    if fix_float_zeros and isinstance(array_c.dtype.type(1), np.floating):
         # Fix FLOP error where we assume zero was the desired result.
-        if result.dtype == np.float32:
-            result[(-1.0e-6 < result) & (result < 1.0e-6)] = 0
-        elif result.dtype == np.float64:
-            result[(-1.0e-15 < result) & (result < 1.0e-15)] = 0
-    if result.dtype != dtype_out:
-        result = astype_round_and_crop(result, dtype_out, allow_modify_array=True)
+        if array_c.dtype == np.float32:
+            array_c[(-1.0e-6 < array_c) & (array_c < 1.0e-6)] = 0
+        elif array_c.dtype == np.float64:
+            array_c[(-1.0e-15 < array_c) & (array_c < 1.0e-15)] = 0
+    if array_c.dtype != dtype_out:
+        array_c = astype_round_and_crop(array_c, dtype_out, allow_modify_array=True)
 
     # Crop result if necessary.
     if shape == 'valid':
@@ -1897,7 +1898,7 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
             pady_bot = -pady_bot if pady_bot > 0 else None
         if padx_rht >= 0:
             padx_rht = -padx_rht if padx_rht > 0 else None
-        result = result[pady_top:pady_bot, padx_lft:padx_rht]
+        array_c = array_c[pady_top:pady_bot, padx_lft:padx_rht]
 
     # Apply dilation of original NaN pixels to result.
     if fixnans_flag:
@@ -1920,13 +1921,13 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
                 padx_rht = -padx_rht if padx_rht > 0 else None
             array_nans_dilate = array_nans_dilate[pady_top:pady_bot, padx_lft:padx_rht]
 
-        result[array_nans_dilate] = np.nan
+        array_c[array_nans_dilate] = np.nan
 
         # Restore the input array to its original state.
         if not array_casted:
             array_backup[array_nans_backup] = np.nan
 
-    return fix_array_if_rotation_was_applied(result, rotation_flag)
+    return fix_array_if_rotation_was_applied(array_c, rotation_flag)
 
 
 def filt2(array, kernel, shape='same', conv_depth='default', zero_border=False,
@@ -2025,9 +2026,28 @@ def moving_average(array, nhood, shape='same', conv_depth='default', zero_border
                  fix_float_zeros, nan_over_zero, allow_flipped_processing)
 
 
-def conv_binary_structure_prevent_overflow(array, structure):
-    # TODO: Write docstring.
+def conv_binary_prevent_overflow(array, structure):
+    """
+    Make sure structure array has great enough positive bitdepth
+    to be convolved with binary primary array.
 
+    Parameters
+    ----------
+    array : ndarray of bool or int, 2D
+        Primary integer array to convolve.
+        Must be a binary array of only zero/False and one/True.
+    structure : ndarray of bool or int, 2D
+        Secondary, smaller integer array to convolve with `array`.
+        Must be a binary array of only zero/False and one/True.
+
+    Returns
+    -------
+    structure : ndarray, possible uint cast of `structure`
+        Either the same `structure` array or a cast or `structure`
+        to a uint data type with more positive bitdepth than the
+        input array.
+
+    """
     # Get upper bound on minimum positive bitdepth for convolution.
     conv_bitdepth_pos = math.log(np.prod(structure.shape)+1, 2)
     dtype_bitdepths_pos = (1, 7, 8, 15, 16, 31, 32, 63, 64)
@@ -2039,23 +2059,30 @@ def conv_binary_structure_prevent_overflow(array, structure):
     # Parse input array and structure data type for bitdepth.
     input_bitdepth_pos = 0
     for arr in (array, structure):
-        arr_gentype = arr.dtype.type(1)
+        arr_dtype_sample = arr.dtype.type(1)
         if arr.dtype == np.bool:
             arr_posbits = 1
-        elif isinstance(arr_gentype, np.int):
+        elif isinstance(arr_dtype_sample, np.int):
             arr_posbits = int(str(arr.dtype).replace('int', '')) - 1
-        elif isinstance(arr_gentype, np.uint):
+        elif isinstance(arr_dtype_sample, np.uint):
             arr_posbits = int(str(arr.dtype).replace('uint', ''))
+        elif isinstance(arr_dtype_sample, np.floating):
+            arr_posbits = np.inf
         else:
             arr_posbits = 0
         input_bitdepth_pos = max(input_bitdepth_pos, arr_posbits)
 
-    # If maximum positive bitdepth from inputs is too low,
-    # cast structure to minimum positive bitdepth for conovlution.
-    if input_bitdepth_pos < conv_bitdepth_pos:
-        if conv_bitdepth_pos != 1 and (conv_bitdepth_pos % 2) != 0:
-            conv_bitdepth_pos += 1
-        structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth_pos)))
+    if input_bitdepth_pos == 0:
+        # Handle unknown data type by casting structure to
+        # maximum possible bitdepth.
+        structure = structure.astype(np.uint64)
+    else:
+        # If maximum positive bitdepth from inputs is too low,
+        # cast structure to minimum positive bitdepth for conovlution.
+        if input_bitdepth_pos < conv_bitdepth_pos:
+            if (conv_bitdepth_pos % 2) != 0:
+                conv_bitdepth_pos += 1
+            structure = structure.astype(eval('np.uint{}'.format(conv_bitdepth_pos)))
 
     return structure
 
@@ -2098,7 +2125,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
 
     Returns
     -------
-    imerode_slow : ndarray, same shape and type as `array`
+    array_e : ndarray, same shape and type as `array`
         Array containing the erosion of the input array by the structure.
 
     See Also
@@ -2171,12 +2198,14 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
         mode = 'conv' if time_conv < time_scipy else 'scipy'
 
     if mode == 'conv':
-        # Uncomment the following if conv2_slow function is used.
-        if (    not isinstance(structure.dtype.type(1), np.floating)
-            and not isinstance(array.dtype.type(1), np.floating) ):
+        if (    not isinstance(array.dtype.type(1), np.floating)
+            and not isinstance(structure.dtype.type(1), np.floating) ):
             # Make sure one of the input integer arrays has great enough
             # positive bitdepth to prevent overflow during convolution.
-            structure = conv_binary_structure_prevent_overflow(array, structure)
+            if array.dtype != np.bool and np.any(~np.logical_or(array == 0, array == 1)):
+                structure = structure.astype(np.uint64)
+            else:
+                structure = conv_binary_prevent_overflow(array, structure)
         structure = np.rot90(structure, 2)
 
     rotation_flag = False
@@ -2197,20 +2226,20 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
         if array.dtype == np.bool:
             # Binary erosion
             if mode == 'conv':
-                result = (conv2(~array, structure, shape='same', allow_flipped_processing=False) == 0)
+                array_e = (conv2(~array, structure, shape='same', allow_flipped_processing=False) == 0)
             elif mode in ('scipy', 'scipy_grey'):
-                result = sp_ndimage.binary_erosion(array, structure, border_value=1)
+                array_e = sp_ndimage.binary_erosion(array, structure, border_value=1)
             elif mode == 'skimage':
-                result = sk_morphology.binary_erosion(array, structure)
+                array_e = sk_morphology.binary_erosion(array, structure)
 
         elif mode == 'scipy_grey':
             # Greyscale erosion
             if np.any(structure != 1):
                 if not isinstance(structure.dtype.type(1), np.floating):
                     structure = structure.astype(np.float32)
-                result = sp_ndimage.grey_erosion(array, structure=(structure - 1))
+                array_e = sp_ndimage.grey_erosion(array, structure=(structure - 1))
             else:
-                result = sp_ndimage.grey_erosion(array, size=structure.shape)
+                array_e = sp_ndimage.grey_erosion(array, size=structure.shape)
 
         else:
             # Greyscale erosion
@@ -2230,7 +2259,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
             # Overlay the erosion of all higher-value layers (combined)
             # as the second-lowest value. Call this the new lowest value,
             # and repeat until all layers have been added up through the highest value.
-            result = np.full_like(array, array_vals[0])
+            array_e = np.full_like(array, array_vals[0])
             for val in array_vals[1:]:
                 if not np.isnan(val):
                     mask_val = (array >= val) if not has_nans else np.logical_or(array >= val, array_nans)
@@ -2244,14 +2273,14 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
                 elif mode == 'skimage':
                     result_val = sk_morphology.binary_erosion(mask_val, structure)
 
-                result[result_val] = val
+                array_e[result_val] = val
 
-        array = result
+        array = array_e
 
     if mode == 'skimage':
-        result = result[pady:-pady, padx:-padx]
+        array_e = array_e[pady:-pady, padx:-padx]
 
-    return fix_array_if_rotation_was_applied(result, rotation_flag)
+    return fix_array_if_rotation_was_applied(array_e, rotation_flag)
 
 
 def imdilate_slow(array, nhood, iterations=1, mode='auto',
@@ -2292,7 +2321,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
 
     Returns
     -------
-    imdilate_slow : ndarray, same shape and type as `array`
+    array_d : ndarray, same shape and type as `array`
         Array containing the dilation of the input array by the structure.
 
     See Also
@@ -2365,11 +2394,14 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
         mode = 'conv' if time_conv < time_scipy else 'scipy'
 
     if mode == 'conv':
-        if (    not isinstance(structure.dtype.type(1), np.floating)
-            and not isinstance(array.dtype.type(1), np.floating) ):
+        if (    not isinstance(array.dtype.type(1), np.floating)
+            and not isinstance(structure.dtype.type(1), np.floating) ):
             # Make sure one of the input integer arrays has great enough
             # positive bitdepth to prevent overflow during convolution.
-            structure = conv_binary_structure_prevent_overflow(array, structure)
+            if array.dtype != np.bool and np.any(~np.logical_or(array == 0, array == 1)):
+                structure = structure.astype(np.uint64)
+            else:
+                structure = conv_binary_prevent_overflow(array, structure)
 
     rotation_flag = False
     if mode in ('scipy', 'scipy_grey', 'skimage') and allow_flipped_processing:
@@ -2380,20 +2412,20 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
         if array.dtype == np.bool:
             # Binary dilation
             if mode == 'conv':
-                result = (conv2(array, structure, shape='same', allow_flipped_processing=False) > 0)
+                array_d = (conv2(array, structure, shape='same', allow_flipped_processing=False) > 0)
             elif mode in ('scipy', 'scipy_grey'):
-                result = sp_ndimage.binary_dilation(array, structure, border_value=0)
+                array_d = sp_ndimage.binary_dilation(array, structure, border_value=0)
             elif mode == 'skimage':
-                result = sk_morphology.binary_dilation(array, structure)
+                array_d = sk_morphology.binary_dilation(array, structure)
 
         elif mode == 'scipy_grey':
             # Greyscale dilation
             if np.any(structure != 1):
                 if not isinstance(structure.dtype.type(1), np.floating):
                     structure = structure.astype(np.float32)
-                result = sp_ndimage.grey_dilation(array, structure=(structure - 1))
+                array_d = sp_ndimage.grey_dilation(array, structure=(structure - 1))
             else:
-                result = sp_ndimage.grey_dilation(array, size=structure.shape)
+                array_d = sp_ndimage.grey_dilation(array, size=structure.shape)
 
         else:
             # Greyscale dilation
@@ -2409,7 +2441,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
             # Start with an array full of the lowest value from the input array,
             # then overlay the dilation of each higher-value layer,
             # one at a time, until all layers have been added.
-            result = np.full_like(array, array_vals[0])
+            array_d = np.full_like(array, array_vals[0])
             for val in array_vals[1:]:
                 mask_val = (array == val) if not np.isnan(val) else np.isnan(array)
 
@@ -2420,11 +2452,11 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
                 elif mode == 'skimage':
                     result_val = sk_morphology.binary_dilation(mask_val, structure)
 
-                result[result_val] = val
+                array_d[result_val] = val
 
-        array = result
+        array = array_d
 
-    return fix_array_if_rotation_was_applied(result, rotation_flag)
+    return fix_array_if_rotation_was_applied(array_d, rotation_flag)
 
 
 def imerode(array, nhood, iterations=1, allow_flipped_processing=True):
@@ -2475,7 +2507,7 @@ def imerode_imdilate_cv2(array, nhood, iterations=1,
 
     Returns
     -------
-    imerode_imdilate_cv2 : ndarray, same shape and type as `array`
+    array_ed : ndarray, same shape and type as `array`
         Array containing the erosion/dilation of the input array by the structure.
 
     Notes
@@ -2556,11 +2588,11 @@ def imerode_imdilate_cv2(array, nhood, iterations=1,
         structure = np.rot90(structure, 2)
 
     # Perform erosion/dilation.
-    result = fn(array, structure, iterations=iterations, borderType=cv2.BORDER_REPLICATE)
-    if result.dtype != array_dtype_in:
-        result = result.astype(array_dtype_in)
+    array_ed = fn(array, structure, iterations=iterations, borderType=cv2.BORDER_REPLICATE)
+    if array_ed.dtype != array_dtype_in:
+        array_ed = array_ed.astype(array_dtype_in)
 
-    return fix_array_if_rotation_was_applied(result, rotation_flag)
+    return fix_array_if_rotation_was_applied(array_ed, rotation_flag)
 
 
 def bwareaopen(array, size_tolerance, connectivity=8, in_place=False):
@@ -2634,9 +2666,12 @@ def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
 
     Returns
     -------
-    bwboundaries_array : ndarray of bool, same shape as `array`
-        A binary array with 1-px borders of ones highlighting boundaries
-        between areas of differing values in the input array.
+    array_b : ndarray, same shape as `array`
+        Either a binary array with 1-px borders of ones highlighting
+        boundaries between areas of differing values in the input array,
+        or an array of the same type as the input array with the same
+        1-px borders taking on the values of the input array at those
+        locations if grey_boundaries=True.
 
     See Also
     --------
@@ -2674,24 +2709,24 @@ def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
     fn = imerode if side == 'inner' else imdilate
 
     # Find boundaries.
-    array_boundaries = (array != fn(array, structure))
+    array_b_bw = (array != fn(array, structure))
 
     if grey_boundaries and array.dtype != np.bool:
         fillval = np.nanmin(array) if side == 'inner' else np.max(array)
-        result = np.full_like(array, fillval)
-        result[array_boundaries] = array[array_boundaries]
+        array_b = np.full_like(array, fillval)
+        array_b[array_b_bw] = array[array_b_bw]
     else:
-        result = array_boundaries
+        array_b = array_b_bw
 
     # Edge pixels may not be marked as boundary pixels
     # by erosion or dilation, and must be added manually.
     if edge_boundaries:
-        result[ 0,  :] = array[ 0,  :]
-        result[-1,  :] = array[-1,  :]
-        result[ :,  0] = array[ :,  0]
-        result[ :, -1] = array[ :, -1]
+        array_b[ 0,  :] = array[ 0,  :]
+        array_b[-1,  :] = array[-1,  :]
+        array_b[ :,  0] = array[ :,  0]
+        array_b[ :, -1] = array[ :, -1]
 
-    return result
+    return array_b
 
 
 def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbins=None,
@@ -2756,7 +2791,7 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
 
     Returns
     -------
-    entropyfilt : ndarray of float64, same shape as `array`
+    array_filt : ndarray of float64, same shape as `array`
         Array containing the entropy-filtered image.
 
     Notes
@@ -2895,15 +2930,15 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
         bin_array = np.pad(bin_array, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'symmetric')
 
     # Perform entropy filter.
-    result = entropy(bin_array, structure)
+    array_filt = entropy(bin_array, structure)
 
     # Crop result if necessary.
     if symmetric_border:
         pady_bot = -pady_bot if pady_bot != 0 else None
         padx_rht = -padx_rht if padx_rht != 0 else None
-        result = result[pady_top:pady_bot, padx_lft:padx_rht]
+        array_filt = array_filt[pady_top:pady_bot, padx_lft:padx_rht]
 
-    return result
+    return array_filt
 
 
 def convex_hull_image_offsets_diamond(ndim):
@@ -3009,7 +3044,7 @@ def concave_hull_traverse_delaunay(boundary_points, convex_hull, vertex_neighbor
     Parameters
     ----------
     boundary_points : ndarray of float, shape (npoints, 2)
-        Coordinates of all data (non-zero) pixels in the original
+        Coordinates of all data (nonzero) pixels in the original
         image from which the concave hull image is being extracted.
         This must be identical to the source coordinates for the
         Delaunay triangulation from which `convex_hull` and
@@ -3041,7 +3076,7 @@ def concave_hull_traverse_delaunay(boundary_points, convex_hull, vertex_neighbor
 
     Returns
     -------
-    concave_hull_traverse_delaunay : tuple
+    alpha_min, alpha_max, edge_info, amin_edges : tuple
         Maximum and minimum erosion tolerance, information on
         edges considered for erosion (endpoint indices, edge length,
         critical value of erosion tolerance, index of third point in
@@ -3218,14 +3253,15 @@ def concave_hull_traverse_delaunay(boundary_points, convex_hull, vertex_neighbor
     return alpha_min, alpha_max, edge_info, amin_edges
 
 
-def concave_hull_image(image, concavity, fill=True, alpha_cutoff_mode='unique',
+def concave_hull_image(image, concavity,
+                       fill=True, alpha_cutoff_mode='unique',
                        boundary_res=3, debug=False):
     """
     Compute the concave hull image of a binary image.
     The concave hull image is the convex hull image with edges
     of the hull eroded where the hull can have a tighter fit
     to the data without losing any coverage of data pixels
-    (here, "data" refers to pixels with non-zero value).
+    (here, "data" refers to pixels with nonzero value).
 
     Parameters
     ----------
@@ -3265,14 +3301,37 @@ def concave_hull_image(image, concavity, fill=True, alpha_cutoff_mode='unique',
         of 1 coordinate unit), set this parameter to the smallest
         value that keeps these areas from being eroded.
         The purpose of this is to prevent unnecessary computation.
-    debug : bool
+    debug : bool or 1 <= int <= 4
+        (Non-False value requires `matplotlib` package installed.)
         Whether or not to interrupt the run of this function
-        with 3 plots displaying the Delaunay triangulation of
-        the image as the function progresses through stages.
+        with plots displaying the Delaunay triangulation of
+        the image as the function progresses through stages:
+        1 -- Initial triangulation plot
+        2 -- Triangulation traversal
+             Plot shows eroded triangles shaded with their
+             max alpha min (mam) values as calculated by
+             `concave_hull_traverse_delaunay`. Darker shade
+             corresponds to a lower mam value; these triangles
+             require a higher `concavity` value to erode.
+             Keyboard interaction allows changing `concavity`,
+             which decides cutoff mam value `alpha_cut`, or
+             set `alpha_cut` directly to see how erosion changes.
+             Set `alpha_cut` to 0 to see all triangles considered
+             for erosion (which is not all triangles in the
+             triangulation, due to nonzero `boundary_res` argument
+             to `concave_hull_traverse_delaunay`) shaded.
+             Red edges show critical edges which, if eroded,
+             would cause the concave hull to split into multiple
+             polygons.
+        3 -- Concave hull boundary points
+        4 -- Save an image that shows the concave hull with
+             1-px-wide boundaries around data clusters (following
+             the inside edge) overlaid.
+        If True, perform all debugging steps.
 
     Returns
     -------
-    concave_hull_image : ndarray, 2D, same shape as `image`
+    image_cchull : ndarray, 2D, same shape as `image`
         Binary image with pixels in concavve hull set to True.
 
     """
@@ -3461,7 +3520,7 @@ def concave_hull_image(image, concavity, fill=True, alpha_cutoff_mode='unique',
     del erode_poly, amin_poly, hull_convex_poly
 
     # Draw concave hull image.
-    mask = np.zeros(image.shape, dtype=np.bool)
+    image_cchull = np.zeros(image.shape, dtype=np.bool)
     for poly in hull_concave_poly:
         cchull_r, cchull_c = poly.exterior.coords.xy
         cchull_r = np.array(cchull_r)
@@ -3481,10 +3540,10 @@ def concave_hull_image(image, concavity, fill=True, alpha_cutoff_mode='unique',
             plt.show()
 
         draw_r, draw_c = polygon_perimeter(cchull_r, cchull_c)
-        mask[draw_r, draw_c] = 1
+        image_cchull[draw_r, draw_c] = 1
 
     if fill:
-        mask = sp_ndimage.morphology.binary_fill_holes(mask)
+        image_cchull = sp_ndimage.morphology.binary_fill_holes(image_cchull)
 
     if debug in (True, 4):
         try:
@@ -3492,26 +3551,13 @@ def concave_hull_image(image, concavity, fill=True, alpha_cutoff_mode='unique',
         except ImportError as e:
             print "`tifffile` package is required for `debug={}`".format(debug)
             raise e
-        debug_mask = np.zeros(image.shape, dtype=np.int8)
-        debug_mask[mask] = 1
-        debug_mask[data_boundary] += 2
-        debug_maskFile = '~/debug_scenes2strips/concave_hull_image.tif'
-        imsave(debug_maskFile, debug_mask)
-        print "'{}' saved".format(debug_maskFile)
+        debug_image = np.zeros(image.shape, dtype=np.int8)
+        debug_image[image_cchull] = 1
+        debug_image[data_boundary] += 2
+        imsave(DEBUG_CCHULLIMAGE_PATH, debug_image)
+        print "'{}' saved".format(DEBUG_CCHULLIMAGE_PATH)
 
-    return mask
-
-
-def getWindow(array, window_shape, x_y_tup, one_based_index=True):
-    # TODO: Write docstring.
-    # FIXME: Needs error checking on array bounds.
-    window_ysize, window_xsize = window_shape
-    colNum, rowNum = x_y_tup
-    if one_based_index:
-        rowNum -= 1
-        colNum -= 1
-    return array[int(rowNum-np.floor((window_ysize-1)/2)):int(rowNum+np.ceil((window_ysize-1)/2)+1),
-                 int(colNum-np.floor((window_xsize-1)/2)):int(colNum+np.ceil((window_xsize-1)/2)+1)]
+    return image_cchull
 
 
 
@@ -3520,9 +3566,51 @@ def getWindow(array, window_shape, x_y_tup, one_based_index=True):
 ################################
 
 
-def getFPvertices(array, Y=None, X=None, label=0, label_type='nodata', replicate_matlab=False):
-    # TODO: Write docstring.
+def getFPvertices(array, Y=None, X=None,
+                  label=0, label_type='nodata',
+                  replicate_matlab=False):
+    """
+    Calculate simplified footprint vertices of a convex polygon
+    that encloses a labeled region of nodes in an array.
 
+    Returned vertices are either (row, col) pixel indices directly
+    corresponding to indices of nodes in `array` or point coordinates
+    that the pixel coordinates are mapped to using provided Y and X
+    grid coordinate arrays.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        Array containing data to footprint.
+    Y : None or (ndarray, 1D)
+        Grid coordinates corresponding to all rows in `array`, from
+        top to bottom, such that `Y[i]` specifies the y-coordinate
+        for all pixels in `array[i, :]`.
+        If None, returned vertices are (row, col) pixel indices.
+    X : None or (ndarray, 1D)
+        Grid coordinates corresponding to all columns in `array`, from
+        left to right, such that `X[j]` specifies the x-coordinate
+        for all pixels in `array[:, j]`.
+        If None, returned vertices are (row, col) pixel indices.
+    label : bool/int/float
+        Value of nodes in `array` that are classified as "data"
+        (if label_type='data') or non-"data" (if label_type='nodata').
+    label_type : str; 'data' or 'nodata'
+        Whether `label` is a classification for "data" or non-"data" nodes.
+    replicate_matlab : bool
+        Attempt to replicate the results of the MATLAB version of this
+        function by rotating and flipping convex hull vertices before
+        simplifying them with `DecimatePoly`.
+
+    Returns
+    -------
+    fp_vert : ndarray (2, nverts)
+        Simplified footprint vertices for the labeled region of nodes
+        in `array`, either as pixel indices [[row_indices], [col_indices]]
+        or as point coordinates [[x_coords], [y_coords]] if `X` and `Y`
+        are provided.
+
+    """
     if (Y is None and X is None) or (Y is not None and X is not None):
         pass
     else:
@@ -3535,19 +3623,21 @@ def getFPvertices(array, Y=None, X=None, label=0, label_type='nodata', replicate
     data_boundary = bwboundaries_array(data_array, connectivity=8, noholes=True)
     boundary_pix = np.argwhere(data_boundary)
     if replicate_matlab:
-        boundary_pix = rot90_pixcoords(flip_pixcoords(boundary_pix, array.shape, axis=0), array.shape, 3)
+        boundary_pix = rot90_pixcoords(flip_pixcoords(boundary_pix, array.shape, axis=0),
+                                       array.shape, 3)
     chull = scipy.spatial.ConvexHull(boundary_pix)
     chull_pix = chull.points[chull.vertices]
     chull_pix = np.vstack((chull_pix, chull_pix[0]))
 
     # Get simplified footprint pixel coords in (2, N) array.
-    fp_pix, _ = DecimatePoly(chull_pix, B_tol=1)
+    fp_ind, _ = DecimatePoly(chull_pix, B_tol=1)
     if replicate_matlab:
-        fp_pix = flip_pixcoords(rot90_pixcoords(fp_pix, list(array.shape)[::-1], 1), array.shape, axis=0)
-    fp_pix = fp_pix.T.astype(np.int64)
+        fp_ind = flip_pixcoords(rot90_pixcoords(fp_ind, list(array.shape)[::-1], 1),
+                                array.shape, axis=0)
+    fp_ind = fp_ind.T.astype(np.int64)
 
     # Return pixel coords or point coords (from provided grid coordinates).
-    return fp_pix if Y is None else np.array([Y[fp_pix[0]], X[fp_pix[1]]])
+    return fp_ind if Y is None else np.array([Y[fp_ind[0]], X[fp_ind[1]]])
 
 
 def getDataBoundariesPoly(array, X, Y, nodata_val=np.nan, coverage='all',

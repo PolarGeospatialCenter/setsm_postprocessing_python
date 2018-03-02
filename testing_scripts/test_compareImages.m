@@ -33,7 +33,7 @@ if ~exist('display_small', 'var') || isempty(display_small)
 end
 
 
-single = true;
+just_view = true;
 
 diff = [];
 diff_bool = [];
@@ -70,7 +70,7 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
             end
         end
         
-        single = false;
+        just_view = false;
         
         if isRaster
             ds = readGeotiff(imgFile2);
@@ -85,7 +85,7 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
     end    
 end
 
-if single
+if just_view
     figure_args_extra = {};
     if ~display_small
         figure_args_extra = [figure_args_extra, {'units','normalized','outerposition',[0 0 1 1]}];

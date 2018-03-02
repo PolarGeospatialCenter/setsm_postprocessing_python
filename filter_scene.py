@@ -1,8 +1,8 @@
 #!/usr/bin/env python2
 # -*- coding: UTF-8 -*-
 
-# Version 3.0; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2017
-# Translated from MATLAB code written by Ian Howat, Ohio State University, 2017
+# Version 3.0; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2018
+# Translated from MATLAB code written by Ian Howat, Ohio State University, 2018
 
 
 from __future__ import division
@@ -51,7 +51,7 @@ def check_arggroups(arggroup_list, check='exist'):
 
     Returns
     -------
-    check_arggroups : list of bool, same length as `arggroup_list`
+    arggroup_report : list of bool, same length as `arggroup_list`
         An ordered list of boolean elements corresponding to items
         in `arggroup_list` reporting the results of the check on
         each item.
@@ -61,7 +61,7 @@ def check_arggroups(arggroup_list, check='exist'):
     if check not in check_choices:
         raise InvalidArgumentError("`check` must be one of {}, but was '{}'".format(check_choices, check))
 
-    result = []
+    arggroup_report = []
     for arggroup in arggroup_list:
         ag_check = None
         if type(arggroup) in (list, tuple):
@@ -75,12 +75,12 @@ def check_arggroups(arggroup_list, check='exist'):
             ag_check = True
         else:
             ag_check = False
-        result.append(ag_check)
+        arggroup_report.append(ag_check)
 
-    return result
+    return arggroup_report
 
 
-def verify_arggroups(arggroup_list):
+def isValidArggroups(arggroup_list):
     """
     Given a list of items, some of which may also be lists,
     report whether or not there is only one item that both
@@ -100,7 +100,7 @@ def verify_arggroups(arggroup_list):
 
     Returns
     -------
-    verify_arggroups : bool
+    isValidArggroups : bool
         Flag indicating whether or not the argument groups
         passes the described verification.
 
@@ -114,7 +114,7 @@ def verify_arggroups(arggroup_list):
 
 def generateMasks(demFile, maskFileSuffix, noentropy=False):
     """
-    Create and save scene masks.
+    Create and save scene masks that mask ON regions of good data.
 
     Parameters
     ----------
@@ -155,7 +155,7 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False):
 
 def mask_v1(matchFile, noentropy=False):
     """
-    Creates an edgemask and datamask for regions of good data in
+    Creates an edgemask and datamask masking ON regions of good data in
     a scene from a matchtag image and saves the two mask files to disk.
 
     Optionally, the corresponding ortho-ed spectral image may be
@@ -165,7 +165,7 @@ def mask_v1(matchFile, noentropy=False):
     Parameters
     ----------
     matchFile : str (file path)
-        File path of the matchtag image.
+        File path of the matchtag raster image.
     noentropy : bool
         If True, entropy filter is not applied.
         If False, entropy filter is applied.
@@ -256,9 +256,48 @@ def mask_v1(matchFile, noentropy=False):
                         like_raster=matchFile, nodata_val=0, dtype_out=np.uint8)
 
 
-def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500):
-    # TODO: Write my own docstring.
+def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500):
     """
+    Create a single mask masking ON regions of good data in a scene,
+    utilizing information from the DEM, matchtag, and panchromatic
+    spectral images corresponding to a single scene.
+
+    Crops out bad data on the edges of the scene where high average
+    slope values are found in the DEM. Cuts out areas classified as
+    water and clouds from the panchromatic image.
+
+    Parameters
+    ----------
+    demFile : str (file path)
+        File path of the DEM raster image.
+    ddm_kernel_size : positive int
+        Side length of the neighborhood to use for calculating the
+        data density map, at native image resolution.
+        If None, is set to `int(math.floor(21*2/image_res))` where
+        `image_res` is the resolution of the raster images.
+    processing_res : positive int
+        Downsample images to this resolution for processing for
+        speed and smooth.
+    min_data_cluster : positive int
+        Minimum number of contiguous data pixels in a kept good data
+        cluster in the returned mask, at `processing_res` resolution.
+
+    Returns
+    -------
+    mask : ndarray of bool, 2D
+        Scene mask masking ON regions of good data.
+
+    Notes
+    -----
+    This method is currently designed for masking images with 2-meter
+    square pixel resolution.
+
+    Source file: mask.m
+    Source author: Ian Howat, ihowa@gmail.com, Ohio State University
+    Source repo: setsm_postprocessing, branch "3.0" (GitHub)
+    Translation date: 2/28/18
+
+    Source docstring:
     % MASK ArcticDEM masking algorithm
     %
     % m = mask(demFile,satID,effectiveBandwidth,abScaleFactor,meanSunElevation)
@@ -288,6 +327,7 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
     %
     % Ian Howat, ihowat@gmail.com
     % 25-Jul-2017 12:49:25
+
     """
     metaFile  = demFile.replace('dem.tif', 'meta.txt')
     matchFile = demFile.replace('dem.tif', 'matchtag.tif')
@@ -309,6 +349,9 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
     match_array = rat.extractRasterData(matchFile, 'array')
     ortho_array = rat.extractRasterData(orthoFile, 'array')
 
+    if ddm_kernel_size is None:
+        ddm_kernel_size = int(math.floor(21*2/image_res))
+
     # Raster size consistency checks
     if match_array.shape != image_shape:
         raise RasterDimensionError("matchFile '{}' dimensions {} do not match dem dimensions {}".format(
@@ -323,7 +366,7 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
 
     dem_nodata = np.isnan(dem_array)  # original background for rescaling
     dem_array[dem_array == -9999] = np.nan
-    data_density_map = getDataDensityMap(match_array, avg_kernel_size)
+    data_density_map = getDataDensityMap(match_array, ddm_kernel_size)
     del match_array
 
     # Re-scale ortho data if WorldView correction is detected in the meta file.
@@ -365,7 +408,7 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
     # Mask water.
     ortho_array[np.isnan(dem_array)] = 0
     data_density_map[np.isnan(dem_array)] = 0
-    mask = getWaterMask(ortho_array, mean_sun_elevation, data_density_map)
+    mask = getWaterMask(ortho_array, data_density_map, mean_sun_elevation)
     dem_array[~mask] = np.nan
     data_density_map[~mask] = 0
     if not np.any(~np.isnan(dem_array)):
@@ -388,17 +431,74 @@ def mask_v2(demFile, avg_kernel_size=21, processing_res=8, min_data_cluster=500)
 
 
 def mask_v2a(demFile, avg_kernel_size=5,
-             min_data_cluster=10, max_hole_fill=5000,
-             cloudthresh_demstdev=0.75, cloudthresh_datadensity=1,
-             demstdev_iter_thresh=0.1, iteration_dilate=11,
-             dilate_bad=5):
-    # TODO: Write my own docstring.
+             min_cloud_cluster=10, min_data_cluster=5000,
+             cloud_stdev_thresh=0.75, cloud_density_thresh=1,
+             iter_stdev_thresh=0.1, iter_dilate=11,
+             dilate_nodata=5):
     """
+    Create a single mask masking ON regions of good data in a scene,
+    utilizing information from the DEM and matchtag corresponding to
+    a single scene.
+
+    Crops out bad data on the edges of the scene where high average
+    slope values are found in the DEM. Cuts out areas of probable
+    cloud cover using a local standard deviation filter on the DEM
+    along with a match point data density map derived from the matchtag.
+
+    Parameters
+    ----------
+    demFile : str (file path)
+        File path of the DEM raster image.
+    avg_kernel_size : positive int
+        Side length of the neighborhood to use for both elevation
+        standard deviation filter and calculating data density map.
+        If None, is set to `int(math.floor(21*2/image_res))` where
+        `image_res` is the resolution of the raster images.
+    min_cloud_cluster : positive int
+        Minimum number of contiguous cloud-classified pixels
+        in a kept cluster during masking.
+    min_data_cluster : positive int
+        Minimum number of contiguous good data pixels in a kept good
+        data cluster of the returned mask.
+    cloud_stdev_thresh : positive float
+        Minimum local elevation standard deviation for a region to
+        be classified as clouds.
+    cloud_density_thresh : 0 < float <= 1
+        Maximum match point density for a region to be classified
+        as clouds.
+    iter_stdev_thresh : positive float
+        Minimum local elevation standard deviation for a region to be
+        considered bad data during iterative expansion of cloud mask.
+    iter_dilate : positive int
+        Side length of square neighborhood (of ones) used as structure
+        for dilation in iterative expansion of cloud mask.
+    dilate_nodata : positive int
+        Side length of square neighborhood (of ones) used as structure
+        for dilation of nodata pixels in the DEM, to be set OFF in the
+        returned mask.
+
+    Returns
+    -------
+    mask : ndarray of bool, 2D
+        Scene mask masking ON regions of good data.
+
+    Notes
+    -----
+    This method is currently designed for masking images with 8-meter
+    square pixel resolution.
+
+    Source file: remaMask2a.m
+    Source author: Ian Howat, ihowa@gmail.com, Ohio State University
+    Source repo: setsm_postprocessing, branch "3.0" (GitHub)
+    Translation date: 2/28/18
+
+    Source docstring:
     % remaMask2a mask dem using point density and slopes deviations
     %
     % m = remaMask2a(demFile) masks the dem file by first applying an edgemask
     % and then using an iterative bad pixel search starting from points of low
     % point density and high standard deviation in slope.
+
     """
     matchFile = demFile.replace('dem.tif', 'matchtag.tif')
 
@@ -416,7 +516,9 @@ def mask_v2a(demFile, avg_kernel_size=5,
     dy, dx = np.gradient(dem_array, image_dy, image_dx)
 
     # Mask edges using dem slope.
-    mask = getEdgeMask(getSlopeMask(dem_array, grad_dx=dx, grad_dy=dy, avg_kernel_size=avg_kernel_size))
+    mask = getEdgeMask(getSlopeMask(dem_array,
+                                    grad_dx=dx, grad_dy=dy,
+                                    avg_kernel_size=avg_kernel_size))
     dem_array[~mask] = np.nan
     del mask
 
@@ -442,8 +544,11 @@ def mask_v2a(demFile, avg_kernel_size=5,
         stdev_dk_list.append(stdev_dk)
     del dk_list, dx, dy, dk, dk_nodata, mean_dk, stdev_dk
 
-    stdev_elev_array = np.sqrt(np.square(stdev_dk_list[0]) + np.square(stdev_dk_list[1]))
-    stdev_elev_nodata = rat.imdilate(dk_nodata_list[0] | dk_nodata_list[1], avg_kernel.astype(np.uint8))
+    stdev_elev_array = np.sqrt(
+        np.square(stdev_dk_list[0]) + np.square(stdev_dk_list[1])
+    )
+    stdev_elev_nodata = rat.imdilate(dk_nodata_list[0] | dk_nodata_list[1],
+                                     avg_kernel.astype(np.uint8))
     stdev_elev_array[stdev_elev_nodata] = np.nan
     del stdev_dk_list, dk_nodata_list
 
@@ -453,89 +558,106 @@ def mask_v2a(demFile, avg_kernel_size=5,
     data_density_map[dem_nodata] = np.nan
 
     # Locate probable cloud pixels.
-    mask = (stdev_elev_array > cloudthresh_demstdev) & (data_density_map < cloudthresh_datadensity)
+    mask = (  (stdev_elev_array > cloud_stdev_thresh)
+            & (data_density_map < cloud_density_thresh))
 
     # Remove small data clusters.
-    mask = rat.bwareaopen(mask, min_data_cluster, in_place=True)
+    mask = rat.bwareaopen(mask, min_cloud_cluster, in_place=True)
 
     # Initialize masked pixel counters.
     N0 = np.count_nonzero(mask)
     N1 = np.inf
 
     # Background mask
-    mask_bkg = dem_nodata | stdev_elev_nodata
+    mask_bkg = dem_nodata | stdev_elev_nodata | (stdev_elev_array < iter_stdev_thresh)
 
     # Expand mask to surrounding bad pixels,
     # stop when mask stops growing.
-    dilate_structure = np.ones((iteration_dilate, iteration_dilate), dtype=np.uint8)
+    dilate_structure = np.ones((iter_dilate, iter_dilate), dtype=np.uint8)
     while N0 != N1:
         N0 = N1  # Set new to old.
         mask = rat.imdilate(mask, dilate_structure)  # Dilate the mask.
-        mask[mask_bkg | (stdev_elev_array < demstdev_iter_thresh)] = False
-        N1 = np.count_nonzero(mask)
+        mask[mask_bkg] = False  # Unmask low standard deviation pixels.
+        N1 = np.count_nonzero(mask)  # Count number of new masked pixels.
 
     # Remove small data gaps.
-    mask = ~rat.bwareaopen(~mask, max_hole_fill, in_place=True)
+    mask = ~rat.bwareaopen(~mask, min_data_cluster, in_place=True)
 
     # Remove border effect.
-    mask = (mask | rat.imdilate(dem_nodata, dilate_bad))
+    mask = (mask | rat.imdilate(dem_nodata, dilate_nodata))
 
     # remove small data gaps.
-    mask = ~rat.bwareaopen(~mask, max_hole_fill, in_place=True)
+    mask = ~rat.bwareaopen(~mask, min_data_cluster, in_place=True)
 
     return ~mask
 
 
-def getDataDensityMap(array, kernel_size=11, label=0, label_type='nodata', conv_depth='single'):
+def getDataDensityMap(array, kernel_size=11,
+                      label=0, label_type='nodata',
+                      conv_depth='single'):
     """
     Calculate the density of data points in an array.
 
     Parameters
     ----------
     array : ndarray
-        Array for which the density of "data" pixels is to be calculated.
+        Array for which the density of "data" pixels
+        is to be calculated.
     kernel_size : positive int
-        Side length of the neighborhood to use for calculating data density fraction.
+        Side length of the neighborhood to use for
+        calculating data density fraction.
     label : bool/int/float
-        Value of nodes in `array` that are classified as "data" (if label_type=='data')
-        or non-"data" (if label_type=='nodata').
+        Value of nodes in `array` that are classified
+        as "data" (if label_type='data')
+        or non-"data" (if label_type='nodata').
     label_type : str; 'data' or 'nodata'
-        Whether `label` is a classification for "data" or non-"data" nodes.
+        Whether `label` is a classification for "data"
+        or non-"data" nodes.
     conv_depth : str; 'single' or 'double'
         The floating data type of the returned array.
 
     Returns
     -------
-    getDataDensityMap : ndarray of float (bit depth set by `conv_depth`),
-                        same shape as `array`
-        Data density map with each node of the array carrying the fraction of "data"
-        nodes in the surrounding `kernel_size` x `kernel_size` neighborhood of `array`.
+    data_density_map : ndarray of float (bit depth set
+                       by `conv_depth`), same shape as `array`
+        Data density map with each node of the array
+        carrying the fraction of "data" nodes in the
+        surrounding `kernel_size` x `kernel_size`
+        neighborhood of `array`.
 
     """
     data_array = rat.getDataArray(array, label, label_type)
-    return rat.moving_average(data_array, kernel_size, shape='same', conv_depth=conv_depth)
+    return rat.moving_average(data_array, kernel_size,
+                              shape='same', conv_depth=conv_depth)
 
 
-def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3, conv_depth='single'):
+def getDataDensityMask(match_array, kernel_size=21,
+                       density_thresh=0.3,
+                       conv_depth='single'):
     """
-    Return an array masking off areas of poor data coverage in a matchtag array.
+    Return an array masking OFF areas of poor data
+    coverage in a match point array.
 
     Parameters
     ----------
     match_array : ndarray, 2D
-        Binary array to mask containing locations of good data values.
+        Binary array to mask containing locations of
+        good data values.
     kernel_size : positive int
-        Side length of the neighborhood to use for calculating data density fraction.
+        Side length of the neighborhood to use for
+        calculating data density fraction.
     density_thresh : positive float
-        Minimum data density fraction for a pixel to be set to 1 in the mask.
+        Minimum data density fraction for a pixel to
+        be set to 1 in the mask.
     conv_depth : str; 'single' or 'double'
-        The floating data type of the data density map array that will be
-        compared against `density_thresh`.
+        The floating data type of the data density map
+        array that will be compared against `density_thresh`.
 
     Returns
     -------
-    getDataDensityMask : ndarray of bool, same shape as data_array
-        The data density mask of the input matchtag array.
+    mask : ndarray of bool, same shape as data_array
+        The data density mask of the input matchtag array,
+        masking ON areas of good data coverage.
 
     Notes
     -----
@@ -546,38 +668,42 @@ def getDataDensityMask(match_array, kernel_size=21, density_thresh=0.3, conv_dep
 
     *Functionality has been modified in translation:
         - Removal of small data clusters and small data gaps.
-        To replicate functionality of DataDensityMask.m, pass the result of this function to clean_mask().
+        To replicate functionality of DataDensityMask.m,
+        pass the result of this function to clean_mask().
 
     """
     return getDataDensityMap(match_array, kernel_size, conv_depth=conv_depth) >= density_thresh
 
 
-def getEntropyMask(orthoFile,
-                   entropy_thresh=0.2, min_data_cluster=1000,
-                   processing_res=8, kernel_size=None):
+def getEntropyMask(orthoFile, entropy_thresh=0.2,
+                   processing_res=8, kernel_size=None, min_data_cluster=1000):
     """
-    Return an array masking off areas of low entropy, such as water,
-    in a spectral image.
+    Return an array masking OFF areas of low entropy, such as water,
+    in an orthorectified panchromatic spectral image.
 
     Parameters
     ----------
     orthoFile : str (file path)
         File path of the image to process.
-    entropy_thresh : positive float
-        Minimum entropy threshold. 0.2 seems to be good for water.
-    min_data_cluster : positive int
-        Minimum number of contiguous data pixels in a kept data cluster.
+    entropy_thresh : 0 < float < -log2(`kernel_size`^(-2))
+        Minimum entropy threshold.
+        0.2 seems to be good for water.
     processing_res : positive float (meters)
-        Resample ortho image to this resolution for processing for speed and smooth.
+        Downsample ortho image to this resolution for
+        processing for speed and smooth.
     kernel_size : None or positive int
         Side length of square neighborhood (of ones)
-        to be used as kernel for entropy filter.
-        If None, is set automatically by processing_res.
+        to be used as kernel for entropy filter, at
+        `processing_res` resolution.
+        If None, is set automatically by `processing_res`.
+    min_data_cluster : positive int
+        Minimum number of contiguous data pixels in a
+        kept data cluster, at `processing_res` resolution.
 
     Returns
     -------
-    getEntropyMask : ndarray of type bool, same shape as image array
-        Entropy mask masking off areas of low entropy in the image.
+    mask : ndarray of bool, same shape as image array
+        Entropy mask masking OFF areas of low entropy in the image.
 
     Notes
     -----
@@ -651,7 +777,8 @@ def getSlopeMask(dem_array,
                  source_res=None, avg_kernel_size=None,
                  dilate_bad=13):
     """
-    Return an array masking off artifacts with high slope values in a DEM array.
+    Return an array masking OFF artifacts with
+    high slope values in a DEM array.
 
     Parameters
     ----------
@@ -683,21 +810,27 @@ def getSlopeMask(dem_array,
 
     Returns
     -------
-    getSlopeMask : ndarray of type bool, same shape as dem_array
-        The slope mask masking off artifacts with high slope values in input dem_array.
+    mask : ndarray of bool, same shape as dem_array
+        The slope mask masking OFF artifacts with
+        high slope values in `dem_array`.
 
     Notes
     -----
-    Provide one of (x and y coordinate vectors x_dem and y_dem), input image resolution input_res,
+    Provide one of (x and y coordinate vectors x_dem and y_dem),
+    input image resolution input_res,
     (pre-calculated x and y gradient arrays dx and dy).
-    Note that y_dem and x_dem must both have the same uniform coordinate spacing AS WELL AS being
-    both in increasing or both in decreasing order for the results of np.gradient(dem_array, y_dem, x_dem)
-    to be equal to the results of np.gradient(dem_array, input_res), with input_res being a positive
-    number for increasing order or a negative number for decreasing order.
+    Note that y_dem and x_dem must both have the same uniform
+    coordinate spacing AS WELL AS being both in increasing or
+    both in decreasing order for the results of
+    np.gradient(dem_array, y_dem, x_dem) to be equal to the results
+    of np.gradient(dem_array, input_res), with input_res being a
+    positive number for increasing order or a negative number for
+    decreasing order.
 
-    The returned mask sets to 1 all pixels for which the surrounding [kernel_size x kernel_size]
-    neighborhood has an average slope greater than 1, then erode it by a kernel of ones with side
-    length dilate_bad.
+    The returned mask sets to 1 all pixels for which the
+    surrounding [kernel_size x kernel_size] neighborhood has an
+    average slope greater than 1, then erode it by a kernel of ones
+    with side length dilate_bad.
 
     *Source file: edgeSlopeMask.m
     Source author: Ian Howat, ihowa@gmail.com, Ohio State University
@@ -721,7 +854,7 @@ def getSlopeMask(dem_array,
         To replicate functionality of edgeSlopeMask.m, pass the result of this function to getEdgeMask().
 
     """
-    if not verify_arggroups((res, (dx, dy), (X, Y), (grad_dx, grad_dy))):
+    if not isValidArggroups((res, (dx, dy), (X, Y), (grad_dx, grad_dy))):
         raise InvalidArgumentError(
             "One type of pixel spacing input ([full regular `res`], [regular x `dx`, regular y `dy`]  "
             "[x and y coordinate arrays `X` and `Y`], or [x and y gradient 2D arrays `grad_dx` and `grad_dy`]) "
@@ -753,26 +886,88 @@ def getSlopeMask(dem_array,
     return mask
 
 
-def getWaterMask(ortho_array, meanSunElevation, data_density_map,
-                 sunElevation_split=30, ortho_thresh_lowsunelev=5, ortho_thresh_highsunelev=20,
+def getWaterMask(ortho_array, data_density_map,
+                 meanSunElevation, sunElevation_split=30,
+                 ortho_thresh_lowsunelev=5, ortho_thresh_highsunelev=20,
                  entropy_thresh=0.2, data_density_thresh=0.98, min_data_cluster=500,
-                 kernel_size=5, dilate=7):
-    # TODO: Write my own docstring.
+                 ent_kernel_size=5, dilate=7):
     """
+    Classify areas of water coverage in a panchromatic
+    satellite image, masking OFF water.
+
+    The water mask is derived from the combination of an
+    entropy filter applied to the smoothed panchromatic image
+    and a radiance filter applied to the unsmoothed image,
+    along with the provided data density map.
+
+    Classified as water are regions all with low entropy,
+    low radiance, and low match point density.
+
+    Parameters
+    ----------
+    ortho_array : ndarray, 2D, same shape as `data_density_map`
+        The orthorectified panchromatic image to be masked.
+    data_density_map : ndarray of float, 2D, same shape as
+                       `ortho_array`
+        Data density map corresponding to the input image,
+        where the value of each node describes the fraction
+        of surrounding pixels in the input image that were
+        match points in the photogrammetric process.
+    meanSunElevation : 0 <= float <= 90
+        Mean sun elevation angle where the image was taken,
+        as parsed from the scene metadata file corresponding
+        to the input image.
+        Value decides the threshold for the radiance filter.
+    sunElevation_split : 0 <= float <= 90
+        A mean sun elevation angle (less / greater) than
+        this value sets the radiance filter threshold to
+        (`ortho_thresh_lowsunelev` / `ortho_thresh_highsunelev`).
+    ortho_thresh_lowsunelev : positive int, units of `ortho_array`
+        Radiance filter threshold used when mean sun elevation
+        angle is classified as "low" by `sunElevation_split`.
+    ortho_thresh_highsunelev : positive int, units of `ortho_array`
+        Radiance filter threshold used when mean sun elevation
+        angle is classified as "high" by `sunElevation_split`.
+    entropy_thresh : 0 < float < -log2(`ent_kernel_size`^(-2))
+        Entropy filter threshold.
+    data_density_thresh : 0 < float <= 1
+        Match point data density threshold.
+    min_data_cluster : positive int
+        Minimum number of contiguous data pixels in a kept
+        data cluster during masking.
+    ent_kernel_size : positive int
+        Side length of square neighborhood (of ones)
+        used as kernel for entropy filtering.
+    dilate : positive int
+        Side length of square neighborhood (of ones)
+        used as structure for dilation of low-pass
+        entropy filter result.
+        A larger value results in areas classified as
+        water having a thicker border.
+
+    Returns
+    -------
+    mask : ndarray of bool, same shape as `ortho_array`
+        The water mask masking OFF areas classified as water
+        in the input panchromatic image.
+
+    Notes
+    -----
     Source file: waterMask.m
     Source author: Ian Howat, ihowa@gmail.com, Ohio State University
     Source repo: setsm_postprocessing, branch "3.0" (GitHub)
-    Translation date: 10/19/17
+    Translation date: 2/28/18
+
     """
     ortho_thresh = ortho_thresh_lowsunelev if meanSunElevation < sunElevation_split else ortho_thresh_highsunelev
 
     # Subtraction image
-    ortho_subtraction = (  sp_ndimage.maximum_filter1d(ortho_array, kernel_size, axis=0)
-                         - sp_ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0))
+    ortho_subtraction = (  sp_ndimage.maximum_filter1d(ortho_array, ent_kernel_size, axis=0)
+                         - sp_ndimage.minimum_filter1d(ortho_array, ent_kernel_size, axis=0))
 
     # Entropy image
     entropy_array = rat.entropyfilt(rat.astype_cropped(ortho_subtraction, np.uint8, allow_modify_array=True),
-                                    kernel_size)
+                                    ent_kernel_size)
 
     # Set edge-effected values to zero.
     entropy_array[ortho_array == 0] = 0
@@ -802,17 +997,83 @@ def getWaterMask(ortho_array, meanSunElevation, data_density_map,
 
 
 def getCloudMask(dem_array, ortho_array, data_density_map,
-                 elevation_percentile_split=80, ortho_thresh=70,
-                 data_density_thresh_lorad=0.6, data_density_thresh_hirad=0.9,
-                 min_data_cluster=10000, min_nodata_cluster=1000,
-                 avg_kernel_size=21, dilate_bad=21,
-                 erode_border=31, dilate_border=61):
-    # TODO: Write my own docstring.
+                 ortho_thresh=70,
+                 data_density_thresh_hirad=0.9, data_density_thresh_lorad=0.6,
+                 min_cloud_cluster=10000, min_nocloud_cluster=1000,
+                 stdev_kernel_size=21,
+                 erode_border=31, dilate_border=61,
+                 dilate_cloud=21):
     """
+    Classify areas of cloud coverage in a panchromatic
+    satellite image with derived DEM, masking ON clouds.
+
+    The cloud mask is derived from the combination of a
+    radiance filter on the panchromatic image and a local
+    standard deviation filter on the DEM, along with the
+    provided data density map.
+
+    Classified as clouds are regions that have one or more
+    of the following attributes:
+    1) High radiance and low match point density
+    2) Very low match point density
+    3) High local standard deviation in elevation
+
+    Parameters
+    ----------
+    dem_array : ndarray, 2D, same shape as `ortho_array`
+                and `data_density_map`
+        The DEM of the scene.
+    ortho_array : ndarray, 2D, same shape as `dem_array`
+                  and `data_density_map`
+        The orthorectified panchromatic image of the scene.
+    data_density_map : ndarray of float, 2D, same shape as
+                       `dem_array` and `ortho_array`
+        Data density map for the scene, where the value of
+        each node describes the fraction of surrounding
+        pixels in the input image that were match points
+        in the photogrammetric process.
+    ortho_thresh : positive int, units of `ortho_array`
+        Radiance filter threshold.
+    data_density_thresh_hirad : `data_density_thresh_lorad` <= float <= 1
+        Maximum match point data density for high radiance
+        regions to be classified as clouds.
+    data_density_thresh_lorad : 0 < float <= `data_density_thresh_hirad`
+        Maximum match point data density for low radiance
+        to be classified as clouds.
+    min_cloud_cluster : positive int
+        Minimum number of contiguous cloud-classified pixels
+        in a kept cluster during masking.
+    min_nocloud_cluster : positive int
+        Minimum number of contiguous non-cloud-classified pixels
+        in a kept cluster during masking.
+    stdev_kernel_size : positive int
+        Side length of square neighborhood (of ones)
+        used as kernel for elevation standard deviation filter.
+    erode_border : positive int
+        Side length of square neighborhood (of ones) used as
+        structure for erosion in smoothing the edges of
+        cloud-classified regions.
+    dilate_border : positive int
+        Side length of square neighborhood (of ones) used as
+        structure for dilation in smoothing the edges of
+        cloud-classified regions.
+    dilate_cloud : positive int
+        Side length of square neighborhood (of ones)
+        used as structure for dilation of cloud-classified
+        regions before returning mask.
+
+    Returns
+    -------
+    mask : ndarray of bool, same shape as input arrays
+        The cloud mask masking ON areas classified as clouds
+        in the input scene information.
+
+    Notes
+    -----
     Source file: cloudMask.m
     Source author: Ian Howat, ihowa@gmail.com, Ohio State University
     Source repo: setsm_postprocessing, branch "3.0" (GitHub)
-    Translation date: 10/19/17
+    Translation date: 2/28/18
 
     Source docstring:
     % cloudMask mask bad surfaces on DEM based on slope and radiance
@@ -822,23 +1083,25 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     %
     % Ian Howat, ihowat@gmail.com
     % 24-Jul-2017 15:39:07
-    """
 
+    """
     # Make sure sufficient non NaN pixels exist, otherwise cut to the chase.
-    if np.count_nonzero(~np.isnan(dem_array)) < 2*min_nodata_cluster:
+    if np.count_nonzero(~np.isnan(dem_array)) < 2*min_nocloud_cluster:
         mask = np.ones(dem_array.shape, dtype=np.bool)
         return mask
 
     # Calculate standard deviation of elevation.
-    mean_elev_array = rat.moving_average(dem_array, avg_kernel_size, shape='same', conv_depth='single')
-    stdev_elev_array = (rat.moving_average(np.square(dem_array), avg_kernel_size, shape='same', conv_depth='single')
+    mean_elev_array = rat.moving_average(dem_array, stdev_kernel_size,
+                                         shape='same', conv_depth='single')
+    stdev_elev_array = (rat.moving_average(np.square(dem_array), stdev_kernel_size,
+                                           shape='same', conv_depth='single')
                         - np.square(mean_elev_array))
     stdev_elev_array[stdev_elev_array < 0] = 0
     stdev_elev_array = np.sqrt(stdev_elev_array)
 
     # Calculate elevation percentile difference.
-    percentile_diff = (  np.nanpercentile(dem_array, elevation_percentile_split)
-                       - np.nanpercentile(dem_array, 100 - elevation_percentile_split))
+    percentile_diff = (  np.nanpercentile(dem_array, 80)
+                       - np.nanpercentile(dem_array, 20))
 
     # Set standard deviation difference based on percentile difference.
     stdev_thresh = None
@@ -853,21 +1116,23 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     elif percentile_diff > 100:
         stdev_thresh = 50
 
-    print "{}/{} percentile elevation difference: {:.1f}, sigma-z threshold: {:.1f}".format(
-        100 - elevation_percentile_split, elevation_percentile_split, percentile_diff, stdev_thresh
+    print "20/80 percentile elevation difference: {:.1f}, sigma-z threshold: {:.1f}".format(
+        percentile_diff, stdev_thresh
     )
 
     # Apply mask conditions.
-    mask = (~np.isnan(dem_array)
-            & (((ortho_array > ortho_thresh) & (data_density_map < data_density_thresh_hirad))
+    mask = (  ~np.isnan(dem_array)
+            & (   ((ortho_array > ortho_thresh) & (data_density_map < data_density_thresh_hirad))
                 | (data_density_map < data_density_thresh_lorad)
-                | (stdev_elev_array > stdev_thresh)))
+                | (stdev_elev_array > stdev_thresh)
+              )
+            )
 
     # Fill holes in masked clusters.
     mask = sp_ndimage.morphology.binary_fill_holes(mask)
 
     # Remove small masked clusters.
-    mask = rat.bwareaopen(mask, min_nodata_cluster, in_place=True)
+    mask = rat.bwareaopen(mask, min_nocloud_cluster, in_place=True)
 
     # Remove thin borders caused by cliffs/ridges.
     mask_edge = rat.imerode(mask, erode_border)
@@ -876,40 +1141,45 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     mask = (mask & mask_edge)
 
     # Dilate nodata.
-    mask = rat.imdilate(mask, dilate_bad)
+    mask = rat.imdilate(mask, dilate_cloud)
 
     # Remove small clusters of unfiltered data.
-    mask = ~rat.bwareaopen(~mask, min_data_cluster, in_place=True)
+    mask = ~rat.bwareaopen(~mask, min_cloud_cluster, in_place=True)
 
     return mask
 
 
 def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
-                res=None, min_data_cluster=1000,):
+                res=None, min_data_cluster=1000):
     """
-    Return an array masking off bad edges of a "mass" of data (see notes) in a matchtag array.
+    Return an array masking OFF bad edges on a mass
+    of good data (see Notes) in a matchtag array.
 
     Parameters
     ----------
     match_array : ndarray, 2D
-        Binary array to mask containing locations of good data values.
+        Binary array to mask containing locations of
+        good data values.
     hull_concavity : 0 <= float <= 1
-        Boundary curvature factor argument be passed to concave_hull_image().
+        Boundary curvature factor argument be passed
+        to concave_hull_image().
         (0 = convex hull, 1 = point boundary)
     crop : None or positive int
-        Erode the mask by a square neighborhood (ones) of this side length before return.
+        Erode the mask by a square neighborhood (ones)
+        of this side length before returning.
     res : positive int
-        Image resolution corresponding to data_array, for setting parameter default values.
+        Image resolution corresponding to data_array,
+        for setting parameter default values.
     min_data_cluster : None or positive int
-        Minimum number of contiguous data pixels in a kept data cluster.
-        If None, is set automatically by res.
-    data_boundary_res : positive int
-        Data boundary resolution to be passed to concave_hull_image().
+        Minimum number of contiguous data pixels in a
+        kept data cluster.
+        If None, is set automatically by `res`.
 
     Returns
     -------
-    getEdgeMask : ndarray of bool, same shape as data_array
-        The edge mask masking off bad data hull edges in input match_array.
+    mask : ndarray of bool, same shape as data_array
+        The edge mask masking OFF bad data hull edges
+        in input match_array.
 
     See also
     --------
@@ -917,11 +1187,14 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
 
     Notes
     -----
-    The input array is presumed to contain a large "mass" of data (non-zero) values near its center,
-    which may or may not have holes.
-    The returned mask discards all area outside of the (convex) hull of the region containing both
-    the data mass and all data clusters of more pixels than min_data_cluster.
-    Either res or min_data_cluster must be provided.
+    The input array is presumed to contain a large "mass"
+    of data (nonzero) values near its center, surrounded by
+    a border of nodata (zero) values. The mass of data may
+    or may not have holes (clusters of zeros).
+    The returned mask discards all area outside of the
+    (convex) hull of the region containing both the data mass
+    and all data clusters of more pixels than `min_data_cluster`.
+    Either `res` or `min_data_cluster` must be provided.
 
     *Source file: edgeMask.m
     Source author: Ian Howat, ihowat@gmail.com, Ohio State University
@@ -937,8 +1210,9 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
     *Functionality has been modified in translation:
         - Removal of data density masking.
         - Removal of entropy masking.
-        To replicate functionality of edgeMask.m, do masking of data_array with getDataDensityMask()
-        and getEntropyMask() before passing the result to this function.
+        To replicate functionality of edgeMask.m, do masking of
+        data_array with getDataDensityMask() and getEntropyMask()
+        before passing the result to this function.
 
     """
     if res is None and min_data_cluster is None:
@@ -968,24 +1242,27 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
 
 def clean_mask(mask, remove_pix=1000, fill_pix=10000, in_place=False):
     """
-    Remove small clusters of "data" ones and fill small holes of "no-data" zeros in a mask array.
+    Remove small clusters of data (ones) and fill
+    small holes of nodata (zeros) in a binary mask array.
 
     Parameters
     ----------
     mask : ndarray, 2D
-        Binary array to mask containing locations of good data values.
+        Binary array to mask.
     remove_pix : positive int
-        Minimum number of contiguous one pixels in a kept data cluster.
+        Minimum number of contiguous one pixels in a
+        kept data cluster.
     fill_pix : positive int
-        Maximum number of contiguous zero pixels in a filled data void.
+        Maximum number of contiguous zero pixels in a
+        filled data void.
     in_place : bool
-        If `True`, remove the clean the mask in the input array itself.
+        If True, clean the mask in the input array itself.
         Otherwise, make a copy.
 
     Returns
     -------
-    clean_mask : ndarray of type bool, same shape as data_array
-        The cluster and hole mask of the input matchtag array.
+    mask_out : ndarray of bool, same shape as data_array
+        The cluster and hole mask of the input mask array.
 
     """
     if not np.any(mask):
@@ -1074,13 +1351,15 @@ def rescaleDN(ortho_array, dnmax):
     % 24-Jul-2017 15:50:25
     """
     # Set the minimum and maximum values of this scale.
-    # We use a fixed scale because this is what all data is scaled to after application of
-    # wv_correct regardless of actual min or max.
+    # We use a fixed scale because this is what all data
+    # is scaled to after application of wv_correct
+    # regardless of actual min or max.
     ormin = 0
     ormax = 32767
 
     # Set the new minimum and maximum.
-    # dnmin is zero because nodata is apparently used in the scaling.
+    # dnmin is zero because nodata is apparently used
+    # in the scaling.
     dnmin = 0
     dnmax = float(dnmax)
 

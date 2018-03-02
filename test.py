@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# Version 1.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2017
+# Version 1.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
 
 
 from __future__ import division
@@ -18,7 +18,7 @@ from PIL import Image
 from scipy.misc import imread as scipy_imread
 from tifffile import imread, imsave
 
-import mask_scene
+import filter_scene
 import raster_array_tools as rat
 
 
@@ -636,15 +636,25 @@ def readRasterZ(rasterFile='testRaster_ml.tif'):
     return rat.extractRasterData(findFile(rasterFile), 'z')
 
 
-def doMasking(matchFile):
-    mask_scene.generateMasks(findFile(matchFile))
+def getWindow(array, window_shape, x_y_tup, one_based_index=True):
+    window_ysize, window_xsize = window_shape
+    colNum, rowNum = x_y_tup
+    if one_based_index:
+        rowNum -= 1
+        colNum -= 1
+    return array[int(rowNum-np.floor((window_ysize-1)/2)):int(rowNum+np.ceil((window_ysize-1)/2)+1),
+                 int(colNum-np.floor((window_xsize-1)/2)):int(colNum+np.ceil((window_xsize-1)/2)+1)]
+
+
+def doMasking(demFile, maskFileSuffix, noentropy=False):
+    filter_scene.generateMasks(findFile(demFile), maskFileSuffix, noentropy)
 
 
 def getFP(demFile):
     demFile = findFile(demFile)
 
     Z, X, Y = rat.extractRasterData(demFile, 'z', 'x', 'y')
-    fp_vertices = rat.getFPvertices(Z, X, Y, nodata_val=-9999)
+    fp_vertices = rat.getFPvertices(Z, Y, X, label=-9999, label_type='nodata')
     num = len(fp_vertices[0])
 
     test_str = (

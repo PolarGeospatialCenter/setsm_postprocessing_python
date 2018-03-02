@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 
-# Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2016
-# Translated from MATLAB code written by Ian Howat, Ohio State University, 2017
+# Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Translated from MATLAB code written by Ian Howat, Ohio State University, 2018
 
 
 from __future__ import division
@@ -15,7 +15,7 @@ import numpy as np
 from scipy import interpolate
 
 import raster_array_tools as rat
-from mask_scene import getDataDensityMap
+from filter_scene import getDataDensityMap
 
 
 # The spatial reference of the strip, set at the beginning of scenes2strips()
@@ -124,7 +124,6 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Fix grid so that x, y coordinates of
         # pixels in overlapping scenes will match up.
-        # TODO: The following function still needs testing.
         if ((x[1] / dx) % 1 != 0) or ((y[1] / dy) % 1 != 0):
             x, y, z, m, o = regrid(x, y, z, m, o)
 
@@ -204,7 +203,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # Nodata in strip and data in scene is a one.
         A = rat.bwareaopen(strip_nodata & scene_data, cmin, in_place=True).astype(np.float32)
 
-        # TODO: Remove redundant scenes from strip metadata.
+        # TODO: Remove redundant scenes from strip metadata?
         # Check for redundant scene.
         if np.count_nonzero(A) <= cmin:
             print "Redundant scene, skipping"
@@ -313,7 +312,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         P1 = getDataDensityMap(m[r[0]:r[1], c[0]:c[1]]) > 0.9
 
-        # TODO: Remove redundant scenes from strip metadata.
+        # TODO: Remove redundant scenes from strip metadata?
         # Check for redundant scene.
         if not np.any(P1):
             print "Redundant scene, skipping"
@@ -761,7 +760,6 @@ def cropBorder(matrix, border_val, buff=0):
 
 
 def regrid(x, y, z, m, o):
-    # TODO: Test this function.
     """
     Interpolate scene DEM, matchtag, and ortho matrices
     to a new set of x-y grid coordinates.
@@ -769,10 +767,10 @@ def regrid(x, y, z, m, o):
     dx = x[1] - x[0]
     dy = y[1] - y[0]
 
-    xi = np.arange(x[0] + dx - ((x[0]/dx) % 1)*dx, x[-1], dx)
-    yi = np.arange(y[0] + dy - ((y[0]/dy) % 1)*dy, y[-1], dy)
+    xi = np.arange(x[0] + dx - np.fmod(x[0]/dx, 1)*dx, x[-1]+0.001*dx, dx)
+    yi = np.arange(y[0]      - np.fmod(y[0]/dy, 1)*dy, y[-1]+0.001*dy, dy)
 
-    zi = rat.interp2_gdal(x, y, z, xi, yi, 'linear').astype(np.float32)
+    zi = rat.interp2_gdal(x, y, z, xi, yi, 'linear')
 
     m = rat.interp2_gdal(x, y, m.astype(np.float32), xi, yi, 'nearest')
     m[np.isnan(m)] = 0  # Convert back to uint8.
