@@ -5,5 +5,5 @@ if ~exist('rasterFile', 'var') || isempty(rasterFile)
 end
 
 
-rasterFile = test_findFile(rasterFile);
+rasterFile = test_findTestFile(rasterFile);
 d = readGeotiff(rasterFile);

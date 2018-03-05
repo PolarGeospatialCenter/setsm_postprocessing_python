@@ -6,7 +6,6 @@
 from __future__ import division
 import inspect
 import os
-import platform
 import re
 import warnings
 from glob import glob
@@ -18,19 +17,9 @@ from PIL import Image
 from scipy.misc import imread as scipy_imread
 from tifffile import imread, imsave
 
-import filter_scene
-import raster_array_tools as rat
-
-
-SYSTYPE = platform.system()
-if SYSTYPE == 'Windows':
-    TESTDIR = 'C:/Users/husby036/Documents/Cprojects/test_s2s/testFiles/'
-elif SYSTYPE == 'Linux':
-    TESTDIR = '/mnt/pgc/data/scratch/erik/test_s2s/testFiles/'
-
-PREFIX_RUNNUM = 'CURRENT_RUNNUM_'
-
-PROJREF_POLAR_STEREO = """PROJCS["unnamed",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-70],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]"""
+from testing import TESTDIR, PREFIX_RUNNUM, PROJREF_POLAR_STEREO
+import lib.filter_scene
+import lib.raster_array_tools as rat
 
 
 warnings.simplefilter('always', UserWarning)
@@ -285,16 +274,16 @@ def getCalledFunctionArgs(depth=1, funcName=None):
     return splitArgsString(args_string)
 
 
-def findFile(testFile):
+def findTestFile(fname_or_file):
+    testFile = fname_or_file
     if not os.path.isfile(testFile):
-        testFile_temp = testFile+'.tif'
-        if not os.path.isfile(testFile_temp):
-            testFile_temp = os.path.join(TESTDIR, testFile)
-            if not os.path.isfile(testFile_temp):
-                testFile_temp += '.tif'
-                if not os.path.isfile(testFile_temp):
-                    raise InvalidArgumentError("Cannot find `testFile`: '{}'".format(testFile))
-        testFile = testFile_temp
+        testFile = fname_or_file+'.tif'
+        if not os.path.isfile(testFile):
+            testFile = os.path.join(TESTDIR, fname_or_file)
+            if not os.path.isfile(testFile):
+                testFile += '.tif'
+                if not os.path.isfile(testFile):
+                    raise InvalidArgumentError("Cannot find `testFile`: '{}'".format(fname_or_file))
     return testFile
 
 
@@ -372,10 +361,15 @@ def getNextImgnum(runnum=getRunnum(), compare=False, concurrent=False):
     return next_imgnum
 
 
-def getTestFileFromFname(fname):
-    if not fname.endswith('.tif'):
-        fname += '.tif'
-    testFile = os.path.join(TESTDIR, fname)
+def validateTestFileSave(fname_or_file):
+    if not fname_or_file.endswith('.tif'):
+        fname_or_file += '.tif'
+
+    if os.path.basename(fname_or_file) == fname_or_file:
+        testFile = os.path.join(TESTDIR, fname_or_file)
+    else:
+        testFile = fname_or_file
+
     while os.path.isfile(testFile):
         opt = raw_input("Test file '{}' already exists. Overwrite? (y/n): ".format(testFile.replace(TESTDIR, '{TESTDIR}/')))
         if opt.strip().lower() == 'y':
@@ -386,6 +380,7 @@ def getTestFileFromFname(fname):
                 return None
             else:
                 testFile = testFile.replace('.tif', '~'+opt.replace(' ', '-')+'.tif')
+
     return testFile
 
 
@@ -489,8 +484,8 @@ def getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concur
     return testFname
 
 
-def saveImage(array, fname='testImage_py.tif'):
-    testFile = getTestFileFromFname(fname)
+def saveImage(array, fname_or_file='testImage_py.tif'):
+    testFile = validateTestFileSave(fname_or_file)
     if testFile is None:
         return
 
@@ -544,11 +539,11 @@ def sia_one(array, flavor=None, matchkey=None, descr='', compare=False, concurre
     sia(array, flavor, matchkey, descr, compare, concurrent, array_name)
 
 
-def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
+def saveRaster(Z, X=None, Y=None, fname_or_file='testRaster_py.tif',
                proj_ref=None, geotrans_rot_tup=(0, 0),
                like_raster=None,
                nodata_val=None, dtype_out=None):
-    testFile = getTestFileFromFname(fname)
+    testFile = validateTestFileSave(fname_or_file)
     if testFile is None:
         return
 
@@ -561,6 +556,7 @@ def saveRaster(Z, X=None, Y=None, fname='testRaster_py.tif',
                         X, Y, proj_ref, geotrans_rot_tup,
                         like_raster,
                         nodata_val, dtype_out)
+
     print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
 
 
@@ -622,18 +618,19 @@ def waitForComparison(expected_imgnum):
     return
 
 
-def readImage(imgFile='testImage_ml.tif'):
+def readImage(fname_or_file='testImage_ml.tif'):
+    testFile = findTestFile(fname_or_file)
     try:
-        in_array = imread(findFile(imgFile))
+        in_array = imread(testFile)
     except (ValueError, Image.DecompressionBombWarning):
         warn("Error in reading image with tifffile.imread()"
              "\n-> Assuming image is logical; opening with scipy.misc.imread() and casting array to np.bool")
-        in_array = scipy_imread(findFile(imgFile)).astype(np.bool)
+        in_array = scipy_imread(testFile).astype(np.bool)
     return in_array
 
 
 def readRasterZ(rasterFile='testRaster_ml.tif'):
-    return rat.extractRasterData(findFile(rasterFile), 'z')
+    return rat.extractRasterData(findTestFile(rasterFile), 'z')
 
 
 def getWindow(array, window_shape, x_y_tup, one_based_index=True):
@@ -647,11 +644,11 @@ def getWindow(array, window_shape, x_y_tup, one_based_index=True):
 
 
 def doMasking(demFile, maskFileSuffix, noentropy=False):
-    filter_scene.generateMasks(findFile(demFile), maskFileSuffix, noentropy)
+    lib.filter_scene.generateMasks(findTestFile(demFile), maskFileSuffix, noentropy)
 
 
 def getFP(demFile):
-    demFile = findFile(demFile)
+    demFile = findTestFile(demFile)
 
     Z, X, Y = rat.extractRasterData(demFile, 'z', 'x', 'y')
     fp_vertices = rat.getFPvertices(Z, Y, X, label=-9999, label_type='nodata')
@@ -674,7 +671,7 @@ Y: {}
 
 
 def saveDBP(demFile):
-    demFile = findFile(demFile)
+    demFile = findTestFile(demFile)
     shapefileFile = demFile.replace('dem.tif', 'dem_boundary.shp')
 
     Z, X, Y, proj_ref = rat.extractRasterData(demFile, 'z', 'x', 'y', 'proj_ref')

@@ -39,7 +39,7 @@ diff = [];
 diff_bool = [];
 
 try
-    imgFile1 = test_findFile(imgFile1);
+    imgFile1 = test_findTestFile(imgFile1);
 catch ME
     if strcmp(ME.message, 'cannot find test file')
         error('Argument imgFile1 test file does not exist.');
@@ -61,7 +61,7 @@ if exist('imgFile2', 'var') && ~isempty(imgFile2)
     imgFile2 = char(imgFile2);
     if ~isempty(imgFile2)
         try
-            imgFile2 = test_findFile(imgFile2);
+            imgFile2 = test_findTestFile(imgFile2);
         catch ME
             if strcmp(ME.message, 'cannot find test file')
                 error('Argument imgFile2 test file does not exist.');

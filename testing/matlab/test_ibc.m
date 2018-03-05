@@ -8,15 +8,19 @@ tifDir_1_name = 'MATLAB';
 tifDir_2_name = 'Python';
 
 
-tifFnameSearch = '*_mask2a.tif';
+tifFnameSearch = '*_dem.tif';
 
+tifDir_1 = 'V:\pgc\data\scratch\erik\test_s2s\matlab\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
+tifDir_2 = 'V:\pgc\data\scratch\erik\test_s2s\python\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
 
-% tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/matlab/tif_results/8m';
-tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/tif_results/8m';
+% tifDir_1 = 'V:\pgc\data\scratch\erik\test_s2s\matlab\setsm\ArcticDEM\region\region_02_greenland_southeast\tif_results\2m';
+% tifDir_2 = 'V:\pgc\data\scratch\erik\test_s2s\python\setsm\ArcticDEM\region\region_02_greenland_southeast\tif_results\2m';
+
+% tifDir_1 = 'C:\Users\husby036\Documents\Cprojects\test_s2s\region_02_greenland_southeast\matlab\tif_results\2m';
+% tifDir_2 = 'C:\Users\husby036\Documents\Cprojects\test_s2s\region_02_greenland_southeast\python\tif_results\2m';
 
 % tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/tif_results/2m';
 % tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python/tif_results/python_masks';
-
 
 % tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/matlab/strips/2m';
 % tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/russia_central_east/python/strips/strips_pymask';
@@ -28,7 +32,7 @@ tifDir_1 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/
 % tifDir_2 = 'C:/Users/husby036/Documents/Cprojects/test_s2s/subantarctic_islands/python/strips/strips2a_pymask';
 
 
-% nodata_val = [];
+nodata_val = [];
 nodata_val = -9999;
 mask_nans = true;
 
@@ -59,36 +63,26 @@ end
 
 fprintf(2, ['' ...
         '\n----- IBC COMMANDS -----\n' ...
-        'next (or empty command) :: compare at current index\n' ...
-        'rerun :: redo comparison at previous index\n' ...
-        'list :: show indices of images for comparison\n' ...
-        'figclose :: close all figures\n' ...
-        'quit :: exit without closing figures\n' ...
-        'close :: close all figures and exit\n']);
+        'next (or empty command) :: Compare at current index.\n' ...
+        'rerun :: Redo comparison at previous index.\n' ...
+        'list :: Show indices of images for comparison.\n' ...
+        'figclose :: Close all figures.\n' ...
+        'quit :: Exit without closing figures.\n' ...
+        'close :: Close all figures and exit.\n']);
 
 tifFiles_1 = dir([tifDir_1,'/',tifFnameSearch]);
-tifFnames = {tifFiles_1.name};
+tifFnames_1 = {tifFiles_1.name};
 
 if compare
-    try
-        tifFiles_2 = dir([tifDir_2,'/',tifFnameSearch]);
-        if length(tifFiles_2) ~= length(tifFiles_1)
-            error('%d tifs found in %s dir, %d found in %s dir.', ...
-                  length(tifFiles_1), tifDir_1_name, length(tifFiles_2), tifDir_2_name);
-        end
-        if any(~strcmp(tifFnames, {tifFiles_2.name}))
-            error('Tif filenames mismatch between %s and %s dirs.', ...
-                  tifDir_1_name, tifDir_2_name);
-        end
-    catch ME
-        fprintf(2, "\n%s\n", getReport(ME));
-        compare = false;
-    end
-end
-
-tifFiles_1 = cellfun(@(x) [tifDir_1,'/',x], tifFnames, 'uniformoutput', false);
-if compare
+    tifFiles_2 = dir([tifDir_2,'/',tifFnameSearch]);
+    tifFnames_2 = {tifFiles_2.name};
+    
+    tifFnames = intersect(tifFnames_1, tifFnames_2);
+    
+    tifFiles_1 = cellfun(@(x) [tifDir_1,'/',x], tifFnames, 'uniformoutput', false);
     tifFiles_2 = cellfun(@(x) [tifDir_2,'/',x], tifFnames, 'uniformoutput', false);
+else
+    tifFnames = tifFnames_1;
 end
     
 num_tifs = length(tifFnames);
@@ -147,7 +141,10 @@ while (0 <= index) && (index <= num_tifs)
             fprintf(2, '(end) ');
         end
         command = input('', 's');
-        if isempty(command) || strcmp(command, 'next')
+        if isempty(command)
+            close all;
+            break;
+        elseif strcmp(command, 'next')
             break;
         elseif strcmp(command, 'rerun')
             index = last_index;

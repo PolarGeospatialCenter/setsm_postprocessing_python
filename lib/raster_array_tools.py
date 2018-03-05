@@ -29,12 +29,13 @@ from skimage.util import unique_rows
 
 from DecimatePoly import DecimatePoly
 
-_outline = open("outline.c", "r").read()
-_outline_every1 = open("outline_every1.c", "r").read()
-
-
-RASTER_PARAMS = ['ds', 'shape', 'z', 'array', 'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom', 'geom_sr']
-DEBUG_CCHULLIMAGE_PATH = '~/debug_concave_hull_image.tif'
+_script_dir = os.path.dirname(os.path.realpath(__file__))
+_ext_fid = open(os.path.join(_script_dir, 'outline.c'), 'r')
+_outline = _ext_fid.read()
+_ext_fid.close()
+_ext_fid = open(os.path.join(_script_dir, 'outline_every1.c'), 'r')
+_outline_every1 = _ext_fid.read()
+_ext_fid.close()
 
 
 gdal.UseExceptions()
@@ -275,7 +276,9 @@ def extractRasterData(rasterFile_or_ds, *params):
     """
     ds = openRaster(rasterFile_or_ds)
     pset = set(params)
-    invalid_pnames = pset.difference(set(RASTER_PARAMS))
+    invalid_pnames = pset.difference({'ds', 'shape', 'z', 'array', 'x', 'y',
+                                      'dx', 'dy', 'res','geo_trans', 'corner_coords',
+                                      'proj_ref', 'spat_ref', 'geom', 'geom_sr'})
     if invalid_pnames:
         raise InvalidArgumentError("Invalid parameter(s) for extraction: {}".format(invalid_pnames))
 
@@ -3302,7 +3305,7 @@ def concave_hull_image(image, concavity,
         value that keeps these areas from being eroded.
         The purpose of this is to prevent unnecessary computation.
     debug : bool or 1 <= int <= 4
-        (Non-False value requires `matplotlib` package installed.)
+        (Non-False value requires `matplotlib` and `tifffile` packages.)
         Whether or not to interrupt the run of this function
         with plots displaying the Delaunay triangulation of
         the image as the function progresses through stages:
@@ -3546,6 +3549,7 @@ def concave_hull_image(image, concavity,
         image_cchull = sp_ndimage.morphology.binary_fill_holes(image_cchull)
 
     if debug in (True, 4):
+        debug_image_path = os.path.join(os.path.expanduser('~'), 'debug_concave_hull_image.tif')
         try:
             from tifffile import imsave
         except ImportError as e:
@@ -3554,8 +3558,8 @@ def concave_hull_image(image, concavity,
         debug_image = np.zeros(image.shape, dtype=np.int8)
         debug_image[image_cchull] = 1
         debug_image[data_boundary] += 2
-        imsave(DEBUG_CCHULLIMAGE_PATH, debug_image)
-        print "'{}' saved".format(DEBUG_CCHULLIMAGE_PATH)
+        imsave(debug_image_path, debug_image)
+        print "'{}' saved".format(debug_image_path)
 
     return image_cchull
 

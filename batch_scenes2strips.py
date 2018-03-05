@@ -13,9 +13,9 @@ from datetime import datetime
 
 from numpy import array_equal, array_str, int64
 
-from filter_scene import generateMasks
-from raster_array_tools import saveArrayAsTiff, getFPvertices
-from scenes2strips import scenes2strips
+from lib.filter_scene import generateMasks
+from lib.raster_array_tools import saveArrayAsTiff, getFPvertices
+from lib.scenes2strips import scenes2strips
 
 
 def main():
@@ -157,6 +157,9 @@ def main():
                 print '{}, {}'.format(i, cmd)
 
             if not args.dryrun:
+                # For most cases, set `shell=True`.
+                # For attaching process to PyCharm debugger,
+                # set `shell=False`.
                 subprocess.call(cmd, shell=True)
 
     else:
