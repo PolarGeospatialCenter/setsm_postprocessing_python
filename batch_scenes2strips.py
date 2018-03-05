@@ -69,7 +69,7 @@ def main():
         if os.path.isdir(srcdir):
             dstdir = os.path.abspath(dstdir)
             if filecmp.cmp(srcdir, dstdir):
-                parser.error("src dir is the same as the dst dir: {}".format(srcdir))
+                parser.error("src dir is the same as dst dir: {}".format(srcdir))
         else:
             parser.error("dst must be a directory")
     else:
@@ -216,9 +216,9 @@ def main():
         # Mosaic scenes in this strip together.
         # Output separate segments if there are breaks in overlap.
         input_sceneDemFnames = [os.path.basename(f) for f in scene_dems]
-        segnum = 0
+        segnum = 1
         while len(input_sceneDemFnames) > 0:
-            segnum += 1
+
             print "building segment {}".format(segnum)
             X, Y, Z, M, O, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
                 srcdir, input_sceneDemFnames, maskFileSuffix=maskFileSuffix
@@ -249,6 +249,8 @@ def main():
             proj4 = spat_ref.ExportToProj4()
             time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
             writeStripMeta(strip_metaFile, srcdir, mosaicked_sceneDemFnames, trans, rmse, proj4, fp_vertices, time)
+
+            segnum += 1
 
 
 def shouldDoMasking(matchFile, maskFileSuffix='mask'):

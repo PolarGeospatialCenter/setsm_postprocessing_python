@@ -284,7 +284,7 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
 
     Returns
     -------
-    mask : ndarray of bool, 2D
+    mask_out : ndarray of bool, 2D
         Scene mask masking ON regions of good data.
 
     Notes
@@ -349,6 +349,9 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
     match_array = rat.extractRasterData(matchFile, 'array')
     ortho_array = rat.extractRasterData(orthoFile, 'array')
 
+    # Initialize output.
+    mask_out = np.zeros_like(dem_array, np.bool)
+
     if ddm_kernel_size is None:
         ddm_kernel_size = int(math.floor(21*2/image_res))
 
@@ -402,7 +405,7 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
     mask = getEdgeMask(getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res))
     dem_array[~mask] = np.nan
     if not np.any(~np.isnan(dem_array)):
-        return mask
+        return mask_out
     del mask
 
     # Mask water.
@@ -412,7 +415,7 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
     dem_array[~mask] = np.nan
     data_density_map[~mask] = 0
     if not np.any(~np.isnan(dem_array)):
-        return mask
+        return mask_out
     del mask
 
     # Filter clouds.
@@ -422,12 +425,13 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
     # Finalize mask.
     mask = ~np.isnan(dem_array)
     if not np.any(mask):
-        return mask
+        return mask_out
     mask = rat.bwareaopen(mask, min_data_cluster, in_place=True)
     mask = rat.imresize(mask, image_shape, 'nearest')
     mask[dem_nodata] = False
 
-    return mask
+    mask_out = mask
+    return mask_out
 
 
 def mask_v2a(demFile, avg_kernel_size=5,
@@ -479,7 +483,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
 
     Returns
     -------
-    mask : ndarray of bool, 2D
+    mask_out : ndarray of bool, 2D
         Scene mask masking ON regions of good data.
 
     Notes
@@ -509,6 +513,9 @@ def mask_v2a(demFile, avg_kernel_size=5,
     image_dy = image_gt[5]
     image_res = abs(image_dx)
 
+    # Initialize output.
+    mask_out = np.zeros_like(dem_array, np.bool)
+
     if avg_kernel_size is None:
         avg_kernel_size = int(math.floor(21*2/image_res))
 
@@ -519,6 +526,9 @@ def mask_v2a(demFile, avg_kernel_size=5,
     mask = getEdgeMask(getSlopeMask(dem_array,
                                     grad_dx=dx, grad_dy=dy,
                                     avg_kernel_size=avg_kernel_size))
+    # No data check
+    if not np.any(mask):
+        return mask_out
     dem_array[~mask] = np.nan
     del mask
 
@@ -589,7 +599,8 @@ def mask_v2a(demFile, avg_kernel_size=5,
     # remove small data gaps.
     mask = ~rat.bwareaopen(~mask, min_data_cluster, in_place=True)
 
-    return ~mask
+    mask_out = ~mask
+    return mask_out
 
 
 def getDataDensityMap(array, kernel_size=11,
@@ -1230,6 +1241,7 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
 
     if not np.any(mask):
         # No clusters exceed minimum cluster area.
+        print "Boundary filter removed all data"
         return mask
 
     mask = rat.concave_hull_image(mask, hull_concavity)
