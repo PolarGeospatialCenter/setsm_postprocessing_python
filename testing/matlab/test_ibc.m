@@ -8,10 +8,13 @@ tifDir_1_name = 'MATLAB';
 tifDir_2_name = 'Python';
 
 
-tifFnameSearch = '*_dem.tif';
+tifFnameSearch = '*_mask.tif';
 
-tifDir_1 = 'V:\pgc\data\scratch\erik\test_s2s\matlab\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
-tifDir_2 = 'V:\pgc\data\scratch\erik\test_s2s\python\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
+tifDir_1 = 'D:\test_s2s\reg34_masks\matlab\';
+tifDir_2 = 'D:\test_s2s\reg34_masks\python\';
+
+% tifDir_1 = 'V:\pgc\data\scratch\erik\test_s2s\matlab\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
+% tifDir_2 = 'V:\pgc\data\scratch\erik\test_s2s\python\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
 
 % tifDir_1 = 'V:\pgc\data\scratch\erik\test_s2s\matlab\setsm\ArcticDEM\region\region_02_greenland_southeast\tif_results\2m';
 % tifDir_2 = 'V:\pgc\data\scratch\erik\test_s2s\python\setsm\ArcticDEM\region\region_02_greenland_southeast\tif_results\2m';

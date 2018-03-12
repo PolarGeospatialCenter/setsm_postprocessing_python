@@ -61,7 +61,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
     %
     % Version 3.1, Ian Howat, Ohio State University, 2015.
 
-    If maskFileSuffix='legacy', edge and data masks identified as the dem
+    If maskFileSuffix='edgemask', edge and data masks identified as the dem
     filename with the _dem.tif replaced by _edgemask.tif and _datamask.tif,
     respectively, will be applied.
     """
