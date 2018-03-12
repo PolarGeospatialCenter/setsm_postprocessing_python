@@ -41,7 +41,7 @@ test_setGlobals();
 global TESTDIR;
 
 
-fprintf('TESTDIR set from test_getTestdir.m: %s\n', TESTDIR);
+fprintf('TESTDIR set from test_getTestDir.m: %s\n', TESTDIR);
 
 FILE_COMPARE_WAIT  = [TESTDIR,'/','COMPARE_WAIT'];
 FILE_COMPARE_READY = [TESTDIR,'/','COMPARE_READY'];

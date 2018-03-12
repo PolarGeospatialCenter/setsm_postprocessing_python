@@ -762,7 +762,7 @@ def getEntropyMask(orthoFile, entropy_thresh=0.2,
     ortho_subtraction = (  sp_ndimage.maximum_filter1d(ortho_array, kernel_size, axis=0)
                          - sp_ndimage.minimum_filter1d(ortho_array, kernel_size, axis=0))
     if not wvcFlag:
-        ortho_subtraction = rat.astype_cropped(ortho_subtraction, np.uint8, allow_modify_array=True)
+        ortho_subtraction = rat.astype_round_and_crop(ortho_subtraction, np.uint8, allow_modify_array=True)
 
     # Entropy image
     entropy_array = rat.entropyfilt(ortho_subtraction, kernel_size)
@@ -977,8 +977,9 @@ def getWaterMask(ortho_array, data_density_map,
                          - sp_ndimage.minimum_filter1d(ortho_array, ent_kernel_size, axis=0))
 
     # Entropy image
-    entropy_array = rat.entropyfilt(rat.astype_cropped(ortho_subtraction, np.uint8, allow_modify_array=True),
-                                    ent_kernel_size)
+    entropy_array = rat.entropyfilt(
+        rat.astype_round_and_crop(ortho_subtraction, np.uint8, allow_modify_array=True),
+        ent_kernel_size)
 
     # Set edge-effected values to zero.
     entropy_array[ortho_array == 0] = 0
