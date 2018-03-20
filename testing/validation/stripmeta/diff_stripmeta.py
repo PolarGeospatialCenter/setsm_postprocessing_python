@@ -16,47 +16,53 @@ def main():
         "'Mosaicking Alignment Statistics' sections of "
         "strip metadata text files between two directories."))
 
-    parser.add_argument('srcdir1',
+    parser.add_argument('dir1',
         help="Path to first strips directory containing *_meta.txt files.")
-    parser.add_argument('srcdir2',
+    parser.add_argument('dir2',
         help="Path to second strips directory containing *_meta.txt files.")
 
-    parser.add_argument('--dst', default='./results.txt',
-        help="File path of results text file (default is './results.txt).")
+    parser.add_argument('-o', '--out', default=os.path.join(os.getcwd(), 'diff_stripmeta_results.txt'),
+        help="File path of results text file (default is './diff_stripmeta_results.txt').")
 
     # Parse and validate arguments.
     args = parser.parse_args()
-    srcdir1 = os.path.abspath(args.srcdir1)
-    srcdir2 = os.path.abspath(args.srcdir2)
-    dstfile = os.path.abspath(args.dst)
+    dir1 = os.path.abspath(args.dir1)
+    dir2 = os.path.abspath(args.dir2)
+    outfile = os.path.abspath(args.out)
+    outdir = os.path.dirname(outfile)
 
-    if not os.path.isdir(srcdir1):
-        parser.error("srcdir1 must be a directory")
-    if not os.path.isdir(srcdir2):
-        parser.error("srcdir2 must be a directory")
+    if not os.path.isdir(dir1):
+        parser.error("dir1 must be a directory")
+    if not os.path.isdir(dir2):
+        parser.error("dir2 must be a directory")
+    if os.path.isfile(outfile):
+        parser.error("out file already exists")
+    if not os.path.isdir(os.path.dirname(outdir)):
+        print "Creating directory for output results file: {}".format(outdir)
+        os.makedirs(outdir)
 
-    srcdir1_fnames = set([os.path.basename(p) for p in glob.glob(os.path.join(srcdir1, "*_meta.txt"))])
-    srcdir2_fnames = set([os.path.basename(p) for p in glob.glob(os.path.join(srcdir2, "*_meta.txt"))])
+    dir1_fnames = set([os.path.basename(p) for p in glob.glob(os.path.join(dir1, '*_meta.txt'))])
+    dir2_fnames = set([os.path.basename(p) for p in glob.glob(os.path.join(dir2, '*_meta.txt'))])
 
-    fnames_comm = list(srcdir1_fnames.intersection(srcdir2_fnames))
+    fnames_comm = list(dir1_fnames.intersection(dir2_fnames))
     fnames_comm.sort()
 
-    unifnames1 = list(srcdir1_fnames.difference(srcdir2_fnames))
-    unifnames2 = list(srcdir2_fnames.difference(srcdir1_fnames))
+    unifnames1 = list(dir1_fnames.difference(dir2_fnames))
+    unifnames2 = list(dir2_fnames.difference(dir1_fnames))
     unifnames1.sort()
     unifnames2.sort()
 
-    diff_fp = open(dstfile, 'w')
+    diff_fp = open(outfile, 'w')
     diff_fp.write("\n")
 
     if len(unifnames1) > 0 or len(unifnames2) > 0:
-        diff_fp.write("*** Strip segmentation differs between src1 and src2 ***\n")
+        diff_fp.write("*** Strip segmentation differs between dir1 and dir2 ***\n")
         if len(unifnames1) > 0:
-            diff_fp.write("\nSegments unique to src1:\n\n")
+            diff_fp.write("\nSegments unique to dir1:\n\n")
             for fname in unifnames1:
                 diff_fp.write(fname + "\n")
         if len(unifnames2) > 0:
-            diff_fp.write("\nSegments unique to src2:\n\n")
+            diff_fp.write("\nSegments unique to dir2:\n\n")
             for fname in unifnames2:
                 diff_fp.write(fname + "\n")
         diff_fp.write("\n")
@@ -71,8 +77,8 @@ def main():
 
     for stripnum, fname in enumerate(fnames_comm):
 
-        metaFile1 = os.path.join(srcdir1, fname)
-        metaFile2 = os.path.join(srcdir2, fname)
+        metaFile1 = os.path.join(dir1, fname)
+        metaFile2 = os.path.join(dir2, fname)
 
         meta_fp1 = open(metaFile1, 'r')
         meta_fp2 = open(metaFile2, 'r')
@@ -195,14 +201,14 @@ def main():
 
         diff_fp.write("\n\n{}, strip segment name = {}\n\n".format(stripnum+1, fname))
 
-        srcdir = srcdir1
+        dir = dir1
         proj = proj1
         Xvert = Xvert1
         Yvert = Yvert1
         num_unicoords = num_unicoords1
         scenes = scenes1
         for i in range(2):
-            diff_fp.write("\n{}:\n\n".format(srcdir))
+            diff_fp.write("\n{}:\n\n".format(dir))
 
             if diff_proj:
                 diff_fp.write("{}\n".format(proj))
@@ -217,7 +223,7 @@ def main():
 
             diff_fp.write("\n{}\n".format(''.join(scenes)))
 
-            srcdir = srcdir2
+            dir = dir2
             proj = proj2
             Xvert = Xvert2
             Yvert = Yvert2
@@ -253,8 +259,8 @@ def main():
 
     diff_fp.write("\nMaximum absolute trans diffs:\n\n{}\n\n".format(np.array_str(trans_diffs_max)))
 
-    diff_fp.write("\nNum redundant scenes unique to src1: {}".format(redundant_count1))
-    diff_fp.write("\nNum redundant scenes unique to src2: {}".format(redundant_count2))
+    diff_fp.write("\nNum redundant scenes unique to dir1: {}".format(redundant_count1))
+    diff_fp.write("\nNum redundant scenes unique to dir2: {}".format(redundant_count2))
 
     diff_fp.write("\n")
 

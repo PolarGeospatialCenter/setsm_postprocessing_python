@@ -543,9 +543,55 @@ def saveArrayAsTiff(array, dest,
 
 
 
-######################
-# Array Calculations #
-######################
+#######################
+# Array Manipulations #
+#######################
+
+
+def getWindow(array, i, j, window_shape=(3, 3), output='array', bounds_check=True):
+    # TODO: Write docstring.
+
+    output_choices = ('array', 'indices')
+    if output not in output_choices:
+        raise InvalidArgumentError("`output` must be one of {}, "
+                                   "but was {}".format(output_choices, output))
+
+    win_nrows, win_ncols = window_shape
+    if bounds_check:
+        if win_nrows < 1 or win_ncols < 1:
+            raise InvalidArgumentError("`window_shape` must be a tuple of two positive ints")
+
+        arr_nrows, arr_ncols = array.shape
+        i_backup = i
+        j_backup = j
+        if i < 0:
+            i = arr_nrows + i
+        if j < 0:
+            j = arr_ncols + j
+        if i >= arr_nrows:
+            raise InvalidArgumentError("Index `i`={} is outside `array` bounds".format(i_backup))
+        if j >= arr_ncols:
+            raise InvalidArgumentError("Index `j`={} is outside `array` bounds".format(j_backup))
+
+    win_halfrowsz = (win_nrows-1) / 2
+    win_halfcolsz = (win_ncols-1) / 2
+    win_r0 = int(i - np.ceil(win_halfrowsz))
+    win_r1 = int(i + np.floor(win_halfrowsz) + 1)
+    win_c0 = int(j - np.ceil(win_halfcolsz))
+    win_c1 = int(j + np.floor(win_halfcolsz) + 1)
+    if not bounds_check:
+        if win_r1 == 0:
+            win_r1 = None
+        if win_c1 == 0:
+            win_c1 = None
+        return (     array[win_r0:win_r1, win_c0:win_c1] if output == 'array'
+                else (win_r0, win_r1, win_c0, win_c1))
+
+    if win_r0 < 0 or win_r1 > arr_nrows or win_c0 < 0 or win_c1 > arr_ncols:
+        raise InvalidArgumentError("Window falls outside `array` bounds")
+
+    return (     array[win_r0:win_r1, win_c0:win_c1] if output == 'array'
+            else (win_r0, win_r1, win_c0, win_c1))
 
 
 def rotate_arrays_if_kernel_has_even_sidelength(array, kernel):
@@ -932,6 +978,12 @@ def getDataArray(array, label=0, label_type='nodata'):
         data_array = (array == label) if label_type == 'data' else (array != label)
 
     return data_array
+
+
+
+######################
+# Array Calculations #
+######################
 
 
 def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):

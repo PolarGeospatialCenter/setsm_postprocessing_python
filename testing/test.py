@@ -634,13 +634,11 @@ def readRasterZ(rasterFile='testRaster_ml.tif'):
 
 
 def getWindow(array, window_shape, x_y_tup, one_based_index=True):
-    window_ysize, window_xsize = window_shape
-    colNum, rowNum = x_y_tup
+    j, i = x_y_tup
     if one_based_index:
-        rowNum -= 1
-        colNum -= 1
-    return array[int(rowNum-np.floor((window_ysize-1)/2)):int(rowNum+np.ceil((window_ysize-1)/2)+1),
-                 int(colNum-np.floor((window_xsize-1)/2)):int(colNum+np.ceil((window_xsize-1)/2)+1)]
+        i -= 1
+        j -= 1
+    return rat.getWindow(array, i, j, window_shape)
 
 
 def doMasking(demFile, maskFileSuffix, noentropy=False):
