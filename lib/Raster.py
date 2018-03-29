@@ -104,22 +104,28 @@ class Raster:
         self.spat_ref = None
         self.geom = None
 
-        set_params_copy = list(set(set_params))
-        if 'no-ds' in set_params_copy:
-            set_params_copy.remove('no-ds')
+        set_params_unique = list(set(set_params))
+        if 'all' in set_params_unique:
+            set_params_unique = ['ds', 'shape', 'z', 'x', 'y', 'dx', 'dy', 'res',
+                                 'geo_trans', 'corner_coords', 'proj_ref', 'spat_ref', 'geom']
+        if 'no-ds' in set_params:
+            if 'ds' in set_params_unique:
+                set_params_unique.remove('ds')
+            if 'no-ds' in set_params_unique:
+                set_params_unique.remove('no-ds')
 
         if rasterFile_or_ds is not None:
             self.set_param('ds', self.open_ds(rasterFile_or_ds))
-            if set_params:
-                self.extract_and_set(*set_params_copy)
-                if 'no-ds' in set_params or \
-                   ('ds' not in set_params and 'all' not in set_params):
+            if set_params_unique:
+                self.extract_and_set(*set_params_unique)
+                if 'ds' not in set_params_unique:
                     self.ds = None
-        elif set_params:
-            if 'ds' in set_params:
+
+        elif set_params_unique:
+            if 'ds' in set_params_unique:
                 raise InvalidArgumentError("`ds` parameter cannot be set when `rasterFile_or_ds`"
                                            " argument is None")
-            self.set_params(*set_params_copy)
+            self.set_params(*set_params_unique)
 
 
     @staticmethod
@@ -281,8 +287,6 @@ class Raster:
                            " so extracted geometry has not been assigned a spatial reference.")
             value_list.append(value)
 
-        if len(value_list) == 1:
-            value_list = value_list[0]
         return value_list
 
 

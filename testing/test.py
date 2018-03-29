@@ -547,7 +547,7 @@ def saveRaster(Z, X=None, Y=None, fname_or_file='testRaster_py.tif',
     if testFile is None:
         return
 
-    if proj_ref is None:
+    if proj_ref is None and like_raster is None:
         warn("No proj_ref argument given to saveRaster()"
              "\n-> Using default global PROJREF_POLAR_STEREO")
         proj_ref = PROJREF_POLAR_STEREO
