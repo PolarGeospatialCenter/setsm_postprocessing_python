@@ -56,6 +56,8 @@ def main():
 
     flist_fp.close()
 
+    print "Done!"
+
 
 
 if __name__ == '__main__':

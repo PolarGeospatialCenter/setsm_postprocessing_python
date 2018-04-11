@@ -5,6 +5,9 @@ import os
 import numpy as np
 
 
+np.set_printoptions(suppress=True)
+
+
 class InvalidArgumentError(Exception):
     def __init__(self, msg):
         super(Exception, self).__init__(msg)
@@ -28,18 +31,18 @@ def main():
     args = parser.parse_args()
     dir1 = os.path.abspath(args.dir1)
     dir2 = os.path.abspath(args.dir2)
-    outfile = os.path.abspath(args.out)
-    outdir = os.path.dirname(outfile)
+    outFile = os.path.abspath(args.out)
+    outDir = os.path.dirname(outFile)
 
     if not os.path.isdir(dir1):
         parser.error("dir1 must be a directory")
     if not os.path.isdir(dir2):
         parser.error("dir2 must be a directory")
-    if os.path.isfile(outfile):
-        parser.error("out file already exists")
-    if not os.path.isdir(os.path.dirname(outdir)):
-        print "Creating directory for output results file: {}".format(outdir)
-        os.makedirs(outdir)
+    # if os.path.isfile(outFile):
+    #     parser.error("out file already exists")
+    if not os.path.isdir(os.path.dirname(outDir)):
+        print "Creating directory for output results file: {}".format(outDir)
+        os.makedirs(outDir)
 
     dir1_fnames = set([os.path.basename(p) for p in glob.glob(os.path.join(dir1, '*_meta.txt'))])
     dir2_fnames = set([os.path.basename(p) for p in glob.glob(os.path.join(dir2, '*_meta.txt'))])
@@ -52,7 +55,7 @@ def main():
     unifnames1.sort()
     unifnames2.sort()
 
-    diff_fp = open(outfile, 'w')
+    diff_fp = open(outFile, 'w')
     diff_fp.write("\n")
 
     if len(unifnames1) > 0 or len(unifnames2) > 0:
@@ -75,7 +78,12 @@ def main():
     redundant_count2 = 0
     segs_with_scene_discreps = []
 
+    num_jobs = len(fnames_comm)
+    print("Found {} *_meta.txt files in common".format(num_jobs))
+    jobnum = 0
     for stripnum, fname in enumerate(fnames_comm):
+        jobnum += 1
+        print "({}/{}) {}".format(jobnum, num_jobs, fname)
 
         metaFile1 = os.path.join(dir1, fname)
         metaFile2 = os.path.join(dir2, fname)
@@ -170,6 +178,7 @@ def main():
 
         if num_common_scenes == 0:
             no_common_scenes = True
+            diff_trans = np.array([[np.nan, np.nan, np.nan, np.nan]])
         else:
             no_common_scenes = False
             if num_common_scenes != max(len(scene_names1), len(scene_names2)):
@@ -193,7 +202,7 @@ def main():
             redundant_count1 += np.count_nonzero(redundant1)
             redundant_count2 += np.count_nonzero(redundant2)
 
-            trans_diffs.append(diff_trans)
+        trans_diffs.append(diff_trans)
 
         if no_common_scenes or has_unique_scenes:
             segs_with_scene_discreps.append("{}, {}\n".format(stripnum+1, fname))
@@ -247,17 +256,37 @@ def main():
         diff_fp.write("\n\n%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%\n"
                           "#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#%#\n")
 
-    trans_diffs_combined = np.vstack(trans_diffs)
-    trans_diffs_combined_extrema = np.vstack([np.nanmax(np.abs(td), axis=0) for td in trans_diffs])
-    trans_diffs_max = np.max(trans_diffs_combined_extrema, axis=0)
-
     diff_fp.write("\n\n\n")
 
-    diff_fp.write("Concatenated trans diffs:\n\n{}\n\n".format(np.array_str(trans_diffs_combined)))
+    # trans_diffs_extrema = np.vstack([td[np.nanargmax(np.abs(td), axis=0), np.arange(td.shape[1])] for td in trans_diffs])
+    trans_diffs_extrema = []
+    for td in trans_diffs:
+        if np.any(~np.isnan(td)):
+            trans_diffs_extrema.append(td[np.nanargmax(np.abs(td), axis=0), np.arange(td.shape[1])])
+        else:
+            trans_diffs_extrema.append(np.array([np.nan, np.nan, np.nan, np.nan]))
+    trans_diffs_extrema = np.vstack(trans_diffs_extrema)
 
-    diff_fp.write("\nPer-segment absolute extrema:\n\n{}\n\n".format(np.array_str(trans_diffs_combined_extrema)))
+    col_labels = "RMSE, dz, dx, dy"
 
-    diff_fp.write("\nMaximum absolute trans diffs:\n\n{}\n\n".format(np.array_str(trans_diffs_max)))
+    line_format = '{:<'+str(len(str(trans_diffs_extrema.shape[0])))+'} {}'
+    diff_fp.write("Per-segment AbsMax difference (dir2 - dir1):\n\n{}\n{}\n\n".format(
+        line_format.format("#", " "+np.array2string(np.array([s.strip() for s in col_labels.split(',')]))),
+        '\n'.join([line_format.format(n+1, line) for n, line in enumerate(np.array2string(trans_diffs_extrema, max_line_width=np.inf, threshold=np.inf).split('\n'))])
+    ))
+
+    stats_array = trans_diffs_extrema
+
+    diff_fp.write("\n".join([
+        "Mean   : "+np.array2string(np.nanmean(stats_array, axis=0), max_line_width=np.inf, threshold=np.inf),
+        "Median : "+np.array2string(np.nanmedian(stats_array, axis=0), max_line_width=np.inf, threshold=np.inf),
+        "StdDev : "+np.array2string(np.nanstd(stats_array, axis=0), max_line_width=np.inf, threshold=np.inf),
+        "AbsMax : "+np.array2string(stats_array[np.nanargmax(np.abs(stats_array), axis=0), np.arange(stats_array.shape[1])], max_line_width=np.inf, threshold=np.inf),
+        "AbsMax#: "+np.array2string(1+np.nanargmax(np.abs(stats_array), axis=0), max_line_width=np.inf, threshold=np.inf)
+        ]
+    ))
+
+    diff_fp.write("\n\n")
 
     diff_fp.write("\nNum redundant scenes unique to dir1: {}".format(redundant_count1))
     diff_fp.write("\nNum redundant scenes unique to dir2: {}".format(redundant_count2))
@@ -270,6 +299,8 @@ def main():
             diff_fp.write(seg)
 
     diff_fp.close()
+
+    np.savetxt(outFile+'_AbsMaxDiff.csv', stats_array, delimiter=',', fmt='%0.3f')
 
     print "Done!"
 
