@@ -603,6 +603,94 @@ def mask_v2a(demFile, avg_kernel_size=5,
     return mask_out
 
 
+def mask8m(demFile, avg_kernel_size=21,
+           data_density_thresh=0.9,
+           min_data_cluster=1000, min_data_gap=1000,
+           min_data_cluster_final=500):
+    # TODO: Complete docstring.
+    """
+
+    Parameters
+    ----------
+    demFile :
+    avg_kernel_size :
+    data_density_thresh :
+    min_data_cluster :
+    min_data_gap :
+    min_data_cluster_final :
+
+    Returns
+    -------
+
+    Notes
+    -----
+    Source docstring:
+    % MASK masking algorithm for 8m resolution data
+    %
+    % m = mask(demFile)
+    % returns the mask stucture (m.x,m.y,m.z) for the demFile using the
+    % given image parameters.
+    %
+    % m = mask(...,maxDigitalNumber,previewPlot) maxDigitalNumber is optional
+    % for rescaling the orthoimage to the original source image range.
+    % If it's mot included or is empty, no rescaling will be applied. If
+    % previewPlot == 'true', a *_maskPreview.tif image will be saved to the
+    % same directory as the demFile that shows the DEM hillshade with and
+    % without the mask applied.
+    %
+    % m = mask(demFile,meta) returns the mask stucture (m.x,m.y,m.z) for the
+    % demFile and meta structure, where meta is the output of readSceneMeta.
+    %
+    % REQUIRED FUNCTIONS: readGeotiff, DataDensityMap,  edgeSlopeMask,
+    % DataDensityMask
+    %
+    % Ian Howat, ihowat@gmail.com
+    % 25-Jul-2017 12:49:25
+
+    """
+    matchFile = demFile.replace('dem.tif', 'matchtag.tif')
+
+    # Read raster data.
+    dem_array, x, y = rat.extractRasterData(demFile, 'z', 'x', 'y')
+    dem_nodata = (dem_array == -9999)
+    dem_array[dem_nodata] = np.nan
+    match_array = rat.extractRasterData(matchFile, 'array')
+
+    # Raster size consistency checks
+    if dem_array.shape != match_array.shape:
+        raise RasterDimensionError("matchFile '{}' dimensions {} do not match dem dimensions {}".format(
+                                   matchFile, match_array.shape, dem_array.shape))
+
+    # Initialize output.
+    mask_out = np.zeros_like(dem_array, np.bool)
+
+    # Get data density map
+    data_density_map = getDataDensityMap(match_array, avg_kernel_size)
+    data_density_map[dem_nodata] = np.nan
+    del match_array
+
+    # Edge crop
+    mask_out = getEdgeMask(getSlopeMask(dem_array, X=x, Y=y, avg_kernel_size=avg_kernel_size))
+    mask_out[dem_nodata] = False
+    del dem_array
+
+    # Data existence check
+    if not np.any(mask_out):
+        return mask_out
+
+    # Data density filter
+    mask_out = clean_mask(getDataDensityMask(mask_out, avg_kernel_size, data_density_thresh),
+                          remove_pix=min_data_cluster, fill_pix=min_data_gap)
+
+    # Data existence check
+    if not np.any(mask_out):
+        return mask_out
+
+    mask_out = rat.bwareaopen(mask_out, min_data_cluster_final, in_place=True)
+
+    return mask_out
+
+
 def getDataDensityMap(array, kernel_size=11,
                       label=0, label_type='nodata',
                       conv_depth='single'):

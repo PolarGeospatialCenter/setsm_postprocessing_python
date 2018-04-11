@@ -40,7 +40,9 @@ def main():
     parser.add_argument('--noentropy', action='store_true', default=False,
         help="Use filter without entropy protection.")
     parser.add_argument('--rema2a', action='store_true', default=False,
-        help="Use filter rema2a.")
+        help="Use rema2a filter.")
+    parser.add_argument('--mask8m', action='store_true', default=False,
+        help="Use mask8m filter.")
 
     parser.add_argument('--pbs', action='store_true', default=False,
         help="Submit tasks to PBS.")
@@ -61,6 +63,11 @@ def main():
     srcdir = os.path.abspath(args.src)
     dstdir = args.dst
     qsubpath = args.qsubscript
+
+    if [args.edgemask, args.rema2a, args.mask8m].count(True) > 1:
+        parser.error("Only one of the following arguments is allowed: (--edgemask, --rema2a, --mask8m)")
+    if args.noentropy and not args.edgemask:
+        parser.error("--noentropy argument is only applicable as an addition to --edgemask argument")
 
     if not os.path.isdir(srcdir):
         parser.error("src must be a directory")
@@ -88,9 +95,6 @@ def main():
     else:
         # Set default qsubpath.
         qsubpath = os.path.abspath(os.path.join(scriptdir, 'qsub_scenes2strips.sh'))
-
-    if args.rema2a and (args.edgemask or args.noentropy):
-        parser.error("rema2a and (edgemask or noentropy) filters are incompatible")
 
     # Create strip output directory if it doesn't already exist.
     if not os.path.isdir(dstdir):
@@ -169,6 +173,8 @@ def main():
             maskFileSuffix = 'edgemask/datamask'
         elif args.rema2a:
             maskFileSuffix = 'mask2a'
+        elif args.mask8m:
+            maskFileSuffix = 'mask'
         else:
             maskFileSuffix = 'mask'
 
