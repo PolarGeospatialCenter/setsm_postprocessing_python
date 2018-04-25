@@ -19,11 +19,11 @@ import raster_array_tools as rat
 
 
 class InvalidArgumentError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 class RasterDimensionError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 

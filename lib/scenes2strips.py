@@ -25,11 +25,11 @@ __STRIP_SPAT_REF__ = None
 
 
 class SpatialRefError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 class RasterDimensionError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 

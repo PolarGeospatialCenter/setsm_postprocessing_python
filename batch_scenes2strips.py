@@ -21,8 +21,8 @@ from lib.scenes2strips import scenes2strips
 def main():
     parser = argparse.ArgumentParser(description=(
         "Filters scene dems in a source directory, "
-        "then mosaics them into strips and saves the results."
-        "\nBatch work is done in units of strip ID (<catid1_catid2>), as parsed from scene dem "
+        "then mosaics them into strips and saves the results.\n"
+        "Batch work is done in units of strip ID (<catid1_catid2>), as parsed from scene dem "
         "filenames."))
 
     parser.add_argument('src',

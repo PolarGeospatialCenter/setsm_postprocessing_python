@@ -57,7 +57,7 @@ import numpy as np
 
 
 class InvalidArgumentError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 

@@ -8,11 +8,6 @@ import numpy as np
 np.set_printoptions(suppress=True)
 
 
-class InvalidArgumentError(Exception):
-    def __init__(self, msg):
-        super(Exception, self).__init__(msg)
-
-
 def main():
     parser = argparse.ArgumentParser(description=(
         "Compares 'Mean/Median Vertical Residual' and "

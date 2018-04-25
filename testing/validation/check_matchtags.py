@@ -10,11 +10,6 @@ sys.path.insert(0, os.path.join(_script_dir, '../..'))
 from lib.raster_array_tools import extractRasterData
 
 
-class InvalidArgumentError(Exception):
-    def __init__(self, msg):
-        super(Exception, self).__init__(msg)
-
-
 def main():
     parser = argparse.ArgumentParser(description=(
         "Make sure matchtags contain only zeros and ones."

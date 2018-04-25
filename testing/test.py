@@ -25,11 +25,11 @@ import lib.raster_array_tools as rat
 warnings.simplefilter('always', UserWarning)
 
 class InvalidArgumentError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 class TestingError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 

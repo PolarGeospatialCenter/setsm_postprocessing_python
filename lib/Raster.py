@@ -14,13 +14,13 @@ RASTER_DEFAULT_PROJREF = PROJREF_POLAR_STEREO
 
 
 class RasterIOError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         self.msg = msg
     def __str__(self):
         return repr(self.msg)
 
 class InvalidArgumentError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         self.msg = msg
     def __str__(self):
         return repr(self.msg)

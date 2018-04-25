@@ -41,19 +41,19 @@ _ext_fid.close()
 gdal.UseExceptions()
 
 class RasterIOError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 class UnsupportedDataTypeError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 class InvalidArgumentError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 class UnsupportedMethodError(Exception):
-    def __init__(self, msg):
+    def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
 
