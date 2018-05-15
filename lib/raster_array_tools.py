@@ -441,6 +441,10 @@ def saveArrayAsTiff(array, dest,
     dtype_out : data type as str (e.g. 'uint16'), NumPy data type
                 (e.g. np.uint16), or numpy.dtype object (e.g. from arr.dtype)
         Numeric type of values in the output raster image.
+        If '1-bit', write output raster image in gdal.GDT_Byte data type
+        with ['NBITS=1'] option in driver. This option should only be used
+        for array data that can be correctly represented in the logical array
+        `array`.astype(np.bool).
 
     Returns
     -------
@@ -458,12 +462,15 @@ def saveArrayAsTiff(array, dest,
     """
     dtype_gdal = None
     if dtype_out is not None:
-        if type(dtype_out) == str:
-            dtype_out = eval('np.{}'.format(dtype_out.lower()))
-        dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_out)
-        if dtype_gdal is None:
-            raise InvalidArgumentError("Output array data type ({}) does not have equivalent "
-                                       "GDAL data type and is not supported".format(dtype_out))
+        if dtype_out == '1-bit':
+            dtype_gdal = gdal.GDT_Byte
+        else:
+            if type(dtype_out) == str:
+                dtype_out = eval('np.{}'.format(dtype_out.lower()))
+            dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_out)
+            if dtype_gdal is None:
+                raise InvalidArgumentError("Output array data type ({}) does not have equivalent "
+                                           "GDAL data type and is not supported".format(dtype_out))
 
     dest_temp = dest.replace('.tif', '_temp.tif')
 
@@ -482,7 +489,10 @@ def saveArrayAsTiff(array, dest,
         dtype_in = promote_dtype
 
     if dtype_out is not None:
-        if dtype_in != dtype_out:
+        if dtype_out == '1-bit':
+            if dtype_in != np.uint8:
+                warn("Non-uint8 input array data type will be saved as 1-bit byte format")
+        elif dtype_in != dtype_out:
             warn("Input array data type ({}) differs from "
                  "output data type ({})".format(dtype_in, dtype_out(1).dtype))
     else:
@@ -515,7 +525,10 @@ def saveArrayAsTiff(array, dest,
 
     # Create and write the output dataset to a temporary file.
     driver = gdal.GetDriverByName('GTiff')
-    ds_out = driver.Create(dest_temp, shape[1], shape[0], 1, dtype_gdal)
+    args = []
+    if dtype_out == '1-bit':
+        args.extend(['NBITS=1'])
+    ds_out = driver.Create(dest_temp, shape[1], shape[0], 1, dtype_gdal, args)
     ds_out.SetGeoTransform(geo_trans)
     if proj_ref is not None:
         ds_out.SetProjection(proj_ref)
@@ -532,10 +545,13 @@ def saveArrayAsTiff(array, dest,
     if nodata_val is not None:
         args.extend(['-a_nodata', str(nodata_val)])  # Create internal nodata mask.
 
-    args.extend(['-co', 'BIGTIFF=IF_SAFER'])        # Will create BigTIFF
-                                                    # if the resulting file *might* exceed 4GB.
-    args.extend(['-co', 'COMPRESS=LZW'])            # Do LZW compression on output image.
-    args.extend(['-co', 'TILED=YES'])               # Force creation of tiled TIFF files.
+    # if dtype_out == '1-bit':
+    #     args.extend(['-co', 'NBITS=1'])  # Save raster data in 1-bit format.
+
+    args.extend(['-co', 'BIGTIFF=IF_SAFER'])  # Will create BigTIFF
+                                              # if the resulting file *might* exceed 4GB.
+    args.extend(['-co', 'COMPRESS=LZW'])      # Do LZW compression on output image.
+    args.extend(['-co', 'TILED=YES'])         # Force creation of tiled TIFF files.
 
     cmd = ' '.join(args)
     subprocess.call(cmd, shell=True)
