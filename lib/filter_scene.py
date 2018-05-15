@@ -142,15 +142,25 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False):
         matchFile = demFile.replace('dem.tif', 'matchtag.tif')
         stdout.write(matchFile+"\n")
         mask_v1(matchFile, noentropy)
+
     else:
-        maskFile = demFile.replace('dem.tif', maskFileSuffix+'.tif')
         stdout.write(demFile+"\n")
+
         mask = None
         if maskFileSuffix == 'mask':
             mask = mask_v2(demFile)
         elif maskFileSuffix == 'mask2a':
             mask = mask_v2a(demFile)
-        rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=np.uint8)
+
+        mask_components = {}
+        if type(mask) == tuple:
+            mask, mask_components = mask
+            mask_components = {'{}_{}'.format(maskFileSuffix, k): v for k, v in mask_components.items()}
+        mask_components[maskFileSuffix] = mask
+
+        for suffix in mask_components:
+            maskFile = demFile.replace('dem.tif', suffix+'.tif')
+            rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=np.uint8)
 
 
 def mask_v1(matchFile, noentropy=False):
@@ -256,7 +266,8 @@ def mask_v1(matchFile, noentropy=False):
                         like_raster=matchFile, nodata_val=0, dtype_out=np.uint8)
 
 
-def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500):
+def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
+            save_mask_components=False):
     """
     Create a single mask masking ON regions of good data in a scene,
     utilizing information from the DEM, matchtag, and panchromatic
@@ -329,6 +340,9 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
     % 25-Jul-2017 12:49:25
 
     """
+    if save_mask_components:
+        mask_components = {}
+
     metaFile  = demFile.replace('dem.tif', 'meta.txt')
     matchFile = demFile.replace('dem.tif', 'matchtag.tif')
     orthoFile = demFile.replace('dem.tif', 'ortho.tif')
@@ -403,6 +417,8 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
 
     # Mask edges using dem slope.
     mask = getEdgeMask(getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res))
+    if save_mask_components:
+        mask_components['edgemask'] = mask
     dem_array[~mask] = np.nan
     if not np.any(~np.isnan(dem_array)):
         return mask_out
@@ -412,6 +428,8 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
     ortho_array[np.isnan(dem_array)] = 0
     data_density_map[np.isnan(dem_array)] = 0
     mask = getWaterMask(ortho_array, data_density_map, mean_sun_elevation)
+    if save_mask_components:
+        mask_components['watermask'] = mask
     dem_array[~mask] = np.nan
     data_density_map[~mask] = 0
     if not np.any(~np.isnan(dem_array)):
@@ -420,6 +438,8 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
 
     # Filter clouds.
     mask = getCloudMask(dem_array, ortho_array, data_density_map)
+    if save_mask_components:
+        mask_components['cloudmask'] = mask
     dem_array[mask] = np.nan
 
     # Finalize mask.
@@ -431,7 +451,11 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500)
     mask[dem_nodata] = False
 
     mask_out = mask
-    return mask_out
+
+    if save_mask_components:
+        return mask_out, mask_components
+    else:
+        return mask_out
 
 
 def mask_v2a(demFile, avg_kernel_size=5,
