@@ -9,6 +9,7 @@ import os
 import re
 import warnings
 from glob import glob
+from StringIO import StringIO
 from warnings import warn
 
 import ogr, osr
@@ -41,7 +42,10 @@ def stringifyThisFunctionForExec(*args):
     caller_funcName = inspect.stack()[1][3]
     caller_funcDef = 'def {}('.format(caller_funcName)
 
-    this_file_fp = open(__file__, 'r')
+    this_file_fp = open(__file__.replace('.pyc', '.py'), 'r')
+    this_file_txt = this_file_fp.read()
+    this_file_fp.close()
+    this_file_fp = StringIO(this_file_txt)
     line = this_file_fp.readline()
     indent = ''
 

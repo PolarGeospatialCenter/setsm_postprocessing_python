@@ -9,6 +9,7 @@ from __future__ import division
 import math
 import os
 import re
+from StringIO import StringIO
 from sys import stdout
 from warnings import warn
 
@@ -16,6 +17,28 @@ import numpy as np
 from scipy import ndimage as sp_ndimage
 
 import raster_array_tools as rat
+
+from testing.test import TESTDIR
+DEBUG_DIR = TESTDIR
+DEBUG_FNAME_PREFIX = ''
+DEBUG_NONE = 0
+DEBUG_ALL = 1
+DEBUG_MASKS = 2
+DEBUG_ITHRESH = 3
+
+
+ITHRESH_START_TAG = 'exec(ITHRESH_START)'
+ITHRESH_END_TAG = '# ITHRESH_END'
+ITHRESH_START = """
+if debug_component_masks != DEBUG_NONE:
+    ithresh_num = 1 if 'ithresh_num' not in vars() else ithresh_num + 1
+    if debug_component_masks in (DEBUG_ALL, DEBUG_ITHRESH):
+        ithresh_save(ithresh_num, vars())
+    elif debug_component_masks == DEBUG_MASKS:
+        ithresh_data = ithresh_load(ithresh_num)
+        for thresh in ithresh_data:
+            exec('{} = ithresh_data[thresh]'.format(thresh))
+"""
 
 
 class InvalidArgumentError(Exception):
@@ -27,6 +50,10 @@ class RasterDimensionError(Exception):
         super(Exception, self).__init__(msg)
 
 class UnsupportedMaskOptionError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+class DebugError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
@@ -117,7 +144,7 @@ def isValidArggroups(arggroup_list):
 
 
 def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
-                  dstdir=None, save_component_masks=False):
+                  dstdir=None, debug_component_masks=DEBUG_NONE):
     """
     Create and save scene masks that mask ON regions of good data.
 
@@ -139,9 +166,14 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
     dstdir : str (directory path)
         (Option only applies when maskFileSuffix='mask'.)
         Path of the output directory for saved masks.
-    save_component_masks : bool
+    debug_component_masks : int
         (Option only applies when maskFileSuffix='mask'.)
-        If True, save additional edge/water/cloud mask components.
+        If DEBUG_NONE, has no effect.
+        If DEBUG_ALL, perform all of the following.
+        If DEBUG_MASKS, return additional
+          edge/water/cloud mask components.
+        If DEBUG_ITHRESH, save data for interactive testing
+          of threshold values for component mask generation.
 
     Returns
     -------
@@ -170,7 +202,7 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
 
         mask = None
         if maskFileSuffix == 'mask':
-            mask = mask_v2(demFile, save_component_masks=save_component_masks)
+            mask = mask_v2(demFile, debug_component_masks=debug_component_masks)
         elif maskFileSuffix == 'mask2a':
             mask = mask_v2a(demFile)
         else:
@@ -296,7 +328,7 @@ def mask_v1(matchFile, noentropy=False):
 
 
 def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
-            save_component_masks=False):
+            debug_component_masks=DEBUG_NONE):
     """
     Create a single mask masking ON regions of good data in a scene,
     utilizing information from the DEM, matchtag, and panchromatic
@@ -321,8 +353,13 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     min_data_cluster : positive int
         Minimum number of contiguous data pixels in a kept good data
         cluster in the returned mask, at `processing_res` resolution.
-    save_component_masks : bool
-        Return additional edge/water/cloud mask components.
+    debug_component_masks : int
+        If DEBUG_NONE, has no effect.
+        If DEBUG_ALL, perform all of the following.
+        If DEBUG_MASKS, return additional
+          edge/water/cloud mask components.
+        If DEBUG_ITHRESH, save data for interactive testing
+          of threshold values for component mask generation.
 
     Returns
     -------
@@ -447,7 +484,8 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
 
     # Mask edges using dem slope.
     mask = getEdgeMask(getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res))
-    mask = handle_component_masks('edgemask', mask, component_masks, save_component_masks)
+    mask = handle_component_masks('edgemask', mask, component_masks,
+                                  (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     dem_array[~mask] = np.nan
     if not np.any(~np.isnan(dem_array)):
         return mask_out
@@ -457,8 +495,9 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     ortho_array[np.isnan(dem_array)] = 0
     data_density_map[np.isnan(dem_array)] = 0
     mask = getWaterMask(ortho_array, data_density_map, mean_sun_elevation,
-                        save_component_masks=save_component_masks)
-    mask = handle_component_masks('watermask', mask, component_masks, save_component_masks)
+                        debug_component_masks=debug_component_masks)
+    mask = handle_component_masks('watermask', mask, component_masks,
+                                  (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     dem_array[~mask] = np.nan
     data_density_map[~mask] = 0
     if not np.any(~np.isnan(dem_array)):
@@ -467,8 +506,9 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
 
     # Filter clouds.
     mask = getCloudMask(dem_array, ortho_array, data_density_map,
-                        save_component_masks=save_component_masks)
-    mask = handle_component_masks('cloudmask', mask, component_masks, save_component_masks)
+                        debug_component_masks=debug_component_masks)
+    mask = handle_component_masks('cloudmask', mask, component_masks,
+                                  (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     dem_array[mask] = np.nan
 
     # Finalize mask.
@@ -481,7 +521,7 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
 
     mask_out = mask
 
-    if save_component_masks:
+    if debug_component_masks in (DEBUG_ALL, DEBUG_MASKS):
         for mask_name in component_masks:
             mask = component_masks[mask_name]
             mask = rat.imresize(mask, image_shape, 'nearest')
@@ -510,7 +550,7 @@ def handle_component_masks(mask_name, mask_tuple, component_masks, save_componen
 
 
 def mask_v2a(demFile, avg_kernel_size=5,
-             min_cloud_cluster=10, min_data_cluster=5000,
+             min_nocloud_cluster=10, min_data_cluster=5000,
              cloud_stdev_thresh=0.75, cloud_density_thresh=1,
              iter_stdev_thresh=0.1, iter_dilate=11,
              dilate_nodata=5):
@@ -533,7 +573,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
         standard deviation filter and calculating data density map.
         If None, is set to `int(math.floor(21*2/image_res))` where
         `image_res` is the resolution of the raster images.
-    min_cloud_cluster : positive int
+    min_nocloud_cluster : positive int
         Minimum number of contiguous cloud-classified pixels
         in a kept cluster during masking.
     min_data_cluster : positive int
@@ -647,7 +687,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
             & (data_density_map < cloud_density_thresh))
 
     # Remove small data clusters.
-    mask = rat.bwareaopen(mask, min_cloud_cluster, in_place=True)
+    mask = rat.bwareaopen(mask, min_nocloud_cluster, in_place=True)
 
     # Initialize masked pixel counters.
     N0 = np.count_nonzero(mask)
@@ -1065,7 +1105,7 @@ def getWaterMask(ortho_array, data_density_map,
                  ortho_thresh_lowsunelev=5, ortho_thresh_highsunelev=20,
                  entropy_thresh=0.2, data_density_thresh=0.98, min_data_cluster=500,
                  ent_kernel_size=5, dilate=7,
-                 save_component_masks=False):
+                 debug_component_masks=DEBUG_NONE):
     """
     Classify areas of water coverage in a panchromatic
     satellite image, masking OFF water.
@@ -1119,8 +1159,13 @@ def getWaterMask(ortho_array, data_density_map,
         entropy filter result.
         A larger value results in areas classified as
         water having a thicker border.
-    save_component_masks : bool
-        Return additional entropy/radiance mask components.
+    debug_component_masks : int
+        If DEBUG_NONE, has no effect.
+        If DEBUG_ALL, perform all of the following.
+        If DEBUG_MASKS, return additional
+          entropy/radiance mask components.
+        If DEBUG_ITHRESH, save data for interactive testing
+          of threshold values for component mask generation.
 
     Returns
     -------
@@ -1152,14 +1197,16 @@ def getWaterMask(ortho_array, data_density_map,
     # Set edge-effected values to zero.
     entropy_array[ortho_array == 0] = 0
 
+    exec(ITHRESH_START)
+
     # Mask data with entropy less than threshold.
-    entropy_mask = ((ortho_array != 0) & (entropy_array < entropy_thresh))
+    mask_entropy = ((ortho_array != 0) & (entropy_array < entropy_thresh))
 
     # Remove isolated clusters of masked pixels.
-    entropy_mask = rat.bwareaopen(entropy_mask, min_data_cluster, in_place=True)
+    mask_entropy = rat.bwareaopen(mask_entropy, min_data_cluster, in_place=True)
 
     # Dilate masked pixels.
-    entropy_mask = rat.imdilate(entropy_mask, dilate)
+    mask_entropy = rat.imdilate(mask_entropy, dilate)
 
     # Mask data with low radiance and matchpoint density.
     # radiance_mask = ((ortho_array != 0) & (ortho_array < ortho_thresh) & (data_density_map < data_density_thresh))
@@ -1171,10 +1218,12 @@ def getWaterMask(ortho_array, data_density_map,
     mask_radiance = rat.bwareaopen(mask_radiance, min_data_cluster, in_place=True)
 
     # Assemble water mask.
-    mask = (~entropy_mask & ~mask_radiance & (ortho_array != 0))
+    mask = (~mask_entropy & ~mask_radiance & (ortho_array != 0))
 
-    if save_component_masks:
-        component_masks['entropy'] = entropy_mask
+    # ITHRESH_END
+
+    if debug_component_masks in (DEBUG_ALL, DEBUG_MASKS):
+        component_masks['entropy'] = mask_entropy
         component_masks['radiance'] = mask_radiance
         component_masks['radiance_ortho'] = mask_radiance_ortho
         component_masks['radiance_datadensity'] = mask_radiance_datadensity
@@ -1188,11 +1237,11 @@ def getWaterMask(ortho_array, data_density_map,
 def getCloudMask(dem_array, ortho_array, data_density_map,
                  ortho_thresh=70,
                  data_density_thresh_hirad=0.9, data_density_thresh_lorad=0.6,
-                 min_cloud_cluster=10000, min_nocloud_cluster=1000,
+                 min_nocloud_cluster=10000, min_cloud_cluster=1000,
                  stdev_kernel_size=21,
                  erode_border=31, dilate_border=61,
                  dilate_cloud=21,
-                 save_component_masks=False):
+                 debug_component_masks=DEBUG_NONE):
     """
     Classify areas of cloud coverage in a panchromatic
     satellite image with derived DEM, masking ON clouds.
@@ -1230,10 +1279,10 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     data_density_thresh_lorad : 0 < float <= `data_density_thresh_hirad`
         Maximum match point data density for low radiance
         to be classified as clouds.
-    min_cloud_cluster : positive int
+    min_nocloud_cluster : positive int
         Minimum number of contiguous cloud-classified pixels
         in a kept cluster during masking.
-    min_nocloud_cluster : positive int
+    min_cloud_cluster : positive int
         Minimum number of contiguous non-cloud-classified pixels
         in a kept cluster during masking.
     stdev_kernel_size : positive int
@@ -1251,8 +1300,13 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
         Side length of square neighborhood (of ones)
         used as structure for dilation of cloud-classified
         regions before returning mask.
-    save_component_masks : bool
-        Return additional radiance/datadensity/stdev mask components.
+    debug_component_masks : int
+        If DEBUG_NONE, has no effect.
+        If DEBUG_ALL, perform all of the following.
+        If DEBUG_MASKS, return additional
+          radiance/datadensity/stdev mask components.
+        If DEBUG_ITHRESH, save data for interactive testing
+          of threshold values for component mask generation.
 
     Returns
     -------
@@ -1280,7 +1334,7 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     component_masks = {}
 
     # Make sure sufficient non NaN pixels exist, otherwise cut to the chase.
-    if np.count_nonzero(~np.isnan(dem_array)) < 2*min_nocloud_cluster:
+    if np.count_nonzero(~np.isnan(dem_array)) < 2*min_cloud_cluster:
         mask = np.ones(dem_array.shape, dtype=np.bool)
         return mask, component_masks
 
@@ -1314,6 +1368,8 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
         percentile_diff, stdev_thresh
     )
 
+    exec(ITHRESH_START)
+
     # Apply mask conditions.
     # mask = (  ~np.isnan(dem_array)
     #         & (   ((ortho_array > ortho_thresh) & (data_density_map < data_density_thresh_hirad))
@@ -1330,7 +1386,9 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     # Assemble cloud mask.
     mask = (~np.isnan(dem_array) & (mask_radiance | mask_data_density | mask_stdev))
 
-    if save_component_masks:
+    # ITHRESH_END
+
+    if debug_component_masks in (DEBUG_ALL, DEBUG_MASKS):
         component_masks['radiance'] = mask_radiance
         component_masks['radiance_ortho'] = mask_radiance_ortho
         component_masks['radiance_datadensity'] = mask_radiance_datadensity
@@ -1341,7 +1399,7 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     mask = sp_ndimage.morphology.binary_fill_holes(mask)
 
     # Remove small masked clusters.
-    mask = rat.bwareaopen(mask, min_nocloud_cluster, in_place=True)
+    mask = rat.bwareaopen(mask, min_cloud_cluster, in_place=True)
 
     # Remove thin borders caused by cliffs/ridges.
     mask_edge = rat.imerode(mask, erode_border)
@@ -1353,7 +1411,7 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     mask = rat.imdilate(mask, dilate_cloud)
 
     # Remove small clusters of unfiltered data.
-    mask = ~rat.bwareaopen(~mask, min_cloud_cluster, in_place=True)
+    mask = ~rat.bwareaopen(~mask, min_nocloud_cluster, in_place=True)
 
     return mask, component_masks
 
@@ -1655,3 +1713,97 @@ def readFromXml(xmlFile, xml_paramstrs):
                 break
     xmlFile_fp.close()
     return values
+
+
+def ithresh_save(block_num, vars_dict, funcname=None):
+    # TODO: Write docstring.
+
+    from inspect import stack
+
+    caller_funcName = funcname if funcname is not None else stack()[2][3]
+    caller_funcDef = 'def {}('.format(caller_funcName)
+    # this_funcName = 'ithresh_save'
+    this_funcName = stack()[0][3]
+    this_funcCall = '{}('.format(this_funcName)
+
+    this_file_fp = open(__file__.replace('.pyc', '.py'), 'r')
+    this_file_txt = this_file_fp.read()
+    this_file_fp.close()
+    this_file_fp = StringIO(this_file_txt)
+    line = this_file_fp.readline()
+
+    # Locate caller function definition in this file.
+    found = False
+    while not found and line != '':
+        if line.startswith(caller_funcDef):
+            found = True
+        line = this_file_fp.readline()
+    if not found:
+        raise DebugError("Could not find function definition matching '{}'".format(caller_funcDef))
+
+    # Locate start of ithresh region within the caller function.
+    found_block_num = 0
+    while found_block_num != block_num and line != '':
+        if line.lstrip().startswith(ITHRESH_START_TAG):
+            found_block_num += 1
+        line = this_file_fp.readline()
+    if not found:
+        raise DebugError("{} block_num={} missing start tag '{}'".format(
+                         caller_funcName, block_num, ITHRESH_START_TAG))
+
+    # Capture code in this interactive threshold region.
+    ithresh_code_raw = ''
+    ithresh_code_exec = ''
+    indent = None
+    done = False
+    while not done and line != '':
+        ithresh_code_raw += line
+
+        if line.strip() != '' and not line.lstrip().startswith('#'):
+            if indent is None:
+                # The first line of code after ITHRESH_START
+                # sets the indentation for the whole code region.
+                indent = line[:line.find(line.lstrip()[0])]
+            ithresh_code_exec += line.replace(indent, '', 1)
+
+        if line.lstrip().startswith(ITHRESH_END_TAG):
+            done = True
+        elif line.lstrip().startswith(this_funcName):
+            break
+        elif line.startswith('def '):
+            break
+
+        line = this_file_fp.readline()
+    if not done:
+        raise DebugError("{} block_num={} missing end tag '{}'".format(
+                         caller_funcName, block_num, ITHRESH_END_TAG))
+
+    this_file_fp.close()
+
+    # Save data necessary for performing interactive thresholding.
+    vars_dict_save = {name: data for name, data in vars_dict.iteritems() if name in ithresh_code_exec}
+    vars_dict_save['ITHRESH_FUNCTION_NAME'] = caller_funcName
+    vars_dict_save['ITHRESH_BLOCK_NUM'] = block_num
+    vars_dict_save['ITHRESH_CODE_RAW'] = ithresh_code_raw
+    vars_dict_save['ITHRESH_CODE_EXEC'] = ithresh_code_exec
+    vars_dict_file = os.path.join(DEBUG_DIR, DEBUG_FNAME_PREFIX+"ithresh_{}_{}.npy".format(caller_funcName, block_num))
+    stdout.write("Dumping vars to {} ...".format(vars_dict_file))
+    np.save(vars_dict_file, vars_dict_save)
+    stdout.write(" done\n")
+
+
+def ithresh_load(block_num, funcname=None):
+    # TODO: Write docstring.
+
+    from inspect import stack
+    caller_funcName = funcname if funcname is not None else stack()[1][3]
+
+    vars_dict_file = os.path.join(DEBUG_DIR, DEBUG_FNAME_PREFIX+"ithresh_{}_I{}.npy".format(caller_funcName, block_num))
+    if not os.path.isfile(vars_dict_file):
+        return {}
+
+    print("Loading thresh vars from {}".format(vars_dict_file))
+    vars_dict = np.load(vars_dict_file).item()
+    vars_dict = {name: data for name, data in vars_dict.iteritems() if 'thresh' in name}
+
+    return vars_dict
