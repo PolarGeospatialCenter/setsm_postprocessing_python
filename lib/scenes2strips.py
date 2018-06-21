@@ -110,7 +110,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             continue
 
         # Check for no data.
-        if ~md.any():
+        if md.all():
             print "No data, skipping"
             continue
 
