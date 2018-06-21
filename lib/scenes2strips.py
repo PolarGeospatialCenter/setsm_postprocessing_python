@@ -704,10 +704,10 @@ def applyMasks(x, y, z, m, o, md, me=None):
     """
     Apply masks to the scene DEM, matchtag, and ortho matrices.
     """
-    z[~md] = np.nan
-    m[~md] = 0
+    z[md] = np.nan
+    m[md] = 0
     if me is not None:
-        o[~me] = 0
+        o[me] = 0
 
     # If there is any good data, crop the matrices of bordering NaNs.
     if np.any(~np.isnan(z)):

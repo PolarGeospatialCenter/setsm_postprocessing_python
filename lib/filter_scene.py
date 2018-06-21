@@ -223,7 +223,7 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
 
 def mask_v1(matchFile, noentropy=False):
     """
-    Creates an edgemask and datamask masking ON regions of good data in
+    Creates an edgemask and datamask masking ON regions of bad data in
     a scene from a matchtag image and saves the two mask files to disk.
 
     Optionally, the corresponding ortho-ed spectral image may be
@@ -297,12 +297,12 @@ def mask_v1(matchFile, noentropy=False):
         cf = 0.5
         crop = n
 
-    edgemask = getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
+    edgemask = ~getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
     if not noentropy:
-        entropy_mask = getEntropyMask(matchFile.replace('matchtag.tif', 'ortho.tif'))
+        entropy_mask = ~getEntropyMask(matchFile.replace('matchtag.tif', 'ortho.tif'))
         np.logical_or(edgemask, entropy_mask, out=edgemask)
-    edgemask = getEdgeMask(edgemask, min_data_cluster=Amin, hull_concavity=cf, crop=crop)
-    component_masks['edgemask'] = edgemask
+    edgemask = ~getEdgeMask(edgemask, min_data_cluster=Amin, hull_concavity=cf, crop=crop)
+    component_masks['edgemask'] = ~edgemask
 
     match_array[~edgemask] = 0
     del edgemask
@@ -319,10 +319,10 @@ def mask_v1(matchFile, noentropy=False):
         Amin = 1000
         Amax = 1000
 
-    datamask = getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
+    datamask = ~getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
     del match_array
     datamask = clean_mask(datamask, remove_pix=Amin, fill_pix=Amax, in_place=True)
-    component_masks['datamask'] = datamask
+    component_masks['datamask'] = ~datamask
 
     return component_masks
 
@@ -330,7 +330,7 @@ def mask_v1(matchFile, noentropy=False):
 def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
             debug_component_masks=DEBUG_NONE):
     """
-    Create a single mask masking ON regions of good data in a scene,
+    Create a single mask masking ON regions of bad data in a scene,
     utilizing information from the DEM, matchtag, and panchromatic
     spectral images corresponding to a single scene.
 
@@ -364,7 +364,7 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     Returns
     -------
     mask_out, component_masks : (ndarray of bool, 2D; dict of the former)
-        Scene mask masking ON regions of good data.
+        Scene mask masking ON regions of bad data.
 
     Notes
     -----
@@ -483,10 +483,13 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     data_density_map[np.isnan(dem_array)] = np.nan
 
     # Mask edges using dem slope.
-    mask = getEdgeMask(getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res))
+    mask = getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res)
+    mask = handle_component_masks('edgemask_slopemask', mask, component_masks,
+                                  (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
+    mask = getEdgeMask(~mask)
     mask = handle_component_masks('edgemask', mask, component_masks,
                                   (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
-    dem_array[~mask] = np.nan
+    dem_array[mask] = np.nan
     if not np.any(~np.isnan(dem_array)):
         return mask_out
     del mask
@@ -498,8 +501,8 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
                         debug_component_masks=debug_component_masks)
     mask = handle_component_masks('watermask', mask, component_masks,
                                   (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
-    dem_array[~mask] = np.nan
-    data_density_map[~mask] = 0
+    dem_array[mask] = np.nan
+    data_density_map[mask] = 0
     if not np.any(~np.isnan(dem_array)):
         return mask_out
     del mask
@@ -527,7 +530,7 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
             mask = rat.imresize(mask, image_shape, 'nearest')
             component_masks[mask_name] = mask
 
-    return mask_out, component_masks
+    return ~mask_out, component_masks
 
 
 def handle_component_masks(mask_name, mask_tuple, component_masks, save_component_masks):
@@ -555,7 +558,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
              iter_stdev_thresh=0.1, iter_dilate=11,
              dilate_nodata=5):
     """
-    Create a single mask masking ON regions of good data in a scene,
+    Create a single mask masking ON regions of bad data in a scene,
     utilizing information from the DEM and matchtag corresponding to
     a single scene.
 
@@ -598,8 +601,8 @@ def mask_v2a(demFile, avg_kernel_size=5,
 
     Returns
     -------
-    mask_out : ndarray of bool, 2D
-        Scene mask masking ON regions of good data.
+    mask : ndarray of bool, 2D
+        Scene mask masking ON regions of bad data.
 
     Notes
     -----
@@ -638,13 +641,13 @@ def mask_v2a(demFile, avg_kernel_size=5,
     dy, dx = np.gradient(dem_array, image_dy, image_dx)
 
     # Mask edges using dem slope.
-    mask = getEdgeMask(getSlopeMask(dem_array,
-                                    grad_dx=dx, grad_dy=dy,
-                                    avg_kernel_size=avg_kernel_size))
+    mask = getEdgeMask(~getSlopeMask(dem_array,
+                                     grad_dx=dx, grad_dy=dy,
+                                     avg_kernel_size=avg_kernel_size))
     # No data check
-    if not np.any(mask):
+    dem_array[mask] = np.nan
+    if not np.any(dem_array):
         return mask_out
-    dem_array[~mask] = np.nan
     del mask
 
     # Iterative expanding matchtag density / slope mask
@@ -714,8 +717,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     # remove small data gaps.
     mask = ~rat.bwareaopen(~mask, min_data_cluster, in_place=True)
 
-    mask_out = ~mask
-    return mask_out
+    return mask
 
 
 def mask8m(demFile, avg_kernel_size=21,
@@ -785,25 +787,25 @@ def mask8m(demFile, avg_kernel_size=21,
     del match_array
 
     # Edge crop
-    mask_out = getEdgeMask(getSlopeMask(dem_array, X=x, Y=y, avg_kernel_size=avg_kernel_size))
-    mask_out[dem_nodata] = False
+    mask = ~getEdgeMask(~getSlopeMask(dem_array, X=x, Y=y, avg_kernel_size=avg_kernel_size))
+    mask[dem_nodata] = False
     del dem_array
 
     # Data existence check
-    if not np.any(mask_out):
+    if not np.any(mask):
         return mask_out
 
     # Data density filter
-    mask_out = clean_mask(getDataDensityMask(mask_out, avg_kernel_size, data_density_thresh),
-                          remove_pix=min_data_cluster, fill_pix=min_data_gap)
+    mask = clean_mask(~getDataDensityMask(mask, avg_kernel_size, data_density_thresh),
+                      remove_pix=min_data_cluster, fill_pix=min_data_gap)
 
     # Data existence check
-    if not np.any(mask_out):
+    if not np.any(mask):
         return mask_out
 
-    mask_out = rat.bwareaopen(mask_out, min_data_cluster_final, in_place=True)
+    mask = rat.bwareaopen(mask, min_data_cluster_final, in_place=True)
 
-    return mask_out
+    return ~mask
 
 
 def getDataDensityMap(array, kernel_size=11,
@@ -849,7 +851,7 @@ def getDataDensityMask(match_array, kernel_size=21,
                        density_thresh=0.3,
                        conv_depth='single'):
     """
-    Return an array masking OFF areas of poor data
+    Return an array masking ON areas of poor data
     coverage in a match point array.
 
     Parameters
@@ -886,13 +888,13 @@ def getDataDensityMask(match_array, kernel_size=21,
         pass the result of this function to clean_mask().
 
     """
-    return getDataDensityMap(match_array, kernel_size, conv_depth=conv_depth) >= density_thresh
+    return getDataDensityMap(match_array, kernel_size, conv_depth=conv_depth) < density_thresh
 
 
 def getEntropyMask(orthoFile, entropy_thresh=0.2,
                    processing_res=8, kernel_size=None, min_data_cluster=1000):
     """
-    Return an array masking OFF areas of low entropy, such as water,
+    Return an array masking ON areas of low entropy, such as water,
     in an orthorectified panchromatic spectral image.
 
     Parameters
@@ -917,7 +919,7 @@ def getEntropyMask(orthoFile, entropy_thresh=0.2,
     Returns
     -------
     mask : ndarray of bool, same shape as image array
-        Entropy mask masking OFF areas of low entropy in the image.
+        Entropy mask masking ON areas of low entropy in the image.
 
     Notes
     -----
@@ -980,7 +982,7 @@ def getEntropyMask(orthoFile, entropy_thresh=0.2,
 
     mask[background_mask] = False
 
-    return mask
+    return ~mask
 
 
 def getSlopeMask(dem_array,
@@ -991,7 +993,7 @@ def getSlopeMask(dem_array,
                  source_res=None, avg_kernel_size=None,
                  dilate_bad=13):
     """
-    Return an array masking OFF artifacts with
+    Return an array masking ON artifacts with
     high slope values in a DEM array.
 
     Parameters
@@ -1025,7 +1027,7 @@ def getSlopeMask(dem_array,
     Returns
     -------
     mask : ndarray of bool, same shape as dem_array
-        The slope mask masking OFF artifacts with
+        The slope mask masking ON artifacts with
         high slope values in `dem_array`.
 
     Notes
@@ -1097,7 +1099,7 @@ def getSlopeMask(dem_array,
         # Dilate high mean slope pixels and set to false.
         mask[rat.imdilate((mean_slope_array > 1), dilate_bad)] = False
 
-    return mask
+    return ~mask
 
 
 def getWaterMask(ortho_array, data_density_map,
@@ -1108,7 +1110,7 @@ def getWaterMask(ortho_array, data_density_map,
                  debug_component_masks=DEBUG_NONE):
     """
     Classify areas of water coverage in a panchromatic
-    satellite image, masking OFF water.
+    satellite image, masking ON water.
 
     The water mask is derived from the combination of an
     entropy filter applied to the smoothed panchromatic image
@@ -1170,7 +1172,7 @@ def getWaterMask(ortho_array, data_density_map,
     Returns
     -------
     mask, component_masks : (ndarray of bool, same shape as `ortho_array`; dict of former)
-        The water mask masking OFF areas classified as water
+        The water mask masking ON areas classified as water
         in the input panchromatic image.
 
     Notes
@@ -1231,7 +1233,7 @@ def getWaterMask(ortho_array, data_density_map,
     # Remove isolated clusters of data.
     mask = clean_mask(mask, remove_pix=min_data_cluster, fill_pix=min_data_cluster, in_place=True)
 
-    return mask, component_masks
+    return ~mask, component_masks
 
 
 def getCloudMask(dem_array, ortho_array, data_density_map,
@@ -1419,7 +1421,7 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
 def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
                 res=None, min_data_cluster=1000):
     """
-    Return an array masking OFF bad edges on a mass
+    Return an array masking ON bad edges on a mass
     of good data (see Notes) in a matchtag array.
 
     Parameters
@@ -1445,7 +1447,7 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
     Returns
     -------
     mask : ndarray of bool, same shape as data_array
-        The edge mask masking OFF bad data hull edges
+        The edge mask masking ON bad data hull edges
         in input match_array.
 
     See also
@@ -1505,7 +1507,7 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
     if crop is not None:
         mask = rat.imerode(mask, crop)
 
-    return mask
+    return ~mask
 
 
 def clean_mask(mask, remove_pix=1000, fill_pix=10000, in_place=False):
