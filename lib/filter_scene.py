@@ -146,7 +146,7 @@ def isValidArggroups(arggroup_list):
 def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
                   dstdir=None, debug_component_masks=DEBUG_NONE):
     """
-    Create and save scene masks that mask ON regions of good data.
+    Create and save scene masks that mask ON regions of bad data.
 
     Parameters
     ----------
