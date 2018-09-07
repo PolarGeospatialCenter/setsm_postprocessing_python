@@ -16,9 +16,23 @@ from warnings import warn
 import numpy as np
 from scipy import ndimage as sp_ndimage
 
+from batch_scenes2strips import selectBestMatchtag
 import raster_array_tools as rat
 
-from testing.test import TESTDIR
+from testing.test import TESTDIR, saveImage
+
+
+MASK_FLAT = 0
+MASK_SEPARATE = 1
+MASK_BIT = 2
+MASKCOMP_EDGE_NAME = 'edgemask'
+MASKCOMP_WATER_NAME = 'watermask'
+MASKCOMP_CLOUD_NAME = 'cloudmask'
+MASKCOMP_EDGE_BIT = 0
+MASKCOMP_WATER_BIT = 1
+MASKCOMP_CLOUD_BIT = 2
+
+
 DEBUG_DIR = TESTDIR
 DEBUG_FNAME_PREFIX = ''
 DEBUG_NONE = 0
@@ -39,6 +53,7 @@ if debug_component_masks != DEBUG_NONE:
         for thresh in ithresh_data:
             exec('{} = ithresh_data[thresh]'.format(thresh))
 """
+ITHRESH_QUICK_SAVED = False
 
 
 class InvalidArgumentError(Exception):
@@ -49,7 +64,7 @@ class RasterDimensionError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
-class UnsupportedMaskOptionError(Exception):
+class MaskComponentError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
@@ -143,8 +158,8 @@ def isValidArggroups(arggroup_list):
         return True
 
 
-def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
-                  dstdir=None, debug_component_masks=DEBUG_NONE):
+def generateMasks(demFile, maskFileSuffix, dstdir=None, noentropy=False, nbit_masks=False,
+                  save_component_masks=MASK_FLAT, debug_component_masks=DEBUG_NONE):
     """
     Create and save scene masks that mask ON regions of bad data.
 
@@ -155,23 +170,31 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
     maskFileSuffix : str; 'edgemask/datamask', 'mask', or 'mask2a'
         Type of mask(s) to create, and what filename suffix to use
         when saving the mask(s) to disk.
+    dstdir : None or str (directory path)
+        Path of the output directory for saved masks.
+        If None, `dstdir` is set to the directory of `demFile`.
     noentropy : bool
         (Option only applies when maskFileSuffix='edgemask/datamask'.)
         If True, entropy filter is not applied.
         If False, entropy filter is applied.
-    onebit_masks : bool
-        (Option only applies when maskFileSuffix='mask'.)
-        If True, save mask raster images in 1-bit format.
+    nbit_masks : bool
+        If True, save mask raster images in n-bit format.
         If False, save in uint8 format.
-    dstdir : str (directory path)
+    save_component_masks : bool
         (Option only applies when maskFileSuffix='mask'.)
-        Path of the output directory for saved masks.
+        If MASK_FLAT, save one binary mask with all filter
+          components merged.
+        If MASK_SEPARATE, save additional binary masks for
+          edge, water, and cloud filter components as separate rasters.
+        If MASK_BIT, save one n-bit mask with each bit
+          representing one of the n different edge, water, and cloud
+          filter components.
     debug_component_masks : int
         (Option only applies when maskFileSuffix='mask'.)
         If DEBUG_NONE, has no effect.
         If DEBUG_ALL, perform all of the following.
-        If DEBUG_MASKS, return additional
-          edge/water/cloud mask components.
+        If DEBUG_MASKS, save additional
+          edge/water/cloud mask components as separate rasters.
         If DEBUG_ITHRESH, save data for interactive testing
           of threshold values for component mask generation.
 
@@ -185,40 +208,73 @@ def generateMasks(demFile, maskFileSuffix, noentropy=False, onebit_masks=False,
     For maskFileSuffix='edgemask/datamask', two masks are saved.
 
     """
-    suffix_choices = ('edgemask/datamask', 'mask', 'mask2a')
-
+    suffix_choices = ('edgemask/datamask', 'mask', 'mask2a', 'mask8m')
+    mask_dtype = 'n-bit' if nbit_masks else 'uint8'
     demFname = os.path.basename(demFile)
     if dstdir is None:
         dstdir = os.path.dirname(demFile)
-    mask_dtype = '1-bit' if onebit_masks else 'uint8'
+
+    masks = {}
 
     if maskFileSuffix == 'edgemask/datamask':
-        matchFile = demFile.replace('dem.tif', 'matchtag.tif')
+        matchFile = selectBestMatchtag(demFile)
         stdout.write(matchFile+"\n")
-        mask_components = mask_v1(matchFile, noentropy)
+        masks = mask_v1(matchFile, noentropy)
 
     else:
         stdout.write(demFile+"\n")
 
-        mask = None
         if maskFileSuffix == 'mask':
-            mask = mask_v2(demFile, debug_component_masks=debug_component_masks)
+            mask = mask_v2(demFile, maskFileSuffix,
+                           save_component_masks=(save_component_masks != MASK_FLAT),
+                           debug_component_masks=debug_component_masks)
         elif maskFileSuffix == 'mask2a':
             mask = mask_v2a(demFile)
+        elif maskFileSuffix == 'mask8m':
+            mask = mask8m(demFile)
         else:
-            raise UnsupportedMaskOptionError("`maskFileSuffix` must be one of {}, "
-                                             "but was {}".format(suffix_choices, maskFileSuffix))
+            raise InvalidArgumentError("`maskFileSuffix` must be one of {}, "
+                                       "but was {}".format(suffix_choices, maskFileSuffix))
 
-        mask_components = {}
-        if type(mask) == tuple:
-            mask, mask_components = mask
-            mask_components = {'{}_{}'.format(maskFileSuffix, k): v for k, v in mask_components.items()}
-        mask_components[maskFileSuffix] = mask
+        if type(mask) == dict:
+            component_masks = mask
 
-    for suffix in mask_components:
-        mask = mask_components[suffix]
-        maskFile = os.path.join(dstdir, demFname.replace('dem.tif', suffix+'.tif'))
-        rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=mask_dtype)
+            if save_component_masks == MASK_BIT:
+                mask_bin = component_masks[maskFileSuffix]
+                mask_comp = np.zeros_like(mask_bin, dtype=np.uint8)
+                mask_comp = np.bitwise_or(mask_comp, component_masks[MASKCOMP_EDGE_NAME].astype(np.uint8) * 2**MASKCOMP_EDGE_BIT)
+                mask_comp = np.bitwise_or(mask_comp, component_masks[MASKCOMP_WATER_NAME].astype(np.uint8) * 2**MASKCOMP_WATER_BIT)
+                mask_comp = np.bitwise_or(mask_comp, component_masks[MASKCOMP_CLOUD_NAME].astype(np.uint8) * 2**MASKCOMP_CLOUD_BIT)
+                try:
+                    if not np.array_equal(mask_comp.astype(np.bool), mask_bin):
+                        raise MaskComponentError("Coverage of edge/water/cloud component mask arrays "
+                                                 "does not match coverage of official binary mask array")
+                except MaskComponentError:
+                    print("Saving mask coverage arrays in question for inspection")
+                    saveImage(mask_bin, demFname.replace('dem.tif', maskFileSuffix+'_binary.tif'), overwrite=True)
+                    saveImage(mask_comp.astype(np.bool), demFname.replace('dem.tif', maskFileSuffix+'_components.tif'), overwrite=True)
+                    raise
+                if debug_component_masks in (DEBUG_MASKS, DEBUG_ALL):
+                    component_masks['binary'] = mask_bin
+                else:
+                    for mask_name in (MASKCOMP_EDGE_NAME, MASKCOMP_WATER_NAME, MASKCOMP_CLOUD_NAME):
+                        del component_masks[mask_name]
+                component_masks[maskFileSuffix] = mask_comp
+
+            mask = component_masks[maskFileSuffix]
+            masks = {'{}_{}'.format(maskFileSuffix, mask_name): mask_array
+                     for mask_name, mask_array in component_masks.items()
+                     if mask_name != maskFileSuffix}
+
+        masks[maskFileSuffix] = mask
+
+    nbits = None
+    for mask_name in masks:
+        mask = masks[mask_name]
+        maskFile = os.path.join(dstdir, demFname.replace('dem.tif', mask_name+'.tif'))
+        if mask_dtype == 'n-bit':
+            nbits = 3 if (save_component_masks == MASK_BIT and mask_name == maskFileSuffix) else 1
+        rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=mask_dtype, nbits=nbits)
 
 
 def mask_v1(matchFile, noentropy=False):
@@ -256,11 +312,13 @@ def mask_v1(matchFile, noentropy=False):
     """
     component_masks = {}
 
+    metaFile = matchFile.replace('matchtag_mt.tif', 'meta.txt').replace('matchtag.tif', 'meta.txt')
+    orthoFile = metaFile.replace('meta.txt', 'ortho.tif')
+
     # Find SETSM version.
-    metaFile = matchFile.replace('matchtag.tif', 'meta.txt')
     setsmVersion = None
     if not os.path.isfile(metaFile):
-        print "No meta file, assuming SETSM version > 2.0"
+        print("No meta file, assuming SETSM version > 2.0")
         setsmVersion = 3
     else:
         setsm_pattern = re.compile("SETSM Version=(.*)")
@@ -280,7 +338,7 @@ def mask_v1(matchFile, noentropy=False):
             warn("Missing SETSM Version number in '{}'".format(metaFile))
             # Use settings for default SETSM version.
             setsmVersion = 2.03082016
-    print "Using settings for SETSM Version = {}".format(setsmVersion)
+    print("Using settings for SETSM Version = {}".format(setsmVersion))
 
     match_array, res = rat.extractRasterData(matchFile, 'array', 'res')
 
@@ -297,14 +355,14 @@ def mask_v1(matchFile, noentropy=False):
         cf = 0.5
         crop = n
 
-    edgemask = ~getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
+    mask = getDataDensityMask(match_array, kernel_size=n, density_thresh=Pmin)
     if not noentropy:
-        entropy_mask = ~getEntropyMask(matchFile.replace('matchtag.tif', 'ortho.tif'))
-        np.logical_or(edgemask, entropy_mask, out=edgemask)
-    edgemask = ~getEdgeMask(edgemask, min_data_cluster=Amin, hull_concavity=cf, crop=crop)
-    component_masks['edgemask'] = ~edgemask
+        entropy_mask = getEntropyMask(orthoFile)
+        mask = (mask & entropy_mask)
+    edgemask = getEdgeMask(~mask, min_data_cluster=Amin, hull_concavity=cf, crop=crop)
+    component_masks[MASKCOMP_EDGE_NAME] = edgemask
 
-    match_array[~edgemask] = 0
+    match_array[edgemask] = 0
     del edgemask
 
     # Set datamask filtering parameters based on SETSM version and image resolution.
@@ -327,8 +385,11 @@ def mask_v1(matchFile, noentropy=False):
     return component_masks
 
 
-def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
-            debug_component_masks=DEBUG_NONE):
+def mask_v2(demFile=None, maskFileSuffix='mask',
+            ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
+            save_component_masks=False, debug_component_masks=DEBUG_NONE,
+            postprocess_mask=None, postprocess_res=None):
+    # TODO: Write documentation for post-processing option.
     """
     Create a single mask masking ON regions of bad data in a scene,
     utilizing information from the DEM, matchtag, and panchromatic
@@ -342,6 +403,8 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     ----------
     demFile : str (file path)
         File path of the DEM raster image.
+    maskFileSuffix : str
+        Suffix for the filename of the mask raster file to be created.
     ddm_kernel_size : positive int
         Side length of the neighborhood to use for calculating the
         data density map, at native image resolution.
@@ -353,11 +416,13 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     min_data_cluster : positive int
         Minimum number of contiguous data pixels in a kept good data
         cluster in the returned mask, at `processing_res` resolution.
+    save_component_masks : bool
+        If True, return addition edge, water, and cloud mask arrays.
     debug_component_masks : int
         If DEBUG_NONE, has no effect.
         If DEBUG_ALL, perform all of the following.
         If DEBUG_MASKS, return additional
-          edge/water/cloud mask components.
+          edge/water/cloud mask component arrays.
         If DEBUG_ITHRESH, save data for interactive testing
           of threshold values for component mask generation.
 
@@ -408,10 +473,14 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     % 25-Jul-2017 12:49:25
 
     """
-    component_masks = {}
+    if postprocess_mask is not None:
+        # Handle post-processing option.
+        mask = ~rat.bwareaopen(~postprocess_mask,
+                               min_data_cluster*(processing_res/postprocess_res)**2)
+        return mask
 
     metaFile  = demFile.replace('dem.tif', 'meta.txt')
-    matchFile = demFile.replace('dem.tif', 'matchtag.tif')
+    matchFile = selectBestMatchtag(demFile)
     orthoFile = demFile.replace('dem.tif', 'ortho.tif')
 
     meta = readSceneMeta(metaFile)
@@ -431,7 +500,13 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     ortho_array = rat.extractRasterData(orthoFile, 'array')
 
     # Initialize output.
-    mask_out = np.zeros_like(dem_array, np.bool)
+    component_masks = {}
+    component_masks_out = {}
+    mask_components = [maskFileSuffix]
+    if save_component_masks:
+        mask_components.extend([MASKCOMP_EDGE_NAME, MASKCOMP_WATER_NAME, MASKCOMP_CLOUD_NAME])
+    for mask_name in mask_components:
+        component_masks_out[mask_name] = np.ones_like(dem_array, np.bool)
 
     if ddm_kernel_size is None:
         ddm_kernel_size = int(math.floor(21*2/image_res))
@@ -448,19 +523,21 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
         # warn("orthoFile '{}' dimensions {} do not match dem dimensions {}".format(
         #     orthoFile, ortho_array.shape, mask_shape))
 
-    dem_nodata = np.isnan(dem_array)  # original background for rescaling
+    # FIXME: The order of the following two statements is backwards and should be reversed, right??
+    # -f     They have been reversed.
     dem_array[dem_array == -9999] = np.nan
+    dem_nodata = np.isnan(dem_array)  # original background for rescaling
     data_density_map = getDataDensityMap(match_array, ddm_kernel_size)
     del match_array
 
     # Re-scale ortho data if WorldView correction is detected in the meta file.
     if maxDN is not None:
-        print "rescaled to: 0 to {}".format(maxDN)
+        print("rescaled to: 0 to {}".format(maxDN))
         ortho_array = rescaleDN(ortho_array, maxDN)
 
     # Convert ortho data to radiance.
     ortho_array = DG_DN2RAD(ortho_array, satID=satID, effectiveBandwith=effbw, abscalFactor=abscalfact)
-    print "radiance value range: {:.2f} to {:.2f}".format(np.nanmin(ortho_array), np.nanmax(ortho_array))
+    print("radiance value range: {:.2f} to {:.2f}".format(np.nanmin(ortho_array), np.nanmax(ortho_array)))
 
     # Resize arrays to processing resolution.
     if image_res != processing_res:
@@ -472,6 +549,7 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     else:
         processing_dx = processing_res
         processing_dy = processing_res
+    dem_nodata_r = np.isnan(dem_array)
 
     # Coordinate ascending/descending directionality affects gradient used in getSlopeMask.
     if image_dx < 0:
@@ -482,16 +560,17 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     # Set data density map no data.
     data_density_map[np.isnan(dem_array)] = np.nan
 
-    # Mask edges using dem slope.
+    # Mask edges using DEM slope.
     mask = getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res)
-    mask = handle_component_masks('edgemask_slopemask', mask, component_masks,
+    mask = handle_component_masks(MASKCOMP_EDGE_NAME+'_slopemask', mask, component_masks,
                                   (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask = getEdgeMask(~mask)
-    mask = handle_component_masks('edgemask', mask, component_masks,
-                                  (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
+    mask = handle_component_masks(MASKCOMP_EDGE_NAME, mask, component_masks,
+                                  save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     dem_array[mask] = np.nan
-    if not np.any(~np.isnan(dem_array)):
-        return mask_out
+    # TODO: Consider removing these intermediate returns, as they add complications.
+    if np.all(np.isnan(dem_array)):
+        return component_masks_out
     del mask
 
     # Mask water.
@@ -499,38 +578,52 @@ def mask_v2(demFile, ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
     data_density_map[np.isnan(dem_array)] = 0
     mask = getWaterMask(ortho_array, data_density_map, mean_sun_elevation,
                         debug_component_masks=debug_component_masks)
-    mask = handle_component_masks('watermask', mask, component_masks,
-                                  (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
+    mask = handle_component_masks(MASKCOMP_WATER_NAME, mask, component_masks,
+                                  save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     dem_array[mask] = np.nan
     data_density_map[mask] = 0
-    if not np.any(~np.isnan(dem_array)):
-        return mask_out
+    # TODO: Consider removing these intermediate returns, as they add complications.
+    if np.all(np.isnan(dem_array)):
+        return component_masks_out
     del mask
+    if MASKCOMP_EDGE_NAME in component_masks and MASKCOMP_WATER_NAME in component_masks:
+        component_masks[MASKCOMP_WATER_NAME][component_masks[MASKCOMP_EDGE_NAME]] = False
 
     # Filter clouds.
     mask = getCloudMask(dem_array, ortho_array, data_density_map,
                         debug_component_masks=debug_component_masks)
-    mask = handle_component_masks('cloudmask', mask, component_masks,
-                                  (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
+    mask = handle_component_masks(MASKCOMP_CLOUD_NAME, mask, component_masks,
+                                  save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     dem_array[mask] = np.nan
 
     # Finalize mask.
-    mask = ~np.isnan(dem_array)
-    if not np.any(mask):
-        return mask_out
-    mask = rat.bwareaopen(mask, min_data_cluster, in_place=True)
-    mask = rat.imresize(mask, image_shape, 'nearest')
-    mask[dem_nodata] = False
+    mask = np.isnan(dem_array)
+    # TODO: Consider removing these intermediate returns, as they add complications.
+    if np.all(mask):
+        return component_masks_out
+    component_masks[maskFileSuffix] = mask
 
-    mask_out = mask
+    # Usually the DEM that comes out of SETSM only has NaN pixels on its edges.
+    # Sometimes there are NaN pixels inside the data hull (from bad matching?)
+    # that will not be classified as edge, water, or cloud.
+    # We can classify these rare pixels as edge so that dilation due to resizing
+    # will result in the same overall mask coverage for the composite mask that
+    # we get in the old binary mask.
+    if save_component_masks:
+        component_masks[MASKCOMP_EDGE_NAME][dem_nodata_r] = True
+    del dem_nodata_r
 
-    if debug_component_masks in (DEBUG_ALL, DEBUG_MASKS):
-        for mask_name in component_masks:
-            mask = component_masks[mask_name]
-            mask = rat.imresize(mask, image_shape, 'nearest')
-            component_masks[mask_name] = mask
+    for mask_name in component_masks:
+        mask = component_masks[mask_name]
+        mask = rat.imresize(mask, image_shape, 'nearest')
+        if debug_component_masks == DEBUG_NONE:
+            if mask_name in (maskFileSuffix, MASKCOMP_EDGE_NAME):
+                mask[dem_nodata] = True
+            else:
+                mask[dem_nodata] = False
+        component_masks[mask_name] = mask
 
-    return ~mask_out, component_masks
+    return component_masks
 
 
 def handle_component_masks(mask_name, mask_tuple, component_masks, save_component_masks):
@@ -540,7 +633,8 @@ def handle_component_masks(mask_name, mask_tuple, component_masks, save_componen
 
     if type(mask_tuple) == tuple:
         mask, submask_components = mask_tuple
-        submask_components = {'{}_{}'.format(mask_name, k): v for k, v in submask_components.items()}
+        submask_components = {'{}_{}'.format(mask_name, submask_name): submask_array
+                              for submask_name, submask_array in submask_components.items()}
     else:
         mask = mask_tuple
 
@@ -622,7 +716,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     % point density and high standard deviation in slope.
 
     """
-    matchFile = demFile.replace('dem.tif', 'matchtag.tif')
+    matchFile = selectBestMatchtag(demFile)
 
     # Read DEM data and extract information for slope/cloud masking.
 
@@ -646,7 +740,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
                                      avg_kernel_size=avg_kernel_size))
     # No data check
     dem_array[mask] = np.nan
-    if not np.any(dem_array):
+    if not np.any(mask):
         return mask_out
     del mask
 
@@ -765,7 +859,7 @@ def mask8m(demFile, avg_kernel_size=21,
     % 25-Jul-2017 12:49:25
 
     """
-    matchFile = demFile.replace('dem.tif', 'matchtag.tif')
+    matchFile = selectBestMatchtag(demFile)
 
     # Read raster data.
     dem_array, x, y = rat.extractRasterData(demFile, 'z', 'x', 'y')
@@ -950,9 +1044,9 @@ def getEntropyMask(orthoFile, entropy_thresh=0.2,
         meta = readSceneMeta(metaFile)
         wvcFlag = meta['image_1_wv_correct']
         if wvcFlag:
-            print "wv_correct applied"
+            print("wv_correct applied")
         else:
-            print "wv_correct not applied"
+            print("wv_correct not applied")
 
     # Read ortho.
     ortho_array, image_shape, image_res = rat.extractRasterData(orthoFile, 'array', 'shape', 'res')
@@ -1220,7 +1314,10 @@ def getWaterMask(ortho_array, data_density_map,
     mask_radiance = rat.bwareaopen(mask_radiance, min_data_cluster, in_place=True)
 
     # Assemble water mask.
-    mask = (~mask_entropy & ~mask_radiance & (ortho_array != 0))
+    mask = ~(~mask_entropy & ~mask_radiance & (ortho_array != 0))
+
+    # Remove isolated clusters of data.
+    mask_pp = ~clean_mask(~mask, remove_pix=min_data_cluster, fill_pix=min_data_cluster, in_place=True)
 
     # ITHRESH_END
 
@@ -1230,10 +1327,7 @@ def getWaterMask(ortho_array, data_density_map,
         component_masks['radiance_ortho'] = mask_radiance_ortho
         component_masks['radiance_datadensity'] = mask_radiance_datadensity
 
-    # Remove isolated clusters of data.
-    mask = clean_mask(mask, remove_pix=min_data_cluster, fill_pix=min_data_cluster, in_place=True)
-
-    return ~mask, component_masks
+    return mask_pp, component_masks
 
 
 def getCloudMask(dem_array, ortho_array, data_density_map,
@@ -1366,9 +1460,8 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     elif percentile_diff > 100:
         stdev_thresh = 50
 
-    print "20/80 percentile elevation difference: {:.1f}, sigma-z threshold: {:.1f}".format(
-        percentile_diff, stdev_thresh
-    )
+    print("20/80 percentile elevation difference: {:.1f}, sigma-z threshold: {:.1f}".format(
+        percentile_diff, stdev_thresh))
 
     exec(ITHRESH_START)
 
@@ -1382,11 +1475,29 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     mask_radiance_ortho = (ortho_array > ortho_thresh)
     mask_radiance_datadensity = (data_density_map < data_density_thresh_hirad)
     mask_radiance = mask_radiance_ortho & mask_radiance_datadensity
-    mask_data_density = (data_density_map < data_density_thresh_lorad)
+    mask_datadensity = (data_density_map < data_density_thresh_lorad)
     mask_stdev = (stdev_elev_array > stdev_thresh)
 
     # Assemble cloud mask.
-    mask = (~np.isnan(dem_array) & (mask_radiance | mask_data_density | mask_stdev))
+    mask = (~np.isnan(dem_array) & (mask_radiance | mask_datadensity | mask_stdev))
+
+    # Fill holes in masked clusters.
+    mask_pp = sp_ndimage.morphology.binary_fill_holes(mask)
+
+    # Remove small masked clusters.
+    mask_pp = rat.bwareaopen(mask_pp, min_cloud_cluster, in_place=True)
+
+    # Remove thin borders caused by cliffs/ridges.
+    mask_edge = rat.imerode(mask_pp, erode_border)
+    mask_edge = rat.imdilate(mask_edge, dilate_border)
+
+    mask_pp = (mask_pp & mask_edge)
+
+    # Dilate nodata.
+    mask_pp = rat.imdilate(mask_pp, dilate_cloud)
+
+    # Remove small clusters of unfiltered data.
+    mask_pp = ~rat.bwareaopen(~mask_pp, min_nocloud_cluster, in_place=True)
 
     # ITHRESH_END
 
@@ -1394,28 +1505,11 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
         component_masks['radiance'] = mask_radiance
         component_masks['radiance_ortho'] = mask_radiance_ortho
         component_masks['radiance_datadensity'] = mask_radiance_datadensity
-        component_masks['datadensity'] = mask_data_density
+        component_masks['datadensity'] = mask_datadensity
         component_masks['stdev'] = mask_stdev
+        component_masks['edge'] = mask_edge
 
-    # Fill holes in masked clusters.
-    mask = sp_ndimage.morphology.binary_fill_holes(mask)
-
-    # Remove small masked clusters.
-    mask = rat.bwareaopen(mask, min_cloud_cluster, in_place=True)
-
-    # Remove thin borders caused by cliffs/ridges.
-    mask_edge = rat.imerode(mask, erode_border)
-    mask_edge = rat.imdilate(mask_edge, dilate_border)
-
-    mask = (mask & mask_edge)
-
-    # Dilate nodata.
-    mask = rat.imdilate(mask, dilate_cloud)
-
-    # Remove small clusters of unfiltered data.
-    mask = ~rat.bwareaopen(~mask, min_nocloud_cluster, in_place=True)
-
-    return mask, component_masks
+    return mask_pp, component_masks
 
 
 def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
@@ -1499,7 +1593,7 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
 
     if not np.any(mask):
         # No clusters exceed minimum cluster area.
-        print "Boundary filter removed all data"
+        print("Boundary filter removed all data")
         return mask
 
     mask = rat.concave_hull_image(mask, hull_concavity)
@@ -1719,6 +1813,7 @@ def readFromXml(xmlFile, xml_paramstrs):
 
 def ithresh_save(block_num, vars_dict, funcname=None):
     # TODO: Write docstring.
+    global ITHRESH_QUICK_SAVED
 
     from inspect import stack
 
@@ -1763,7 +1858,7 @@ def ithresh_save(block_num, vars_dict, funcname=None):
 
         if line.strip() != '' and not line.lstrip().startswith('#'):
             if indent is None:
-                # The first line of code after ITHRESH_START
+                # The first line of code after `ithresh_save` call
                 # sets the indentation for the whole code region.
                 indent = line[:line.find(line.lstrip()[0])]
             ithresh_code_exec += line.replace(indent, '', 1)
@@ -1788,7 +1883,7 @@ def ithresh_save(block_num, vars_dict, funcname=None):
     vars_dict_save['ITHRESH_BLOCK_NUM'] = block_num
     vars_dict_save['ITHRESH_CODE_RAW'] = ithresh_code_raw
     vars_dict_save['ITHRESH_CODE_EXEC'] = ithresh_code_exec
-    vars_dict_file = os.path.join(DEBUG_DIR, DEBUG_FNAME_PREFIX+"ithresh_{}_{}.npy".format(caller_funcName, block_num))
+    vars_dict_file = os.path.join(DEBUG_DIR, DEBUG_FNAME_PREFIX+"ithresh_{}_block{}.npy".format(caller_funcName, block_num))
     stdout.write("Dumping vars to {} ...".format(vars_dict_file))
     np.save(vars_dict_file, vars_dict_save)
     stdout.write(" done\n")
@@ -1800,7 +1895,7 @@ def ithresh_load(block_num, funcname=None):
     from inspect import stack
     caller_funcName = funcname if funcname is not None else stack()[1][3]
 
-    vars_dict_file = os.path.join(DEBUG_DIR, DEBUG_FNAME_PREFIX+"ithresh_{}_I{}.npy".format(caller_funcName, block_num))
+    vars_dict_file = os.path.join(DEBUG_DIR, DEBUG_FNAME_PREFIX+"ithresh_{}_block{}.npy".format(caller_funcName, block_num))
     if not os.path.isfile(vars_dict_file):
         return {}
 

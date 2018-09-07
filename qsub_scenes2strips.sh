@@ -23,7 +23,12 @@ echo $p5
 echo $p6
 echo $p7
 echo $p8
+echo $p9
+echo $p10
+echo $p11
+echo $p12
+echo $p13
 
-echo "${p1} ${p2} ${p3} ${p4} ${p5} ${p6} ${p7} ${p8}"
+echo "${p1} ${p2} ${p3} ${p4} ${p5} ${p6} ${p7} ${p8} ${p9} ${p10} ${p11} ${p12} ${p13}"
 
-time python $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8
+time python $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13

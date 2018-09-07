@@ -88,7 +88,7 @@ def oneBandImageToArrayZXY_projRef(rasterFile):
     return Z, X, Y, proj_ref
 
 
-def openRaster(file_or_ds):
+def openRaster(file_or_ds, target_EPSG=None):
     """
     Open a raster image as a GDAL dataset object.
 
@@ -119,7 +119,38 @@ def openRaster(file_or_ds):
     else:
         raise InvalidArgumentError("Invalid input type for `file_or_ds`: {}".format(
                                    type(file_or_ds)))
+
+    if target_EPSG is not None:
+        target_sr = osr.SpatialReference()
+        target_sr.ImportFromEPSG(target_EPSG)
+        ds = reprojectGDALDataset(ds, target_sr, 'nearest')
+
     return ds
+
+
+def reprojectGDALDataset(ds_in, sr_out, interp_str):
+
+    # dtype_gdal, promote_dtype = dtype_np2gdal(Z.dtype)
+    # if promote_dtype is not None:
+    #     Z = Z.astype(promote_dtype)
+
+    interp_gdal = interp_str2gdal(interp_str)
+
+    mem_drv = gdal.GetDriverByName('MEM')
+
+    sr_in = osr.SpatialReference()
+
+    # ds_in = mem_drv.Create('', X.size, Y.size, 1, dtype_gdal)
+    # ds_in.SetGeoTransform((X[0], X[1]-X[0], 0,
+    #                        Y[0], 0, Y[1]-Y[0]))
+    # ds_in.GetRasterBand(1).WriteArray(Z)
+
+    ds_out = mem_drv.Create('', ds_in.RasterXSize, ds_in.RasterYSize, 1)
+
+    gdal.ReprojectImage(ds_in, ds_out, '', '', interp_gdal)
+
+    return ds_out
+
 
 
 def getCornerCoords(gt, shape):
@@ -277,7 +308,7 @@ def extractRasterData(rasterFile_or_ds, *params):
     ds = openRaster(rasterFile_or_ds)
     pset = set(params)
     invalid_pnames = pset.difference({'ds', 'shape', 'z', 'array', 'x', 'y',
-                                      'dx', 'dy', 'res','geo_trans', 'corner_coords',
+                                      'dx', 'dy', 'res', 'geo_trans', 'corner_coords',
                                       'proj_ref', 'spat_ref', 'geom', 'geom_sr'})
     if invalid_pnames:
         raise InvalidArgumentError("Invalid parameter(s) for extraction: {}".format(invalid_pnames))
@@ -343,7 +374,7 @@ def extractRasterData(rasterFile_or_ds, *params):
 
 # Legacy; Retained for a visual aid of equivalences between NumPy and GDAL data types.
 # Use gdal_array.NumericTypeCodeToGDALTypeCode to convert from NumPy to GDAL data type.
-def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
+def dtype_np2gdal_old(dtype_in, form_out='gdal', force_conversion=False):
     """
     Converts between input NumPy data type (dtype_in may be either
     NumPy 'dtype' object or already a string) and output GDAL data type.
@@ -381,7 +412,7 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
     if form_out.lower() == 'gdal':
         if dtype_tup[2] == 0:
             if force_conversion:
-                print errmsg_unsupported_dtype
+                print(errmsg_unsupported_dtype)
             else:
                 raise UnsupportedDataTypeError(errmsg_unsupported_dtype)
         dtype_out = dtype_tup[1]
@@ -393,10 +424,58 @@ def dtype_np2gdal(dtype_in, form_out='gdal', force_conversion=False):
     return dtype_out
 
 
+def dtype_np2gdal(dtype_np):
+    # TODO: Write docstring.
+
+    if dtype_np == np.bool:
+        promote_dtype = np.uint8
+    elif dtype_np == np.int8:
+        promote_dtype = np.int16
+    elif dtype_np == np.float16:
+        promote_dtype = np.float32
+    else:
+        promote_dtype = None
+
+    if promote_dtype is not None:
+        warn("NumPy array data type ({}) does not have equivalent GDAL data type and is not "
+             "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype))
+        dtype_np = promote_dtype
+
+    dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_np)
+    if dtype_gdal is None:
+        raise InvalidArgumentError("`array` data type ({}) does not have equivalent "
+                                   "GDAL data type and is not supported".format(dtype_np))
+
+    return dtype_gdal, promote_dtype
+
+
+def interp_str2gdal(interp_str):
+    # TODO: Write docstring.
+
+    interp_choices = ('nearest', 'linear', 'cubic', 'spline', 'lanczos', 'average', 'mode')
+
+    interp_dict = {
+        'nearest'   : gdal.GRA_NearestNeighbour,
+        'linear'    : gdal.GRA_Bilinear,
+        'bilinear'  : gdal.GRA_Bilinear,
+        'cubic'     : gdal.GRA_Cubic,
+        'bicubic'   : gdal.GRA_Cubic,
+        'spline'    : gdal.GRA_CubicSpline,
+        'lanczos'   : gdal.GRA_Lanczos,
+        'average'   : gdal.GRA_Average,
+        'mode'      : gdal.GRA_Mode,
+    }
+
+    if interp_str not in interp_dict:
+        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_choices, interp_str))
+
+    return interp_dict[interp_str]
+
+
 def saveArrayAsTiff(array, dest,
                     X=None, Y=None, proj_ref=None, geotrans_rot_tup=(0, 0),
                     like_raster=None,
-                    nodata_val=None, dtype_out=None):
+                    nodata_val=None, dtype_out=None, nbits=None):
     """
     Save a NumPy 2D array as a single-band raster image in GeoTiff format.
 
@@ -441,10 +520,12 @@ def saveArrayAsTiff(array, dest,
     dtype_out : data type as str (e.g. 'uint16'), NumPy data type
                 (e.g. np.uint16), or numpy.dtype object (e.g. from arr.dtype)
         Numeric type of values in the output raster image.
-        If '1-bit', write output raster image in gdal.GDT_Byte data type
-        with ['NBITS=1'] option in driver. This option should only be used
-        for array data that can be correctly represented in the logical array
-        `array`.astype(np.bool).
+        If 'n-bit', write output raster image in an unsigned integer GDAL
+        data type with ['NBITS=n'] option in driver, where n is set to `nbits`
+        if `nbits` is not None. If `nbits` is None, n is calculated to be only
+        as large as necessary to capture the maximum value of `array`.
+    nbits : None or 1 <= int <= 32
+        Only applies when `dtype_out='nbits'`.
 
     Returns
     -------
@@ -462,8 +543,20 @@ def saveArrayAsTiff(array, dest,
     """
     dtype_gdal = None
     if dtype_out is not None:
-        if dtype_out == '1-bit':
-            dtype_gdal = gdal.GDT_Byte
+        if dtype_out == 'n-bit':
+            if nbits is None:
+                nbits = int(math.floor(math.log(float(max(1, np.max(array))), 2)) + 1)
+            elif type(nbits) != int or nbits < 1:
+                raise InvalidArgumentError("`nbits` must be an integer in the range [1,32]")
+            if nbits <= 8:
+                dtype_gdal = gdal.GDT_Byte
+            elif nbits <= 16:
+                dtype_gdal = gdal.GDT_UInt16
+            elif nbits <= 32:
+                dtype_gdal = gdal.GDT_UInt32
+            else:
+                raise InvalidArgumentError("Output array requires {} bits of precision, "
+                                           "but GDAL supports a maximum of 32 bits")
         else:
             if type(dtype_out) == str:
                 dtype_out = eval('np.{}'.format(dtype_out.lower()))
@@ -486,12 +579,13 @@ def saveArrayAsTiff(array, dest,
         warn("Input array data type ({}) does not have equivalent GDAL data type and is not "
              "supported, but will be safely promoted to {}".format(dtype_in, promote_dtype(1).dtype))
         array = array.astype(promote_dtype)
-        dtype_in = promote_dtype
+        dtype_in = promote_dtype(1).dtype
 
     if dtype_out is not None:
-        if dtype_out == '1-bit':
-            if dtype_in != np.uint8:
-                warn("Non-uint8 input array data type will be saved as 1-bit byte format")
+        if dtype_out == 'n-bit':
+            if not np.issubdtype(dtype_in, np.unsignedinteger):
+                warn("Input array data type ({}) is not unsigned and may be incorrectly saved "
+                     "with n-bit precision".format(dtype_in))
         elif dtype_in != dtype_out:
             warn("Input array data type ({}) differs from "
                  "output data type ({})".format(dtype_in, dtype_out(1).dtype))
@@ -526,8 +620,8 @@ def saveArrayAsTiff(array, dest,
     # Create and write the output dataset to a temporary file.
     driver = gdal.GetDriverByName('GTiff')
     args = []
-    if dtype_out == '1-bit':
-        args.extend(['NBITS=1'])
+    if dtype_out == 'n-bit':
+        args.extend(['NBITS={}'.format(nbits)])
     ds_out = driver.Create(dest_temp, shape[1], shape[0], 1, dtype_gdal, args)
     ds_out.SetGeoTransform(geo_trans)
     if proj_ref is not None:
@@ -545,8 +639,8 @@ def saveArrayAsTiff(array, dest,
     if nodata_val is not None:
         args.extend(['-a_nodata', str(nodata_val)])  # Create internal nodata mask.
 
-    # if dtype_out == '1-bit':
-    #     args.extend(['-co', 'NBITS=1'])  # Save raster data in 1-bit format.
+    # if dtype_out == 'n-bit':
+    #     args.extend(['-co', 'NBITS={}'.format(nbits)])  # Save raster data in n-bit format.
 
     args.extend(['-co', 'BIGTIFF=IF_SAFER'])  # Will create BigTIFF
                                               # if the resulting file *might* exceed 4GB.
@@ -1068,7 +1162,7 @@ def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True)
     return Zi
 
 
-def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
+def interp2_gdal(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, extrap_val=np.nan):
     """
     Resample array data from one set of x-y grid coordinates to another.
 
@@ -1088,7 +1182,7 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
         New grid x-coordinates, like `X` array.
     Yi : ndarray, 1D
         New grid y-coordinates, like `Y` array.
-    interp : str
+    interp_str : str
         Interpolation/resampling method, must be one of the following:
         'nearest', 'linear', 'cubic', 'spline', 'lanczos', 'average', 'mode'
     extrapolate : bool
@@ -1107,41 +1201,11 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan):
         The resampled array.
 
     """
-    interp_choices = ('nearest', 'linear', 'cubic', 'spline', 'lanczos', 'average', 'mode')
-    interp_dict = {
-        'nearest'   : gdal.GRA_NearestNeighbour,
-        'linear'    : gdal.GRA_Bilinear,
-        'bilinear'  : gdal.GRA_Bilinear,
-        'cubic'     : gdal.GRA_Cubic,
-        'bicubic'   : gdal.GRA_Cubic,
-        'spline'    : gdal.GRA_CubicSpline,
-        'lanczos'   : gdal.GRA_Lanczos,
-        'average'   : gdal.GRA_Average,
-        'mode'      : gdal.GRA_Mode,
-    }
-    try:
-        interp_gdal = interp_dict[interp]
-    except KeyError:
-        raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_choices, interp))
-
-    dtype_in = Z.dtype
-    promote_dtype = None
-    if dtype_in == np.bool:
-        promote_dtype = np.uint8
-    elif dtype_in == np.int8:
-        promote_dtype = np.int16
-    elif dtype_in == np.float16:
-        promote_dtype = np.float32
+    dtype_gdal, promote_dtype = dtype_np2gdal(Z.dtype)
     if promote_dtype is not None:
-        warn("`array` data type ({}) does not have equivalent GDAL data type and is not "
-             "supported, but will be safely promoted to {}".format(dtype_in, promote_dtype))
         Z = Z.astype(promote_dtype)
-        dtype_in = promote_dtype
 
-    dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_in)
-    if dtype_gdal is None:
-        raise InvalidArgumentError("`array` data type ({}) does not have equivalent "
-                                   "GDAL data type and is not supported".format(dtype_in))
+    interp_gdal = interp_str2gdal(interp_str)
 
     mem_drv = gdal.GetDriverByName('MEM')
 
@@ -3422,7 +3486,7 @@ def concave_hull_image(image, concavity,
         try:
             import matplotlib.pyplot as plt
         except ImportError as e:
-            print "matplotlib package is necessary for `debug={}`".format(debug)
+            print("matplotlib package is necessary for `debug={}`".format(debug))
             raise e
     else:
         del data_boundary
@@ -3431,7 +3495,7 @@ def concave_hull_image(image, concavity,
     tri = scipy.spatial.Delaunay(boundary_points)
 
     if debug in (True, 1):
-        print "[DEBUG] concave_hull_image (1): Initial triangulation plot"
+        print("[DEBUG] concave_hull_image (1): Initial triangulation plot")
         plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], tri.simplices.copy(), lw=1)
         plt.plot(boundary_points[:, 1], -boundary_points[:, 0], 'o', ms=1)
         plt.show()
@@ -3467,11 +3531,11 @@ def concave_hull_image(image, concavity,
     # Show triangulation traversal and allow modifying concavity parameter,
     # setting alpha_cut based on alpha_cutoff_mode, or modify alpha_cut itself.
     if debug in (True, 2):
-        print "[DEBUG] concave_hull_image (2): Triangulation traversal"
-        print "alpha_min = {}".format(alpha_min)
-        print "alpha_max = {}".format(alpha_max)
-        print "concavity = {}".format(concavity)
-        print "alpha_cut = {}".format(alpha_cut)
+        print("[DEBUG] concave_hull_image (2): Triangulation traversal")
+        print("alpha_min = {}".format(alpha_min))
+        print("alpha_max = {}".format(alpha_max))
+        print("concavity = {}".format(concavity))
+        print("alpha_cut = {}".format(alpha_cut))
         while True:
             erode_simplices = []
             erode_tris_mam = []
@@ -3540,9 +3604,9 @@ def concave_hull_image(image, concavity,
                         del mam_allowed
 
                     validInput = True
-                    print "alpha_cut = {}".format(alpha_cut)
+                    print("alpha_cut = {}".format(alpha_cut))
                 except ValueError:
-                    print "concavity must be an int or float between 0 and 1"
+                    print("concavity must be an int or float between 0 and 1")
             while not validInput:
                 try:
                     user_input = raw_input("alpha_cut = ")
@@ -3553,7 +3617,7 @@ def concave_hull_image(image, concavity,
                     alpha_cut = user_input_num
                     validInput = True
                 except ValueError:
-                    print "alpha_cut must be an int or float"
+                    print("alpha_cut must be an int or float")
 
     # Gather eroded triangles and triangles containing edges
     # with length equal to alpha_min.
@@ -3598,7 +3662,7 @@ def concave_hull_image(image, concavity,
         cchull_c = np.array(cchull_c)
 
         if debug in (True, 3):
-            print "[DEBUG] concave_hull_image (3): Concave hull boundary points"
+            print("[DEBUG] concave_hull_image (3): Concave hull boundary points")
             plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], tri.simplices.copy(), lw=1)
             if erode_simplices:
                 plt.triplot(boundary_points[:, 1], -boundary_points[:, 0], erode_simplices, color='red', lw=1)
@@ -3621,13 +3685,13 @@ def concave_hull_image(image, concavity,
         try:
             from tifffile import imsave
         except ImportError as e:
-            print "`tifffile` package is required for `debug={}`".format(debug)
+            print("`tifffile` package is required for `debug={}`".format(debug))
             raise e
         debug_image = np.zeros(image.shape, dtype=np.int8)
         debug_image[image_cchull] = 1
         debug_image[data_boundary] += 2
         imsave(debug_image_path, debug_image)
-        print "'{}' saved".format(debug_image_path)
+        print("'{}' saved".format(debug_image_path))
 
     return image_cchull
 
@@ -3764,7 +3828,7 @@ def getDataBoundariesPoly(array, X, Y, nodata_val=np.nan, coverage='all',
         # the right and bottom edges of all data boundaries must grow by one pixel so
         # that their full extents may be recorded upon grid coordinate lookup of data
         # boundary nodes after each boundary ring is traced.
-        print "Performing Bi-directional Boundary Skewing"
+        print("Performing Bi-directional Boundary Skewing")
         outer_boundary = (
             sp_ndimage.binary_dilation(data_array, structure=np.ones((3, 3))) != data_array
         )
@@ -3794,7 +3858,7 @@ def getDataBoundariesPoly(array, X, Y, nodata_val=np.nan, coverage='all',
             home_node = (rowNum, colNum)
 
             # Trace the data cluster.
-            print "Tracing ring from home node {}".format(home_node)
+            print("Tracing ring from home node {}".format(home_node))
             ring_route = outline(data_boundary, 1, start=home_node)
 
             # Create ring geometry.
@@ -3814,7 +3878,7 @@ def getDataBoundariesPoly(array, X, Y, nodata_val=np.nan, coverage='all',
             # Search for more rings that may intersect this column in the data boundary array.
             rowNum_dataB = np.where(data_boundary[:, colNum])[0]
 
-    print "Found {} rings!".format(ring_count)
+    print("Found {} rings!".format(ring_count))
     return poly
 
 

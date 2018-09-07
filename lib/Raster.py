@@ -216,8 +216,8 @@ class Raster:
             if spat_ref is not None:
                 value.AssignSpatialReference(spat_ref)
             else:
-                print ("WARNING: Spatial reference could not be extracted from raster dataset,"
-                       " so extracted geometry has not been assigned a spatial reference.")
+                print("WARNING: Spatial reference could not be extracted from raster dataset,"
+                      " so extracted geometry has not been assigned a spatial reference.")
         else:
             raise InvalidArgumentError("Invalid parameter for extraction: {}".format(pname))
 
@@ -283,8 +283,8 @@ class Raster:
                 if spat_ref is not None:
                     value.AssignSpatialReference(spat_ref)
                 else:
-                    print ("WARNING: Spatial reference could not be extracted from raster dataset,"
-                           " so extracted geometry has not been assigned a spatial reference.")
+                    print("WARNING: Spatial reference could not be extracted from raster dataset,"
+                          " so extracted geometry has not been assigned a spatial reference.")
             value_list.append(value)
 
         return value_list
@@ -816,7 +816,7 @@ class Raster:
                 return
             elif eval('self.{}'.format(pname)) is not None:
                 # The parameter is already set. Without a value argument, there is nothing to do.
-                print "This Raster's '{}' data member is already set".format(pname)
+                print("This Raster's '{}' data member is already set".format(pname))
                 return
         elif type(value) == str and value == 'extract':
             value = self.extract_param(pname)
@@ -1038,7 +1038,7 @@ class Raster:
             raise InvalidArgumentError("Raster does not have param `pname` '{}'".format(pname))
         value = eval('self.{}'.format(pname))
         if value is None:
-            print "No value is stored in this Raster's '{}' parameter to propagate".format(pname)
+            print("No value is stored in this Raster's '{}' parameter to propagate".format(pname))
             return
         exec('self.{} = None'.format(pname))
         self.set_param(pname, value, True, hold, set_core, False)

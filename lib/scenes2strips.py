@@ -15,14 +15,19 @@ import numpy as np
 from scipy import interpolate
 
 import raster_array_tools as rat
-from filter_scene import getDataDensityMap
+from filter_scene import getDataDensityMap, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT, mask_v2
+from testing.test import validateTestFileSave
 
 
 # The spatial reference of the strip, set at the beginning of scenes2strips()
-# to the spatial reference of the first scene dem in order and used for
+# to the spatial reference of the first scene DEM in order and used for
 # comparison to the spatial references of all other source raster files.
 __STRIP_SPAT_REF__ = None
 
+
+class InvalidArgumentError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
 
 class SpatialRefError(Exception):
     def __init__(self, msg=""):
@@ -33,7 +38,10 @@ class RasterDimensionError(Exception):
         super(Exception, self).__init__(msg)
 
 
-def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
+def scenes2strips(demdir, demFiles,
+                  maskFileSuffix=None, filter_options=(),
+                  trans_guess=None, rmse_guess=None, hold_guess=True,
+                  max_coreg_rmse=1):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -61,18 +69,35 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
     %
     % Version 3.1, Ian Howat, Ohio State University, 2015.
 
-    If maskFileSuffix='edgemask', edge and data masks identified as the dem
+    If maskFileSuffix='edgemask', edge and data masks identified as the DEM
     filename with the _dem.tif replaced by _edgemask.tif and _datamask.tif,
     respectively, will be applied.
+
     """
+    from batch_scenes2strips import selectBestMatchtag
 
     # Order scenes in north-south or east-west direction by aspect ratio.
-    print "Ordering {} scenes".format(len(demFiles))
-    demFiles_ordered = orderPairs(demdir, demFiles)
+    if trans_guess is None and rmse_guess is None:
+        print("Ordering {} scenes".format(len(demFiles)))
+        demFiles_ordered = orderPairs(demdir, demFiles)
+    elif trans_guess is not None and trans_guess.shape[1] != len(demFiles):
+        print("`trans_guess`:")
+        print(trans_guess)
+        raise InvalidArgumentError("`trans_guess` array must be of shape (3, N) where N=len(demFiles), "
+                                   "but was {}".format(trans_guess.shape))
+    elif rmse_guess is not None and rmse_guess.shape[1] != len(demFiles):
+        print("`rmse_guess`:")
+        print(rmse_guess)
+        raise InvalidArgumentError("`rmse_guess` array must be of shape (1, N) where N=len(demFiles), "
+                                   "but was {}".format(rmse_guess.shape))
+    else:
+        # Files should already be properly ordered if a guess is provided.
+        # Running `orderPairs` on them could detrimentally change their order.
+        demFiles_ordered = demFiles
 
     # Initialize output stats.
-    trans = np.zeros((3, len(demFiles_ordered)))
-    rmse = np.zeros((1, len(demFiles_ordered)))
+    trans = np.zeros((3, len(demFiles_ordered))) if trans_guess is None else trans_guess.copy()
+    rmse = np.zeros((1, len(demFiles_ordered))) if rmse_guess is None else rmse_guess.copy()
 
     # Get projection reference of the first scene to be used in equality checks
     # with the projection reference of all scenes that follow.
@@ -80,44 +105,36 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
     __STRIP_SPAT_REF__ = rat.extractRasterData(os.path.join(demdir, demFiles_ordered[0]), 'spat_ref')
 
     # File loop.
+    segment_break = False
     for i in range(len(demFiles_ordered)):
 
         # Construct filenames.
         demFile = os.path.join(demdir, demFiles_ordered[i])
-        matchFile = demFile.replace('dem.tif', 'matchtag.tif')
+        matchFile = selectBestMatchtag(demFile)
         orthoFile = demFile.replace('dem.tif', 'ortho.tif')
         maskFile = None
-        if maskFileSuffix is not None:
-            if maskFileSuffix == 'legacy':
-                dataMaskFile = demFile.replace('dem.tif', 'datamask.tif')
-                edgeMaskFile = demFile.replace('dem.tif', 'edgemask.tif')
-            else:
-                maskFile = demFile.replace('dem.tif', maskFileSuffix+'.tif')
+        if maskFileSuffix is None:
+            print("No mask applied")
         else:
-            print "No mask applied"
+            maskFile = demFile.replace('dem.tif', maskFileSuffix+'.tif')
 
-        print "scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile)
+        print("scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
 
         try:
-            if maskFileSuffix == 'edgemask/datamask':
-                x, y, z, m, o, md, me = loadData(demFile, matchFile, orthoFile, dataMaskFile, edgeMaskFile)
-            else:
-                x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile)
+            x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile)
         except:
-            print "Data read error:"
+            print("Data read error:")
             print_exc()
-            print "...skipping"
-            continue
-
-        # Check for no data.
-        if md.all():
-            print "No data, skipping"
+            print("...skipping")
             continue
 
         # Apply masks.
-        if maskFileSuffix == 'edgemask/datamask':
-            x, y, z, m, o = applyMasks(x, y, z, m, o, md, me)
-        x, y, z, m, o = applyMasks(x, y, z, m, o, md)
+        x, y, z, m, o, md = applyMasks(x, y, z, m, o, md, filter_options, maskFileSuffix)
+
+        # Check for no data.
+        if ~np.any(~np.isnan(z)):
+            print("All data is masked, skipping")
+            continue
 
         dx = x[1] - x[0]
         dy = y[1] - y[0]
@@ -125,13 +142,13 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # Fix grid so that x, y coordinates of
         # pixels in overlapping scenes will match up.
         if ((x[1] / dx) % 1 != 0) or ((y[1] / dy) % 1 != 0):
-            x, y, z, m, o = regrid(x, y, z, m, o)
+            x, y, z, m, o, md = regrid(x, y, z, m, o, md)
 
         # If this is the first scene in strip,
         # set as strip and continue to next scene.
         if 'X' not in vars():
-            X, Y, Z, M, O = x, y, z, m, o
-            del x, y, z, m, o
+            X, Y, Z, M, O, MD = x, y, z, m, o, md
+            del x, y, z, m, o, md
             continue
 
         # Pad new arrays to stabilize interpolation.
@@ -139,6 +156,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         z = np.pad(z, buff, 'constant', constant_values=np.nan)
         m = np.pad(m, buff, 'constant', constant_values=0)
         o = np.pad(o, buff, 'constant', constant_values=0)
+        md = np.pad(md, buff, 'constant', constant_values=1)
         x = np.concatenate((x[0]  - dx*np.arange(buff, 0, -1), x,
                             x[-1] + dx*np.arange(1, buff+1)))
         y = np.concatenate((y[0]  + dx*np.arange(buff, 0, -1), y,
@@ -148,25 +166,25 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         if x[0] < X[0]:
             X1 = np.arange(x[0], X[0], dx)
             X = np.concatenate((X1, X))
-            Z, M, O = expandCoverage(Z, M, O, X1, direction='left')
+            Z, M, O, MD = expandCoverage(Z, M, O, MD, X1, direction='left')
             del X1
         if x[-1] > X[-1]:
             X1 = np.arange(X[-1]+dx, x[-1]+dx, dx)
             X = np.concatenate((X, X1))
-            Z, M, O = expandCoverage(Z, M, O, X1, direction='right')
+            Z, M, O, MD = expandCoverage(Z, M, O, MD, X1, direction='right')
             del X1
         if y[0] > Y[0]:
             Y1 = np.arange(y[0], Y[0], -dx)
             Y = np.concatenate((Y1, Y))
-            Z, M, O = expandCoverage(Z, M, O, Y1, direction='up')
+            Z, M, O, MD = expandCoverage(Z, M, O, MD, Y1, direction='up')
             del Y1
         if y[-1] < Y[-1]:
             Y1 = np.arange(Y[-1]-dx, y[-1]-dx, -dx)
             Y = np.concatenate((Y, Y1))
-            Z, M, O = expandCoverage(Z, M, O, Y1, direction='down')
+            Z, M, O, MD = expandCoverage(Z, M, O, MD, Y1, direction='down')
             del Y1
 
-        # Map new dem pixels to swath. These must return integers. If not,
+        # Map new DEM pixels to swath. These must return integers. If not,
         # interpolation will be required, which is currently not supported.
         c0 = np.where(x[0]  == X)[0][0]
         c1 = np.where(x[-1] == X)[0][0] + 1
@@ -179,6 +197,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         Zsub = np.copy(Z[r0:r1, c0:c1])
         Msub = np.copy(M[r0:r1, c0:c1])
         Osub = np.copy(O[r0:r1, c0:c1])
+        MDsub = np.copy(MD[r0:r1, c0:c1])
 
         # NEW MOSAICKING CODE
 
@@ -189,9 +208,8 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Check for segment break.
         if np.count_nonzero(A) <= cmin:
-            demFiles_ordered = demFiles_ordered[:i]
-            trans = trans[:, :i]
-            rmse = rmse[:, :i]
+            print("Not enough overlap, segment break")
+            segment_break = True
             break
 
         r, c = cropBorder(A, 0, buff)
@@ -206,7 +224,7 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # TODO: Remove redundant scenes from strip metadata?
         # Check for redundant scene.
         if np.count_nonzero(A) <= cmin:
-            print "Redundant scene, skipping"
+            print("Redundant scene, skipping")
             continue
 
         # Data in strip and nodata in scene is a two.
@@ -291,11 +309,13 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         Zsub[strip_nodata] = np.nan
         Msub[strip_nodata] = 0
         Osub[strip_nodata] = 0
+        MDsub[strip_nodata] = 0
 
         scene_nodata = (W == 1)
         z[scene_nodata] = np.nan
         m[scene_nodata] = 0
         o[scene_nodata] = 0
+        md[scene_nodata] = 0
 
         del strip_nodata, scene_nodata
 
@@ -305,9 +325,8 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
 
         # Check for segment break.
         if not np.any(P0):
-            demFiles_ordered = demFiles_ordered[:i]
-            trans = trans[:, :i]
-            rmse = rmse[:, :i]
+            print("Not enough data overlap, segment break")
+            segment_break = True
             break
 
         P1 = getDataDensityMap(m[r[0]:r[1], c[0]:c[1]]) > 0.9
@@ -315,22 +334,40 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         # TODO: Remove redundant scenes from strip metadata?
         # Check for redundant scene.
         if not np.any(P1):
-            print "Redundant scene, skipping"
+            print("Redundant scene, skipping")
             continue
 
         # Coregister this scene to the strip mosaic.
-        trans[:, i], rmse[0, i] = coregisterdems(
-            Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
-               x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
-            P0, P1
-        )[[1, 2]]
+        if trans_guess is not None and hold_guess and rmse_guess is None:
+            pass
+        else:
+            trans[:, i], rmse[0, i] = coregisterdems(
+                Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
+                   x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
+                P0, P1, (trans_guess[:, i] if trans_guess is not None else None)
+            )[[1, 2]]
+
+            if rmse_guess is not None:
+                rmse_change = rmse[0, i] - rmse_guess[0, i]
+                stats_str = "First-run rmse={:.3f}, second-run rmse={:.3f}, change={:.3f}".format(
+                    rmse_guess[0, i], rmse[0, i], rmse_change)
+                print(stats_str)
+                statsFile = validateTestFileSave('s2s_stats.log', overwrite=True)
+                print("Writing to {} ...".format(statsFile))
+                statsFile_fp = open(statsFile, 'a')
+                statsFile_fp.write('{}: {}\n'.format(demFiles_ordered[i], stats_str))
+                statsFile_fp.close()
+
+            if hold_guess:
+                if trans_guess is not None:
+                    trans = trans_guess.copy()
+                if rmse_guess is not None:
+                    rmse = rmse_guess.copy()
 
         # Check for segment break.
         if np.isnan(rmse[0, i]) or rmse[0, i] > max_coreg_rmse:
-            print "Unable to coregister, breaking segment"
-            demFiles_ordered = demFiles_ordered[:i]
-            trans = trans[:, :i]
-            rmse = rmse[:, :i]
+            print("Unable to coregister, segment break")
+            segment_break = True
             break
 
         # Interpolation grid
@@ -343,11 +380,11 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         if len(np.unique(np.diff(yi))) > 1:
             yi = np.round(yi, 4)
 
-        # Interpolate the floating data to the reference grid.
+        # Interpolate floating data to the reference grid.
         zi = rat.interp2_gdal(xi, yi, z-trans[0, i], Xsub, Ysub, 'linear')
         del z
 
-        # Interpolate the mask to the same grid.
+        # Interpolate matchtag to the same grid.
         mi = rat.interp2_gdal(xi, yi, m.astype(np.float32), Xsub, Ysub, 'nearest')
         mi[np.isnan(mi)] = 0  # convert back to uint8
         mi = mi.astype(np.bool)
@@ -358,6 +395,12 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         oi[oi == 0] = np.nan  # Set border to NaN so it won't be interpolated.
         oi = rat.interp2_gdal(xi, yi, oi, Xsub, Ysub, 'cubic')
         del o
+
+        # Interpolate mask to the same grid.
+        mdi = rat.interp2_gdal(xi, yi, md.astype(np.float32), Xsub, Ysub, 'nearest')
+        mdi[np.isnan(mdi)] = 0  # convert back to uint8
+        mdi = mdi.astype(np.uint8)
+        del md
 
         del Xsub, Ysub
 
@@ -405,6 +448,15 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
         O[r0:r1, c0:c1] = A
         del A
 
+        # For the mask, bitwise combination.
+        MD[r0:r1, c0:c1] = np.bitwise_or(MDsub, mdi)
+        del MDsub, mdi
+
+    if segment_break:
+        demFiles_ordered = demFiles_ordered[:i]
+        trans = trans[:, :i]
+        rmse = rmse[:, :i]
+
     # Crop to data.
     if 'Z' in vars() and np.any(~np.isnan(Z)):
         rcrop, ccrop = cropBorder(Z, np.nan)
@@ -414,14 +466,15 @@ def scenes2strips(demdir, demFiles, maskFileSuffix=None, max_coreg_rmse=1):
             Z = Z[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             M = M[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             O = O[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
+            MD = MD[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             Z[np.isnan(Z)] = -9999
     else:
-        X, Y, Z, M, O = None, None, None, None, None
+        X, Y, Z, M, O, MD = None, None, None, None, None, None
 
-    return X, Y, Z, M, O, trans, rmse, demFiles_ordered, __STRIP_SPAT_REF__
+    return X, Y, Z, M, O, MD, trans, rmse, demFiles_ordered, __STRIP_SPAT_REF__
 
 
-def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
+def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
     """
     % COREGISTERDEM registers a floating to a reference DEM
 
@@ -430,27 +483,31 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
     % reference DEM in z1 using the iterative procedure in Nuth and Kaab,
     % 2010. z2r is the regiestered DEM, p is the z,x,y transformation
     % parameters and rms is the rms of the transformation in the vertical.
+
     """
+    if (m1 is None) ^ (m2 is None):
+        raise InvalidArgumentError("Either none of both of arguments 'm1' and 'm2' must be provided")
 
     # Maximum offset allowed
     maxp = 15
 
     if len(x1) < 3 or len(y1) < 3 or len(x2) < 3 or len(y2) < 3:
-        raise RasterDimensionError("minimum array dimension is 3")
+        raise RasterDimensionError("Minimum array dimension is 3")
 
     interpflag = True
     if (len(x1) == len(x2)) and (len(y1) == len(y2)):
         if not np.any(x2 - x1) and not np.any(y2 - y1):
             interpflag = False
 
-    if len(varargin) == 2:
-        m1 = varargin[0]
-        m2 = varargin[1]
+    # initial trans variable
+    if trans_guess is not None:
+        p = np.array([trans_guess]).T
+    else:
+        p = np.zeros((3, 1))
+    d0 = np.inf            # initial rmse
 
     rx = x1[1] - x1[0]     # coordinate spacing
-    p  = np.zeros((3, 1))  # initial trans variable
     pn = p.copy()          # iteration variable
-    d0 = np.inf            # initial rmse
     it = 1                 # iteration step
 
     while it:
@@ -459,14 +516,14 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
             # Interpolate the floating data to the reference grid.
             z2n = rat.interp2_gdal(x2 - pn[1], y2 - pn[2], z2 - pn[0],
                                    x1, y1, 'linear')
-            if 'm2' in vars():
+            if m2 is not None:
                 m2n = rat.interp2_gdal(x2 - pn[1], y2 - pn[2], m2.astype(np.float32),
                                        x1, y1, 'nearest')
                 m2n[np.isnan(m2n)] = 0  # convert back to uint8
                 m2n = m2n.astype(np.bool)
         else:
             z2n = z2 - pn[0]
-            if 'm2' in vars():
+            if m2 is not None:
                 m2n = m2
 
         interpflag = True
@@ -480,11 +537,11 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, *varargin):
         # Difference grids.
         dz = z2n - z1
 
-        if 'm1' in vars() and 'm2' in vars():
+        if m1 is not None and m2 is not None:
             dz[~m2n | ~m1] = np.nan
 
         if not np.any(~np.isnan(dz)):
-            print "No overlap"
+            print("No overlap")
             z2out = z2
             p = np.full((3, 1), np.nan)
             d0 = np.nan
@@ -608,7 +665,7 @@ def orderPairs(demdir, fnames):
             # Remove the geometry of this scene (and its index) from the input list.
             indexed_geoms.remove(selected_tup)
         else:
-            print "Break in overlap detected, returning this segment only"
+            print("Break in overlap detected, returning this segment only")
             break
 
     return [fnames[i] for i in ordered_fname_indices]
@@ -644,7 +701,7 @@ def rectFootprint(*geoms):
     return ogr.Geometry(wkt=fp_wkt)
 
 
-def loadData(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
+def loadData(demFile, matchFile, orthoFile, maskFile):
     """
     Load data files and perform basic conversions.
     """
@@ -680,34 +737,37 @@ def loadData(demFile, matchFile, orthoFile, maskFile, edgemaskFile=None):
     else:
         o = np.zeros(z.shape, dtype=np.uint16)
 
-    if maskFile is not None:
-        md = rat.extractRasterData(maskFile, 'array').astype(np.bool)
+    if maskFile is None:
+        md = np.zeros_like(z, dtype=np.uint8)
+    else:
+        md = rat.extractRasterData(maskFile, 'array').astype(np.uint8)
         if md.shape != z.shape:
             raise RasterDimensionError("maskFile '{}' dimensions {} do not match dem dimensions {}".format(
                                        maskFile, md.shape, z.shape))
-    else:
-        md = np.ones(z.shape, dtype=np.bool)
 
-    if edgemaskFile is not None:
-        me = rat.extractRasterData(edgemaskFile, 'array').astype(np.bool)
-        if me.shape != z.shape:
-            raise RasterDimensionError("edgemaskFile '{}' dimensions {} do not match dem dimensions {}".format(
-                                       maskFile, me.shape, z.shape))
-
-    if edgemaskFile is not None:
-        return x_dem, y_dem, z, m, o, md, me
-    else:
-        return x_dem, y_dem, z, m, o, md
+    return x_dem, y_dem, z, m, o, md
 
 
-def applyMasks(x, y, z, m, o, md, me=None):
+def applyMasks(x, y, z, m, o, md, filter_options=(), maskFileSuffix=None):
     """
     Apply masks to the scene DEM, matchtag, and ortho matrices.
     """
-    z[md] = np.nan
-    m[md] = 0
-    if me is not None:
-        o[me] = 0
+
+    if len(filter_options) > 0:
+        mask_select = np.bitwise_and(md, np.ones_like(md))
+        if 'nowater' not in filter_options:
+            mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_WATER_BIT)).astype(np.bool)] = 1
+        if 'nocloud' not in filter_options:
+            mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_CLOUD_BIT)).astype(np.bool)] = 1
+    else:
+        mask_select = md
+
+    mask = (mask_select > 0)
+    if maskFileSuffix == 'mask':
+        mask = mask_v2(postprocess_mask=mask, postprocess_res=abs(x[1]-x[0]))
+
+    z[mask] = np.nan
+    m[mask] = 0
 
     # If there is any good data, crop the matrices of bordering NaNs.
     if np.any(~np.isnan(z)):
@@ -718,8 +778,9 @@ def applyMasks(x, y, z, m, o, md, me=None):
         z = z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
         m = m[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
         o = o[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        md = md[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
 
-    return x, y, z, m, o
+    return x, y, z, m, o, md
 
 
 def cropBorder(matrix, border_val, buff=0):
@@ -759,7 +820,7 @@ def cropBorder(matrix, border_val, buff=0):
     return (rowcrop_i, rowcrop_j+1), (colcrop_i, colcrop_j+1)
 
 
-def regrid(x, y, z, m, o):
+def regrid(x, y, z, m, o, md):
     """
     Interpolate scene DEM, matchtag, and ortho matrices
     to a new set of x-y grid coordinates.
@@ -783,10 +844,14 @@ def regrid(x, y, z, m, o):
     o[np.isnan(o)] = 0  # Convert back to uint16.
     o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
 
-    return xi, yi, zi, m, o
+    md = rat.interp2_gdal(x, y, md.astype(np.float32), xi, yi, 'nearest')
+    md[np.isnan(md)] = 0  # Convert back to uint8.
+    md = md.astype(np.uint8)
+
+    return xi, yi, zi, m, o, md
 
 
-def expandCoverage(Z, M, O, R1, direction):
+def expandCoverage(Z, M, O, MD, R1, direction):
     """
     Expand strip coverage for DEM, matchtag, and ortho matrices
     based upon the direction of expansion.
@@ -799,19 +864,21 @@ def expandCoverage(Z, M, O, R1, direction):
         Z1 = np.full((R1.size, Z.shape[1]), np.nan, dtype=np.float32)
         M1 = np.full((R1.size, M.shape[1]), False,  dtype=np.bool)
         O1 = np.full((R1.size, O.shape[1]), 0,      dtype=np.uint16)
+        MD1 = np.full((R1.size, MD.shape[1]), 1,    dtype=np.uint8)
         axis_num = 0
     else:
         # R1 is X1.
         Z1 = np.full((Z.shape[0], R1.size), np.nan, dtype=np.float32)
         M1 = np.full((M.shape[0], R1.size), False,  dtype=np.bool)
         O1 = np.full((O.shape[0], R1.size), 0,      dtype=np.uint16)
+        MD1 = np.full((MD.shape[0], R1.size), 1,    dtype=np.uint8)
         axis_num = 1
 
     if direction in ('left', 'up'):
-        pairs = [[Z1, Z], [M1, M], [O1, O]]
+        pairs = [[Z1, Z], [M1, M], [O1, O], [MD1, MD]]
     else:
-        pairs = [[Z, Z1], [M, M1], [O, O1]]
+        pairs = [[Z, Z1], [M, M1], [O, O1], [MD, MD1]]
 
-    Z, M, O = [np.concatenate(p, axis=axis_num) for p in pairs]
+    Z, M, O, MD = [np.concatenate(p, axis=axis_num) for p in pairs]
 
-    return Z, M, O
+    return Z, M, O, MD

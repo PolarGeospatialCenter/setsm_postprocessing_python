@@ -110,29 +110,29 @@ def cv():
         'Xsub', 'Ysub', 'Zsub', 'Msub', 'Osub'
     )
 
-    print
+    print()
     for cv_test_var in cv_test_vars:
         if cv_test_var in vars():
 
             cv_test_expr = 'str({}.dtype)'.format(cv_test_var)
-            print '> {}.dtype = {}'.format(cv_test_var, eval(cv_test_expr))
+            print('> {}.dtype = {}'.format(cv_test_var, eval(cv_test_expr)))
 
             cv_test_expr = '{}.shape'.format(cv_test_var)
             cv_test_var_shape = eval(cv_test_expr)
             if len(cv_test_var_shape) == 1:
                 cv_test_var_shape = (1, cv_test_var_shape[0])
-            print '    shape = {}'.format(str(cv_test_var_shape).replace('L', ''))
+            print('    shape = {}'.format(str(cv_test_var_shape).replace('L', '')))
 
             cv_test_expr = 'np.nanmin({})'.format(cv_test_var)
-            print '    min = {}'.format(eval(cv_test_expr))
+            print('    min = {}'.format(eval(cv_test_expr)))
 
             cv_test_expr = 'np.nanmax({})'.format(cv_test_var)
-            print '    max = {}'.format(eval(cv_test_expr))
+            print('    max = {}'.format(eval(cv_test_expr)))
 
         elif cv_test_var == '-':
-            print '------------------'
+            print('------------------')
 
-    print
+    print()
 
     del cv_test_vars, cv_test_var, cv_test_var_shape, cv_test_expr
 
@@ -261,9 +261,9 @@ def getCalledFunctionArgs(depth=1, funcName=None):
             funcCall = ''.join([str(line).strip() for line in func_frame_record[4]])
 
     except:
-        print "STACK AT ERROR:"
+        print("STACK AT ERROR:")
         for fr in stack:
-            print fr
+            print(fr)
         raise
 
     args_pattern_str = "\w" if funcName is None else funcName
@@ -365,7 +365,7 @@ def getNextImgnum(runnum=getRunnum(), compare=False, concurrent=False):
     return next_imgnum
 
 
-def validateTestFileSave(fname_or_file):
+def validateTestFileSave(fname_or_file, overwrite=False):
     if not fname_or_file.endswith('.tif'):
         fname_or_file += '.tif'
 
@@ -374,7 +374,7 @@ def validateTestFileSave(fname_or_file):
     else:
         testFile = fname_or_file
 
-    while os.path.isfile(testFile):
+    while os.path.isfile(testFile) and not overwrite:
         opt = raw_input("Test file '{}' already exists. Overwrite? (y/n): ".format(testFile.replace(TESTDIR, '{TESTDIR}/')))
         if opt.strip().lower() == 'y':
             break
@@ -488,8 +488,8 @@ def getImageRasterAutoFname(array, flavor_name, matchkey, descr, compare, concur
     return testFname
 
 
-def saveImage(array, fname_or_file='testImage_py.tif'):
-    testFile = validateTestFileSave(fname_or_file)
+def saveImage(array, fname_or_file='testImage_py.tif', overwrite=False):
+    testFile = validateTestFileSave(fname_or_file, overwrite)
     if testFile is None:
         return
 
@@ -498,7 +498,7 @@ def saveImage(array, fname_or_file='testImage_py.tif'):
         image.save(testFile)
     else:
         imsave(testFile, array)
-    print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
+    print("'{}' saved".format(testFile))
 
 
 def sia(array, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, array_name=None):
@@ -546,8 +546,9 @@ def sia_one(array, flavor=None, matchkey=None, descr='', compare=False, concurre
 def saveRaster(Z, X=None, Y=None, fname_or_file='testRaster_py.tif',
                proj_ref=None, geotrans_rot_tup=(0, 0),
                like_raster=None,
-               nodata_val=None, dtype_out=None):
-    testFile = validateTestFileSave(fname_or_file)
+               nodata_val=None, dtype_out=None,
+               overwrite=False):
+    testFile = validateTestFileSave(fname_or_file, overwrite)
     if testFile is None:
         return
 
@@ -561,7 +562,7 @@ def saveRaster(Z, X=None, Y=None, fname_or_file='testRaster_py.tif',
                         like_raster,
                         nodata_val, dtype_out)
 
-    print "'{}' saved".format(testFile.replace(TESTDIR, '{TESTDIR}/'))
+    print("'{}' saved".format(testFile))
 
 
 def sra(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concurrent=False, proj_ref=None, array_name=None):
@@ -693,4 +694,4 @@ def saveDBP(demFile):
 
     # Dereference datasource to initiate write to disk.
     ds = None
-    print "'{}' saved".format(shapefileFile)
+    print("'{}' saved".format(shapefileFile))

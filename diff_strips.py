@@ -69,7 +69,7 @@ def main():
         if not os.path.isfile(matchFile2):
             parser.error("matchtag corresponding to dem2 does not exist: '{}'".format(matchFile2))
     if not os.path.isdir(os.path.dirname(outdir)):
-        print "Creating directory for output results file: {}".format(outdir)
+        print("Creating directory for output results file: {}".format(outdir))
         os.makedirs(outdir)
 
     diff_strips(demFile1, demFile2, diff_demFile, save_match)
@@ -171,7 +171,7 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
 
     if save_match:
         # Load matchtag data into arrays.
-        print "Loading matchtag data"
+        print("Loading matchtag data")
         m1 = rat.extractRasterData(matchFile1, 'array')
         m2 = rat.extractRasterData(matchFile2, 'array')
         m1 = m1[z1_r0:z1_r1, z1_c0:z1_c1]
@@ -180,7 +180,7 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
         # del m1, m2
 
     # Load DEM data into arrays.
-    print "Loading raster data"
+    print("Loading raster data")
     z1 = rat.extractRasterData(demFile1, 'z')
     z2 = rat.extractRasterData(demFile2, 'z')
     z1[z1 == -9999] = np.nan
@@ -215,50 +215,49 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
     # trans_guess = np.reshape(trans_guess, (3, 1))
 
     # Coregister the two DEMs.
-    print "Beginning coregistration"
+    print("Beginning coregistration")
     _, trans, rmse = coregisterdems(x1_crop, y1_crop, z1_crop, x2_crop, y2_crop, z2_crop)
     dz, dx, dy = trans
 
     # Interpolate comparison DEM to reference DEM.
-    print "Interpolating dem2 to dem1"
+    print("Interpolating dem2 to dem1")
     z2i = rat.interp2_gdal(x2-dx, y2-dy, z2-dz, x1, y1, 'linear')
     del z2
 
     # Difference DEMs and save result.
-    print "Saving difference DEM"
+    print("Saving difference DEM")
     z_diff = z2i - z1
     z_diff[np.isnan(z_diff)] = -9999
     del z1, z2i
     rat.saveArrayAsTiff(z_diff, diff_demFile, x1, y1, spat_ref, nodata_val=-9999, dtype_out='float32')
 
-    print "Extracting footprint vertices for metadata"
+    print("Extracting footprint vertices for metadata")
     fp_vertices = rat.getFPvertices(z_diff, y1, x1, label=-9999, label_type='nodata', replicate_matlab=True)
     del z_diff
 
     if save_match:
         if 'm2' not in vars():
-            print "Loading match2"
+            print("Loading match2")
             m2 = rat.extractRasterData(matchFile2, 'array').astype(np.float32)
             m2 = m2[z2_r0:z2_r1, z2_c0:z2_c1]
         elif m2.dtype != np.float32:
             m2 = m2.astype(np.float32)
 
-        print "Interpolating match2 to match1"
+        print("Interpolating match2 to match1")
         m2i = rat.interp2_gdal(x2-dx, y2-dy, m2, x1, y1, 'nearest')
         del m2
         m2i[np.isnan(m2i)] = 0  # convert back to uint8
         m2i = m2i.astype(np.bool)
 
         if 'm1' not in vars():
-            print "Loading match1"
+            print("Loading match1")
             m1 = rat.extractRasterData(matchFile1, 'array').astype(np.bool)
             m1 = m1[z1_r0:z1_r1, z1_c0:z1_c1]
         elif m1.dtype != np.bool:
             m1 = m1.astype(np.bool)
 
-        print "Saving difference matchtag"
-        m_diff = m2i
-        np.logical_and(m1, m2i, m_diff)
+        print("Saving difference matchtag")
+        m_diff = (m1 & m2i)
         del m1
         rat.saveArrayAsTiff(m_diff, diff_matchFile, x1, y1, spat_ref, nodata_val=0, dtype_out='uint8')
         del m_diff
