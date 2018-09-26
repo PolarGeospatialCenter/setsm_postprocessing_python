@@ -15,7 +15,7 @@ import numpy as np
 from scipy import interpolate
 
 import raster_array_tools as rat
-from filter_scene import getDataDensityMap, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT, mask_v2
+from filter_scene import getDataDensityMap
 from testing.test import validateTestFileSave
 
 
@@ -39,8 +39,8 @@ class RasterDimensionError(Exception):
 
 
 def scenes2strips(demdir, demFiles,
-                  maskFileSuffix=None, filter_options=(),
-                  trans_guess=None, rmse_guess=None, hold_guess=True,
+                  maskSuffix=None, filter_options=(),
+                  trans_guess=None, rmse_guess=None, hold_guess=False,
                   max_coreg_rmse=1):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
@@ -62,7 +62,7 @@ def scenes2strips(demdir, demFiles,
     %
     %   [...]=scenes2strips(...,'maskFileSuffix',value) will apply the mask
     %   identified as the dem filename with the _dem.tif replaced by
-    %   _maskFileSuffix.tif
+    %   _maskSuffix
     %   [...]=scenes2strips(...,'max_coreg_rmse',value) will set a new maximum
     %   coregistration error limit in meters (default=1). Errors above this
     %   limit will result in a segment break.
@@ -75,25 +75,24 @@ def scenes2strips(demdir, demFiles,
 
     """
     from batch_scenes2strips import selectBestMatchtag
+    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
+        if demFiles[0].endswith(demSuffix):
+            break
 
     # Order scenes in north-south or east-west direction by aspect ratio.
     if trans_guess is None and rmse_guess is None:
         print("Ordering {} scenes".format(len(demFiles)))
         demFiles_ordered = orderPairs(demdir, demFiles)
     elif trans_guess is not None and trans_guess.shape[1] != len(demFiles):
-        print("`trans_guess`:")
-        print(trans_guess)
         raise InvalidArgumentError("`trans_guess` array must be of shape (3, N) where N=len(demFiles), "
                                    "but was {}".format(trans_guess.shape))
     elif rmse_guess is not None and rmse_guess.shape[1] != len(demFiles):
-        print("`rmse_guess`:")
-        print(rmse_guess)
         raise InvalidArgumentError("`rmse_guess` array must be of shape (1, N) where N=len(demFiles), "
                                    "but was {}".format(rmse_guess.shape))
     else:
         # Files should already be properly ordered if a guess is provided.
         # Running `orderPairs` on them could detrimentally change their order.
-        demFiles_ordered = demFiles
+        demFiles_ordered = list(demFiles)
 
     # Initialize output stats.
     trans = np.zeros((3, len(demFiles_ordered))) if trans_guess is None else trans_guess.copy()
@@ -111,12 +110,12 @@ def scenes2strips(demdir, demFiles,
         # Construct filenames.
         demFile = os.path.join(demdir, demFiles_ordered[i])
         matchFile = selectBestMatchtag(demFile)
-        orthoFile = demFile.replace('dem.tif', 'ortho.tif')
-        maskFile = None
-        if maskFileSuffix is None:
+        orthoFile = demFile.replace(demSuffix, 'ortho.tif')
+        if maskSuffix is None:
             print("No mask applied")
+            maskFile = None
         else:
-            maskFile = demFile.replace('dem.tif', maskFileSuffix+'.tif')
+            maskFile = demFile.replace(demSuffix, maskSuffix)
 
         print("scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
 
@@ -129,10 +128,10 @@ def scenes2strips(demdir, demFiles,
             continue
 
         # Apply masks.
-        x, y, z, m, o, md = applyMasks(x, y, z, m, o, md, filter_options, maskFileSuffix)
+        x, y, z, m, o, md = applyMasks(x, y, z, m, o, md, filter_options, maskSuffix)
 
         # Check for no data.
-        if ~np.any(~np.isnan(z)):
+        if np.all(np.isnan(z)):
             print("All data is masked, skipping")
             continue
 
@@ -501,7 +500,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
 
     # initial trans variable
     if trans_guess is not None:
-        p = np.array([trans_guess]).T
+        p = np.reshape(trans_guess, (3, 1))
     else:
         p = np.zeros((3, 1))
     d0 = np.inf            # initial rmse
@@ -713,6 +712,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile):
                               demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
 
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
+    # TODO: Ask Ian about the following interpretation of nodata values.
     z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
 
     m = rat.extractRasterData(matchFile, 'array').astype(np.bool)
@@ -748,22 +748,30 @@ def loadData(demFile, matchFile, orthoFile, maskFile):
     return x_dem, y_dem, z, m, o, md
 
 
-def applyMasks(x, y, z, m, o, md, filter_options=(), maskFileSuffix=None):
+def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
     """
     Apply masks to the scene DEM, matchtag, and ortho matrices.
     """
+    from filter_scene import mask_v2, MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 
+    # if len(filter_options) > 0:
+    #     mask_select = np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_EDGE_BIT)).astype(np.bool)
+    #     if 'nowater' not in filter_options:
+    #         mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_WATER_BIT)).astype(np.bool)] = 1
+    #     if 'nocloud' not in filter_options:
+    #         mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_CLOUD_BIT)).astype(np.bool)] = 1
+    # else:
+    #     mask_select = md
+    mask_select = md
     if len(filter_options) > 0:
-        mask_select = np.bitwise_and(md, np.ones_like(md))
-        if 'nowater' not in filter_options:
-            mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_WATER_BIT)).astype(np.bool)] = 1
-        if 'nocloud' not in filter_options:
-            mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_CLOUD_BIT)).astype(np.bool)] = 1
-    else:
-        mask_select = md
+        mask_ones = np.ones_like(mask_select)
+        if 'nowater' in filter_options:
+            np.bitwise_and(mask_select, ~np.left_shift(mask_ones, MASKCOMP_WATER_BIT), out=mask_select)
+        if 'nocloud' in filter_options:
+            np.bitwise_and(mask_select, ~np.left_shift(mask_ones, MASKCOMP_CLOUD_BIT), out=mask_select)
 
     mask = (mask_select > 0)
-    if maskFileSuffix == 'mask':
+    if maskSuffix in ('mask.tif', 'bitmask.tif'):
         mask = mask_v2(postprocess_mask=mask, postprocess_res=abs(x[1]-x[0]))
 
     z[mask] = np.nan

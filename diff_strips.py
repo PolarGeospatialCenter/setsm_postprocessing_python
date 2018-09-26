@@ -14,8 +14,6 @@ import numpy as np
 import lib.raster_array_tools as rat
 from lib.scenes2strips import coregisterdems
 
-# import pdb
-
 
 class MetadataError(Exception):
     def __init__(self, msg=""):
@@ -54,20 +52,13 @@ def main():
     outdir = os.path.dirname(diff_demFile)
 
     if not os.path.isfile(demFile1):
-        parser.error("dem1 is not a valid file path")
+        parser.error("`dem1` must be a valid file path")
     if not os.path.isfile(demFile2):
-        parser.error("dem2 is not a valid file path")
+        parser.error("`dem2` must be a valid file path")
     if filecmp.cmp(demFile1, demFile2):
-        parser.error("dem1 is the same as dem2")
+        parser.error("`dem1` and `dem2` are paths to the same file")
     if os.path.isfile(diff_demFile):
-        parser.error("out difference image already exists")
-    if save_match:
-        matchFile1 = demFile1.replace('dem.tif', 'matchtag.tif')
-        matchFile2 = demFile2.replace('dem.tif', 'matchtag.tif')
-        if not os.path.isfile(matchFile1):
-            parser.error("matchtag corresponding to dem1 does not exist: '{}'".format(matchFile1))
-        if not os.path.isfile(matchFile2):
-            parser.error("matchtag corresponding to dem2 does not exist: '{}'".format(matchFile2))
+        parser.error("--out difference image already exists")
     if not os.path.isdir(os.path.dirname(outdir)):
         print("Creating directory for output results file: {}".format(outdir))
         os.makedirs(outdir)
@@ -100,14 +91,21 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
     # TODO: Write docstring.
 
     # Construct filenames.
-    matchFile1 = demFile1.replace('dem.tif', 'matchtag.tif')
-    matchFile2 = demFile2.replace('dem.tif', 'matchtag.tif')
-    metaFile1  = demFile1.replace('dem.tif', 'mdf.txt')
-    metaFile2  = demFile2.replace('dem.tif', 'mdf.txt')
-    regFile1   = demFile1.replace('dem.tif', 'reg.txt')
-    regFile2   = demFile2.replace('dem.tif', 'reg.txt')
-    diff_matchFile = diff_demFile.replace('.tif', '_matchtag.tif')
-    diff_metaFile  = diff_demFile.replace('.tif', '_meta.txt')
+    for demSuffix1 in ['dem_smooth.tif', 'dem.tif']:
+        if demFile1.endswith(demSuffix1):
+            break
+    for demSuffix2 in ['dem_smooth.tif', 'dem.tif']:
+        if demFile2.endswith(demSuffix2):
+            break
+    diff_demFile_root, diff_demFile_ext = os.path.splitext(diff_demFile)
+    matchFile1 = demFile1.replace(demSuffix1, 'matchtag.tif')
+    matchFile2 = demFile2.replace(demSuffix2, 'matchtag.tif')
+    metaFile1  = demFile1.replace(demSuffix1, 'mdf.txt')
+    metaFile2  = demFile2.replace(demSuffix2, 'mdf.txt')
+    regFile1   = demFile1.replace(demSuffix1, 'reg.txt')
+    regFile2   = demFile2.replace(demSuffix2, 'reg.txt')
+    diff_matchFile = '{}_matchtag{}'.format(diff_demFile_root, diff_demFile_ext)
+    diff_metaFile  = '{}_meta.txt'.format(diff_demFile_root, diff_demFile_ext)
 
     # Read georeferenced strip geometries.
     x1, y1, spatref1 = rat.extractRasterData(demFile1, 'x', 'y', 'spat_ref')
@@ -207,16 +205,16 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
     z1_crop = z1[r0:r1, c0:c1]
     z2_crop = z2[r0:r1, c0:c1]
 
-    # # Get initial guess of translation vector to
-    # hopefully speed up coregistration..
-    # trans1 = get_trans_vector(regFile1)
-    # trans2 = get_trans_vector(regFile2)
-    # trans_guess = trans2 - trans1
-    # trans_guess = np.reshape(trans_guess, (3, 1))
+    # Get initial guess of translation vector to
+    # hopefully speed up coregistration...
+    trans1 = get_trans_vector(regFile1)
+    trans2 = get_trans_vector(regFile2)
+    trans_guess = trans2 - trans1
 
     # Coregister the two DEMs.
     print("Beginning coregistration")
-    _, trans, rmse = coregisterdems(x1_crop, y1_crop, z1_crop, x2_crop, y2_crop, z2_crop)
+    _, trans, rmse = coregisterdems(x1_crop, y1_crop, z1_crop, x2_crop, y2_crop, z2_crop,
+                                    trans_guess=trans_guess)
     dz, dx, dy = trans
 
     # Interpolate comparison DEM to reference DEM.
@@ -312,22 +310,26 @@ def crop_strip(a1, a2=None, size=1.0, sampling=0.5, method='center'):
 def writeDiffMeta(o_metaFile, demFile1, demFile2,
                   trans, rmse, proj4, fp_vertices, creation_time):
 
+    for demSuffix1 in ['dem_smooth.tif', 'dem.tif']:
+        if demFile1.endswith(demSuffix1):
+            break
+    for demSuffix2 in ['dem_smooth.tif', 'dem.tif']:
+        if demFile2.endswith(demSuffix2):
+            break
     if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
         fp_vertices = fp_vertices.astype(np.int64)
 
-    # FIXME: Four lines in the following meta template have trailing space to replicate MATLAB.
-    # -f     Remove these?
     diff_info = (
-"""DoD Metadata 
+"""DoD Metadata
 Creation Date: {}
 DoD creation date: {}
 DoD projection (proj4): '{}'
 
 DoD Footprint Vertices
-X: {} 
-Y: {} 
+X: {}
+Y: {}
 
-Mosaicking Alignment Statistics (meters) 
+Mosaicking Alignment Statistics (meters)
 scene, rmse, dz, dx, dy
 """.format(
         creation_time,
@@ -345,12 +347,16 @@ scene, rmse, dz, dx, dy
 
     diff_info += "\nStrip Registration \n\n"
 
-    dem_list = [demFile1, demFile2]
+    demFiles = [demFile1, demFile2]
     strip_info = ""
-    for i in range(len(dem_list)):
-        strip_info += "strip {} name={}\n".format(i+1, dem_list[i])
+    for i in range(len(demFiles)):
+        for demSuffix in ['dem_smooth.tif', 'dem.tif']:
+            if demFiles[i].endswith(demSuffix):
+                break
 
-        strip_metaFile = dem_list[i].replace('dem.tif', 'reg.txt')
+        strip_info += "strip {} name={}\n".format(i+1, demFiles[i])
+
+        strip_metaFile = demFiles[i].replace(demSuffix, 'reg.txt')
         if os.path.isfile(strip_metaFile):
             strip_metaFile_fp = open(strip_metaFile, 'r')
             strip_info += strip_metaFile_fp.read()

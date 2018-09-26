@@ -7,9 +7,13 @@ from __future__ import division
 import inspect
 import os
 import re
+import sys
 import warnings
 from glob import glob
-from StringIO import StringIO
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
 from warnings import warn
 
 import ogr, osr
@@ -366,9 +370,6 @@ def getNextImgnum(runnum=getRunnum(), compare=False, concurrent=False):
 
 
 def validateTestFileSave(fname_or_file, overwrite=False):
-    if not fname_or_file.endswith('.tif'):
-        fname_or_file += '.tif'
-
     if os.path.basename(fname_or_file) == fname_or_file:
         testFile = os.path.join(TESTDIR, fname_or_file)
     else:
@@ -383,7 +384,8 @@ def validateTestFileSave(fname_or_file, overwrite=False):
             if opt == '':
                 return None
             else:
-                testFile = testFile.replace('.tif', '~'+opt.replace(' ', '-')+'.tif')
+                root, ext = os.path.splitext(fname_or_file)
+                testFile = '{}~{}{}'.format(root, opt.replace(' ', '-'), ext)
 
     return testFile
 
@@ -675,7 +677,10 @@ Y: {}
 
 def saveDBP(demFile):
     demFile = findTestFile(demFile)
-    shapefileFile = demFile.replace('dem.tif', 'dem_boundary.shp')
+    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
+        if demFile.endswith(demSuffix):
+            break
+    shapefileFile = demFile.replace(demSuffix, 'dem_boundary.shp')
 
     Z, X, Y, proj_ref = rat.extractRasterData(demFile, 'z', 'x', 'y', 'proj_ref')
     poly = rat.getDataBoundariesPoly(Z, X, Y, nodata_val=-9999)
