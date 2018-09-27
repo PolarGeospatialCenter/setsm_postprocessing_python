@@ -21,7 +21,10 @@ import numpy as np
 from scipy import ndimage as sp_ndimage
 
 from batch_scenes2strips import selectBestMatchtag
-import raster_array_tools as rat
+if sys.version_info[0] < 3:
+    import raster_array_tools as rat
+else:
+    from lib import raster_array_tools as rat
 
 from testing.test import TESTDIR, saveImage
 

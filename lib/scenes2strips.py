@@ -14,8 +14,12 @@ import ogr
 import numpy as np
 from scipy import interpolate
 
-import raster_array_tools as rat
-from filter_scene import getDataDensityMap
+if sys.version_info[0] < 3:
+    import raster_array_tools as rat
+    from filter_scene import getDataDensityMap
+else:
+    from lib import raster_array_tools as rat
+    from lib.filter_scene import getDataDensityMap
 from testing.test import validateTestFileSave
 
 
@@ -752,7 +756,10 @@ def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
     """
     Apply masks to the scene DEM, matchtag, and ortho matrices.
     """
-    from filter_scene import mask_v2, MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
+    if sys.version_info[0] < 3:
+        from filter_scene import mask_v2, MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
+    else:
+        from lib.filter_scene import mask_v2, MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 
     # if len(filter_options) > 0:
     #     mask_select = np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_EDGE_BIT)).astype(np.bool)
@@ -762,7 +769,7 @@ def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
     #         mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_CLOUD_BIT)).astype(np.bool)] = 1
     # else:
     #     mask_select = md
-    mask_select = md
+    mask_select = np.copy(md)
     if len(filter_options) > 0:
         mask_ones = np.ones_like(mask_select)
         if 'nowater' in filter_options:

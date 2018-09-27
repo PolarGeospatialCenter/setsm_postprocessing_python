@@ -9,6 +9,7 @@ import math
 import operator
 import os
 import subprocess
+import sys
 from collections import deque
 from itertools import product
 from PIL import Image
@@ -27,7 +28,10 @@ from skimage import morphology as sk_morphology
 from skimage.filters.rank import entropy
 from skimage.util import unique_rows
 
-from DecimatePoly import DecimatePoly
+if sys.version_info[0] < 3:
+    from DecimatePoly import DecimatePoly
+else:
+    from lib.DecimatePoly import DecimatePoly
 
 _script_dir = os.path.dirname(os.path.realpath(__file__))
 _ext_fid = open(os.path.join(_script_dir, 'outline.c'), 'r')
