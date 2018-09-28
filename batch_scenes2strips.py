@@ -376,10 +376,10 @@ def getDemSuffix(demFile):
     return None
 
 
-def getMatchtagSuffix(demFile):
-    for demSuffix in SUFFIX_PRIORITY_DEM:
-        if demFile.endswith(demSuffix):
-            return demSuffix
+def getMatchtagSuffix(matchFile):
+    for matchSuffix in SUFFIX_PRIORITY_MATCHTAG:
+        if matchFile.endswith(matchSuffix):
+            return matchSuffix
     return None
 
 

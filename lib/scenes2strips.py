@@ -720,7 +720,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile):
     m = rat.extractRasterData(matchFile, 'array').astype(np.bool)
     if m.shape != z.shape:
         warnings.warn("matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
-                     + "\nInterpolating to dem dimensions")
+                     +"\nInterpolating to dem dimensions")
         x, y = rat.extractRasterData(matchFile, 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.isnan(m)] = 0  # Convert back to bool/uint8.
@@ -730,7 +730,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile):
         o = rat.extractRasterData(orthoFile, 'array')
         if o.shape != z.shape:
             warnings.warn("orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
-                          + "\nInterpolating to dem dimensions")
+                         +"\nInterpolating to dem dimensions")
             x, y = rat.extractRasterData(orthoFile, 'x', 'y')
             o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
             o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
