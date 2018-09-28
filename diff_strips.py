@@ -13,6 +13,7 @@ import numpy as np
 
 import lib.raster_array_tools as rat
 from lib.scenes2strips import coregisterdems
+from batch_scenes2strips import getDemSuffix, selectBestMatchtag
 
 
 class MetadataError(Exception):
@@ -91,15 +92,11 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
     # TODO: Write docstring.
 
     # Construct filenames.
-    for demSuffix1 in ['dem_smooth.tif', 'dem.tif']:
-        if demFile1.endswith(demSuffix1):
-            break
-    for demSuffix2 in ['dem_smooth.tif', 'dem.tif']:
-        if demFile2.endswith(demSuffix2):
-            break
+    demSuffix1 = getDemSuffix(demFile1)
+    demSuffix2 = getDemSuffix(demFile2)
     diff_demFile_root, diff_demFile_ext = os.path.splitext(diff_demFile)
-    matchFile1 = demFile1.replace(demSuffix1, 'matchtag.tif')
-    matchFile2 = demFile2.replace(demSuffix2, 'matchtag.tif')
+    matchFile1 = selectBestMatchtag(demFile1)
+    matchFile2 = selectBestMatchtag(demFile2)
     metaFile1  = demFile1.replace(demSuffix1, 'mdf.txt')
     metaFile2  = demFile2.replace(demSuffix2, 'mdf.txt')
     regFile1   = demFile1.replace(demSuffix1, 'reg.txt')
@@ -310,12 +307,8 @@ def crop_strip(a1, a2=None, size=1.0, sampling=0.5, method='center'):
 def writeDiffMeta(o_metaFile, demFile1, demFile2,
                   trans, rmse, proj4, fp_vertices, creation_time):
 
-    for demSuffix1 in ['dem_smooth.tif', 'dem.tif']:
-        if demFile1.endswith(demSuffix1):
-            break
-    for demSuffix2 in ['dem_smooth.tif', 'dem.tif']:
-        if demFile2.endswith(demSuffix2):
-            break
+    demSuffix1 = getDemSuffix(demFile1)
+    demSuffix2 = getDemSuffix(demFile2)
     if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
         fp_vertices = fp_vertices.astype(np.int64)
 
@@ -350,9 +343,7 @@ scene, rmse, dz, dx, dy
     demFiles = [demFile1, demFile2]
     strip_info = ""
     for i in range(len(demFiles)):
-        for demSuffix in ['dem_smooth.tif', 'dem.tif']:
-            if demFiles[i].endswith(demSuffix):
-                break
+        demSuffix = getDemSuffix(demFiles[i])
 
         strip_info += "strip {} name={}\n".format(i+1, demFiles[i])
 

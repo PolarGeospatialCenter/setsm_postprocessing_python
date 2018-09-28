@@ -22,9 +22,10 @@ from PIL import Image
 from scipy.misc import imread as scipy_imread
 from tifffile import imread, imsave
 
-from testing import TESTDIR, PREFIX_RUNNUM, PROJREF_POLAR_STEREO
+from batch_scenes2strips import getDemSuffix
 import lib.filter_scene
 import lib.raster_array_tools as rat
+from testing import TESTDIR, PREFIX_RUNNUM, PROJREF_POLAR_STEREO
 
 
 warnings.simplefilter('always', UserWarning)
@@ -677,9 +678,7 @@ Y: {}
 
 def saveDBP(demFile):
     demFile = findTestFile(demFile)
-    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
-        if demFile.endswith(demSuffix):
-            break
+    demSuffix = getDemSuffix(demFile)
     shapefileFile = demFile.replace(demSuffix, 'dem_boundary.shp')
 
     Z, X, Y, proj_ref = rat.extractRasterData(demFile, 'z', 'x', 'y', 'proj_ref')

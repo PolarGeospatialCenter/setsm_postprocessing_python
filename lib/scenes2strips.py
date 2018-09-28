@@ -78,10 +78,8 @@ def scenes2strips(demdir, demFiles,
     respectively, will be applied.
 
     """
-    from batch_scenes2strips import selectBestMatchtag
-    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
-        if demFiles[0].endswith(demSuffix):
-            break
+    from batch_scenes2strips import getDemSuffix, selectBestMatchtag
+    demSuffix = getDemSuffix(demFiles[0])
 
     # Order scenes in north-south or east-west direction by aspect ratio.
     if trans_guess is None and rmse_guess is None:

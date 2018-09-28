@@ -20,7 +20,7 @@ from warnings import warn
 import numpy as np
 from scipy import ndimage as sp_ndimage
 
-from batch_scenes2strips import selectBestMatchtag
+from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
 else:
@@ -220,9 +220,7 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
     suffix_choices = ('maskv1', 'mask', 'maskv2_debug', 'mask2a', 'mask8m', 'bitmask')
     mask_dtype = 'n-bit' if nbit_masks else 'uint8'
     demFname = os.path.basename(demFile)
-    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
-        if demFile.endswith(demSuffix):
-            break
+    demSuffix = getDemSuffix(demFile)
     if dstdir is None:
         dstdir = os.path.dirname(demFile)
 
@@ -328,7 +326,7 @@ def mask_v1(matchFile, noentropy=False):
     """
     component_masks = {}
 
-    metaFile = matchFile.replace('matchtag_mt.tif', 'meta.txt').replace('matchtag.tif', 'meta.txt')
+    metaFile = matchFile.replace(getMatchtagSuffix(matchFile), 'meta.txt')
     orthoFile = metaFile.replace('meta.txt', 'ortho.tif')
 
     # Find SETSM version.
@@ -495,9 +493,7 @@ def mask_v2(demFile=None, mask_version='mask',
                                min_data_cluster*(processing_res/postprocess_res)**2)
         return mask
 
-    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
-        if demFile.endswith(demSuffix):
-            break
+    demSuffix = getDemSuffix(demFile)
     metaFile  = demFile.replace(demSuffix, 'meta.txt')
     matchFile = selectBestMatchtag(demFile)
     orthoFile = demFile.replace(demSuffix, 'ortho.tif')

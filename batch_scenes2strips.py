@@ -21,6 +21,9 @@ SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 ARGDEF_QSUBSCRIPT = os.path.join(SCRIPT_DIR, 'qsub_scenes2strips.sh')
 
+SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
+SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
+
 
 class MetaReadError(Exception):
     def __init__(self, msg=""):
@@ -148,7 +151,7 @@ def main():
 
 
         # Find all scene DEMs to be merged into strips.
-        for demSuffix in ['dem.tif', 'dem_smooth.tif']:
+        for demSuffix in SUFFIX_PRIORITY_DEM:
             scene_dems = glob.glob(os.path.join(srcdir, '*_{}_{}'.format(args.res, demSuffix)))
             if scene_dems:
                 break
@@ -253,7 +256,7 @@ def main():
         print("mask filter options: {}".format(filter_options_mask))
 
         # Find scene DEMs for this stripid to be merged into strips.
-        for demSuffix in ['dem.tif', 'dem_smooth.tif']:
+        for demSuffix in SUFFIX_PRIORITY_DEM:
             scene_demFiles = glob.glob(os.path.join(srcdir, '*{}*_{}_{}'.format(args.stripid, args.res, demSuffix)))
             if scene_demFiles:
                 break
@@ -366,11 +369,23 @@ def main():
             segnum += 1
 
 
-def selectBestMatchtag(demFile):
-    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
+def getDemSuffix(demFile):
+    for demSuffix in SUFFIX_PRIORITY_DEM:
         if demFile.endswith(demSuffix):
-            break
-    for matchSuffix in ['matchtag_mt.tif', 'matchtag.tif']:
+            return demSuffix
+    return None
+
+
+def getMatchtagSuffix(demFile):
+    for demSuffix in SUFFIX_PRIORITY_DEM:
+        if demFile.endswith(demSuffix):
+            return demSuffix
+    return None
+
+
+def selectBestMatchtag(demFile):
+    demSuffix = getDemSuffix(demFile)
+    for matchSuffix in SUFFIX_PRIORITY_MATCHTAG:
         matchFile = demFile.replace(demSuffix, matchSuffix)
         if os.path.isfile(matchFile):
             return matchFile
@@ -379,7 +394,7 @@ def selectBestMatchtag(demFile):
 
 def shouldDoMasking(matchFile, mask_version='mask'):
     matchFile_date = os.path.getmtime(matchFile)
-    demFile_base = matchFile.replace('matchtag_mt.tif', '').replace('matchtag.tif', '')
+    demFile_base = matchFile.replace(getMatchtagSuffix(matchFile), '')
     maskFiles = (     [demFile_base+s for s in ('edgemask.tif', 'datamask.tif')] if mask_version == 'maskv1'
                  else ['{}{}.tif'.format(demFile_base, mask_version)])
     for m in maskFiles:
@@ -397,9 +412,7 @@ def writeStripMeta(o_metaFile, scenedir, scene_demFnames,
                    trans, rmse, proj4, fp_vertices, strip_time, args):
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 
-    for demSuffix in ['dem_smooth.tif', 'dem.tif']:
-        if scene_demFnames[0].endswith(demSuffix):
-            break
+    demSuffix = getDemSuffix(scene_demFnames[0])
     if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
         fp_vertices = fp_vertices.astype(np.int64)
 
@@ -429,13 +442,10 @@ scene, rmse, dz, dx, dy
             scene_demFnames[i], rmse[0, i], trans[0, i], trans[1, i], trans[2, i])
         strip_info += line
 
+        filter_info = "\nFiltering Applied: {} (v3.1)\n".format(args.mask_ver)
+
     if args.mask_ver == 'bitmask':
-        filter_info = (
-"""
-Filtering Applied
-bit, class, coreg, mosaic
-"""
-        )
+        filter_info += "bit, class, coreg, mosaic\n"
         filter_info_components = (
 """
 {} edge 1 1
