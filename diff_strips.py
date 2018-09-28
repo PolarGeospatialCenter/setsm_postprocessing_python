@@ -1,6 +1,5 @@
-#!/usr/bin/env python2
 
-# Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Version 1.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
 
 
 from __future__ import division

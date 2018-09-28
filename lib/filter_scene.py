@@ -1,7 +1,6 @@
-#!/usr/bin/env python2
 # -*- coding: UTF-8 -*-
 
-# Version 3.0; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2018
+# Version 3.1; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2018
 # Translated from MATLAB code written by Ian Howat, Ohio State University, 2018
 
 

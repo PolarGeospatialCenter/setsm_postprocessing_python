@@ -1,6 +1,5 @@
-#!/usr/bin/env python2
 
-# Version 3.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Version 3.1; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
 
 
 from __future__ import division

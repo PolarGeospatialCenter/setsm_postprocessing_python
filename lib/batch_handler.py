@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Version 0.9; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
 
 
 import argparse
