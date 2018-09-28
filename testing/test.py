@@ -9,11 +9,11 @@ import re
 import sys
 import warnings
 from glob import glob
+from warnings import warn
 if sys.version_info[0] < 3:
     from StringIO import StringIO
 else:
     from io import StringIO
-from warnings import warn
 
 import ogr, osr
 import numpy as np

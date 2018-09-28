@@ -9,23 +9,21 @@ import math
 import os
 import re
 import sys
-
+from warnings import warn
 if sys.version_info[0] < 3:
     from StringIO import StringIO
 else:
     from io import StringIO
-from warnings import warn
 
 import numpy as np
 from scipy import ndimage as sp_ndimage
 
 from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag
+from testing.test import TESTDIR, saveImage
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
 else:
     from lib import raster_array_tools as rat
-
-from testing.test import TESTDIR, saveImage
 
 
 MASK_FLAT = 0

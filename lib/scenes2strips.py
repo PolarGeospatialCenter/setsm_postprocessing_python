@@ -13,13 +13,13 @@ import ogr
 import numpy as np
 from scipy import interpolate
 
+from testing.test import validateTestFileSave
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
     from filter_scene import getDataDensityMap
 else:
     from lib import raster_array_tools as rat
     from lib.filter_scene import getDataDensityMap
-from testing.test import validateTestFileSave
 
 
 # The spatial reference of the strip, set at the beginning of scenes2strips()

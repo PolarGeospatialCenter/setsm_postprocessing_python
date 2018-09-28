@@ -179,42 +179,33 @@ def main():
                 print("--stripid {} output files exist, skipping".format(stripid))
                 continue
 
+            s2s_command = r'{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}'.format(
+                'python',
+                scriptpath,
+                srcdir,
+                args.res,
+                '--dst {}'.format(dstdir),
+                '--stripid {}'.format(stripid),
+                '--mask-ver {}'.format(args.mask_ver),
+                '--meta-trans-dir {}'.format(metadir) if metadir is not None else '',
+                '--noentropy' * args.noentropy,
+                '--nowater' * args.nowater,
+                '--nocloud' * args.nocloud,
+                '--nofilter-coreg' * args.nofilter_coreg,
+            )
+
             # If PBS, submit to scheduler.
             if args.pbs:
                 job_name = 's2s{:04g}'.format(i)
-                cmd = r'qsub -N {0} -v p1={1},p2={2},p3={3},p4={4},p5={5},p6={6}{7}{8}{9}{10}{11} {12}'.format(
+                cmd = r'qsub -N {} -v p1="{}" {}'.format(
                     job_name,
-                    scriptpath,
-                    srcdir,
-                    args.res,
-                    '"--dst {}"'.format(dstdir),
-                    '"--stripid {}"'.format(stripid),
-                    '"--mask-ver {}"'.format(args.mask_ver),
-                    ',p7="--meta-trans-dir {}"'.format(metadir) if metadir is not None else '',
-                    ',p8=--noentropy' * args.noentropy,
-                    ',p9=--nowater' * args.nowater,
-                    ',p10=--nocloud' * args.nocloud,
-                    ',p11=--nofilter-coreg' * args.nofilter_coreg,
+                    s2s_command,
                     qsubpath
                 )
                 print(cmd)
 
-            # ...else run Python.
+            # ...else run locally.
             else:
-                cmd = r'{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}'.format(
-                    'python',
-                    scriptpath,
-                    srcdir,
-                    args.res,
-                    '--dst {}'.format(dstdir),
-                    '--stripid {}'.format(stripid),
-                    '--mask-ver {}'.format(args.mask_ver),
-                    '--meta-trans-dir {}'.format(metadir) if metadir is not None else '',
-                    '--noentropy' * args.noentropy,
-                    '--nowater' * args.nowater,
-                    '--nocloud' * args.nocloud,
-                    '--nofilter-coreg' * args.nofilter_coreg,
-                )
                 print('{}, {}'.format(i, cmd))
 
             if not args.dryrun:
