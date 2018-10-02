@@ -101,7 +101,7 @@ def main():
         help="Submit tasks to job scheduler.")
     parser.add_argument(ARGSTR_TASKS_PER_JOB, type=int,
         help="Number of tasks to bundle into a single job. (requires {} option)".format(ARGSTR_SCHEDULER))
-    parser.add_argument(ARGSTR_JOBSCRIPT,
+    parser.add_argument(ARGSTR_JOBSCRIPT, default=ARGDEF_JOBSCRIPT,
         help="Script to run in job submission to scheduler. (default={})".format(ARGDEF_JOBSCRIPT))
     parser.add_argument(ARGSTR_SCRATCH, default=ARGDEF_SCRATCH,
         help="Scratch directory to build task bundle text files. (default={})".format(ARGDEF_SCRATCH))
@@ -123,15 +123,17 @@ def main():
     dryrun = args.get(ARGSTR_DRYRUN)
 
     if not (os.path.isdir(src) or os.path.isfile(src)):
-        parser.error("`{}` must be a path to either a directory or a file".format(ARGSTR_SRC))
+        parser.error("`{}` must be a path to either a directory or a file, "
+                     "but was '{}'".format(ARGSTR_SRC, src))
     if dstdir is None:
         dstdir = src if os.path.isdir(src) else os.path.dirname(src)
+        print("{} automatically set to '{}'".format(ARGSTR_DSTDIR, dstdir))
     elif not os.path.isdir(dstdir):
         os.makedirs(dstdir)
     if args.get(ARGSTR_TASKS_PER_JOB) is not None and not args.get(ARGSTR_SCHEDULER):
         parser.error("{} option requires {} option".format(ARGSTR_TASKS_PER_JOB, ARGSTR_SCHEDULER))
     if not os.path.isfile(jobscript):
-        parser.error("{} is not a valid file path".format(ARGSTR_JOBSCRIPT))
+        parser.error("{} must be a valid file path, but was '{}'".format(ARGSTR_JOBSCRIPT, jobscript))
     if not os.path.isdir(scratchdir):
         os.makedirs(scratchdir)
 
@@ -166,7 +168,8 @@ def main():
         srcdir = src
         src_bitmasks = glob.glob(os.path.join(srcdir, '*_{}'.format(BITMASK_SUFFIX)))
     else:
-        parser.error("`{}` must be a path to either a directory or a file".format(ARGSTR_SRC))
+        parser.error("`{}` must be a path to either a directory or a file, "
+                     "but was '{}'".format(ARGSTR_SRC, src))
 
     # Determine masking value(s) for source raster suffix(es).
     src_suffix_maskval = [s.split(',') for s in src_suffixes]
@@ -224,7 +227,7 @@ def main():
                 subprocess.call(cmd, shell=True)
 
     else:
-        for i, maskFile in masks_to_apply:
+        for i, maskFile in enumerate(masks_to_apply):
             print("Mask ({}/{}): {}".format(i+1, num_tasks, maskFile))
             if not dryrun:
                 mask_rasters(dstdir, maskFile, src_suffix_maskval, args)
@@ -278,6 +281,7 @@ def mask_rasters(dstDir, maskFile, src_suffix_maskval, args):
         dst_rasterFile = get_dstFile(dstDir, maskFile, src_suffix, masking_bitstring)
         if os.path.isfile(dst_rasterFile):
             continue
+        print("Masking source raster ({}) to output raster ({})".format(src_rasterFile, dst_rasterFile))
 
         # Read in source raster and apply mask.
         dst_array = rat.extractRasterData(src_rasterFile, 'array')

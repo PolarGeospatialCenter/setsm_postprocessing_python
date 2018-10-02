@@ -47,7 +47,7 @@ class ArgumentPasser:
         if argstrs_invalid:
             raise InvalidArgumentError("This {} object does not have the following "
                                        "argument strings: {}".format(type(self).__name__, list(argstrs_invalid)))
-        values = [self.argstr2varstr[argstr] for argstr in argstrs]
+        values = [self.vars_dict[self.argstr2varstr[argstr]] for argstr in argstrs]
         if len(values) == 1:
             values = values[0]
         return values
@@ -99,7 +99,7 @@ class ArgumentPasser:
 
     def update_cmd_base(self):
         arg_list = []
-        for varstr, val in self.vars_dict.iteritems():
+        for varstr, val in self.vars_dict.items():
             argstr = self.varstr2argstr[varstr]
             if argstr not in self.argstr_pos and val is not None:
                 if isinstance(val, bool):

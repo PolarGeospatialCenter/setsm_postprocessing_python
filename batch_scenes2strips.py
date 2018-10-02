@@ -208,6 +208,7 @@ def main():
 
             # ...else run locally.
             else:
+                cmd = s2s_command
                 print('{}, {}'.format(i, cmd))
 
             if not args.dryrun:
@@ -481,22 +482,25 @@ def readStripMeta_stats(metaFile):
         line = metaFile_fp.readline()
         while not line.startswith('Mosaicking Alignment Statistics (meters)') and line != '':
             line = metaFile_fp.readline()
+        while not line.startswith('scene, rmse, dz, dx, dy') and line != '':
+            line = metaFile_fp.readline()
         if line == '':
             raise MetaReadError("{}: Could not parse 'Mosaicking Alignment Statistics'".format(metaFile))
-        line = metaFile_fp.readline().strip()
 
+        line = metaFile_fp.readline().strip()
         line_items = line.split(' ')
         sceneDemFnames = [line_items[0]]
         rmse = [line_items[1]]
         trans = np.array([[float(s) for s in line_items[2:5]]])
 
-        line = metaFile_fp.readline().strip()
-        while line != '':
+        while True:
+            line = metaFile_fp.readline().strip()
+            if line == '':
+                break
             line_items = line.split(' ')
             sceneDemFnames.append(line_items[0])
             rmse.append(line_items[1])
             trans = np.vstack((trans, np.array([[float(s) for s in line_items[2:5]]])))
-            line = metaFile_fp.readline().strip()
 
         rmse = np.array([[float(s) for s in rmse]])
         trans = trans.T

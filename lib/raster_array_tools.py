@@ -319,10 +319,10 @@ def extractRasterData(rasterFile_or_ds, *params):
     if invalid_pnames:
         raise InvalidArgumentError("Invalid parameter(s) for extraction: {}".format(invalid_pnames))
 
-    if pset.intersection({'z', 'array', 'nodata_val', 'dtype'}):
-        band_1 = ds.GetRasterBand(1)
+    if pset.intersection({'z', 'array', 'nodata_val', 'dtype_val', 'dtype_str'}):
+        band = ds.GetRasterBand(1)
     if pset.intersection({'z', 'array'}):
-        array_data = band_1.ReadAsArray()
+        array_data = band.ReadAsArray()
     if pset.intersection({'shape', 'x', 'y', 'corner_coords', 'geom', 'geom_sr'}):
         shape = (ds.RasterYSize, ds.RasterXSize) if 'array_data' not in vars() else array_data.shape
     if pset.intersection({'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'geom', 'geom_sr'}):
@@ -336,9 +336,9 @@ def extractRasterData(rasterFile_or_ds, *params):
     if pset.intersection({'geom', 'geom_sr'}):
         geom = ogr.Geometry(wkt=coordsToWkt(corner_coords))
     if pset.intersection({'nodata_val'}):
-        nodata_val = band_1.GetNoDataValue()
+        nodata_val = band.GetNoDataValue()
     if pset.intersection({'dtype_val', 'dtype_str'}):
-        dtype_val = band_1.GetRasterDataType()
+        dtype_val = band.DataType
     if pset.intersection({'dtype_str'}):
         dtype_str = gdal.GetDataTypeName(dtype_val)
 
@@ -494,7 +494,7 @@ def interp_str2gdal(interp_str):
 
 def saveArrayAsTiff(array, dest,
                     X=None, Y=None, proj_ref=None, geotrans_rot_tup=(0, 0),
-                    nodata_val=None, dtype_out=None, nbits=None,
+                    nodata_val=None, dtype_out=None, nbits=None, co_args='compress',
                     like_raster=None):
     """
     Save a NumPy 2D array as a single-band raster image in GeoTiff format.
@@ -517,9 +517,9 @@ def saveArrayAsTiff(array, dest,
         from top to bottom, such that `Y[i]` specifies the y-coordinate for
         all pixels in `array[i, :]`
         If None, `like_raster` must be provided.
-    proj_ref : None, str (WKT), or osr.SpatialReference
+    proj_ref : None, str (WKT or Proj4), or osr.SpatialReference
         Projection reference of the raster image to be saved, specified as
-        either a WKT string or an osr.SpatialReference object.
+        either a WKT/Proj4 string or an osr.SpatialReference object.
         If None, `like_raster` must be provided.
     geotrans_rot_tup : None or tuple (2 floats)
         The third and fifth elements of the geometric transformation tuple
@@ -540,6 +540,16 @@ def saveArrayAsTiff(array, dest,
         as large as necessary to capture the maximum value of `array`.
     nbits : None or 1 <= int <= 32
         Only applies when `dtype_out='nbits'`.
+    co_args : None, 'compress', or list of '[ARG_NAME]=[ARG_VALUE]' strings
+        Creation Option arguments to pass to the `Create` method of the GDAL
+        Geotiff driver that instantiates the output raster dataset.
+        If 'compress', the following default arguments are used:
+          'BIGTIFF=IF_SAFER'
+          'COMPRESS=LZW'
+          'TILED=YES'
+        The 'NBITS=X' argument may not be used -- that is set by the `nbits`
+        argument for this function.
+        A list of Creation Option arguments may be found here: [1].
     like_raster : None, str (file path), or osgeo.gdal.Dataset
         File path or GDAL dataset for a raster image of identical dimensions,
         geographic location/extent, spatial reference, and nodata value as
@@ -558,9 +568,38 @@ def saveArrayAsTiff(array, dest,
 
     References
     ----------
-    .. [1] http://www.gdal.org/gdal_translate.html
+    .. [1] https://www.gdal.org/frmt_gtiff.html
 
     """
+    spat_ref = None
+    projstr_wkt = None
+    projstr_proj4 = None
+    if proj_ref is None:
+        pass
+    elif type(proj_ref) == osr.SpatialReference:
+        spat_ref = proj_ref
+    elif type(proj_ref) == str:
+        spat_ref = osr.SpatialReference()
+        if proj_ref.lstrip().startswith('PROJCS'):
+            projstr_wkt = proj_ref
+            spat_ref.ImportFromWkt(projstr_wkt)
+        elif proj_ref.lstrip().startswith('+proj='):
+            projstr_proj4 = proj_ref
+            spat_ref.ImportFromProj4(projstr_proj4)
+        else:
+            raise InvalidArgumentError("`proj_ref` of string type has unknown format: '{}'".format(proj_ref))
+    else:
+        raise InvalidArgumentError("`proj_ref` must be a string or osr.SpatialReference object, "
+                                   "but was of type {}".format(type(proj_ref)))
+
+    if co_args is not None and co_args != 'compress':
+        if type(co_args) != list:
+            raise InvalidArgumentError("`co_args` must be a list of strings, but was {}".format(co_args))
+        for arg in co_args:
+            if arg.startswith('NBITS='):
+                raise InvalidArgumentError("`co_args` cannot include 'NBITS=X' argument. "
+                                           "Please use this function's `nbits` argument.")
+
     shape = array.shape
     dtype_gdal = None
     if like_raster is not None:
@@ -572,7 +611,7 @@ def saveArrayAsTiff(array, dest,
             )
         geo_trans = extractRasterData(ds_like, 'geo_trans')
         if proj_ref is None:
-            proj_ref = extractRasterData(ds_like, 'proj_ref')
+            spat_ref = extractRasterData(ds_like, 'spat_ref')
         if nodata_val is None:
             nodata_val = extractRasterData(ds_like, 'nodata_val')
         if dtype_out is None:
@@ -636,31 +675,52 @@ def saveArrayAsTiff(array, dest,
                                        "GDAL data type and is not supported".format(dtype_in))
 
     if proj_ref is not None and type(proj_ref) == osr.SpatialReference:
-        proj_ref = proj_ref.ExportToWkt()
+        proj_ref = proj_ref.ExportToProj4()
+
+    sys.stdout.write("Saving Geotiff {} ...".format(dest))
+    sys.stdout.flush()
 
     # Create the output raster dataset in memory.
-    args = []
-    args.extend(['BIGTIFF=IF_SAFER'])  # Will create BigTIFF
-                                       # if the resulting file *might* exceed 4GB.
-    args.extend(['COMPRESS=LZW'])      # Do LZW compression on output image.
-    args.extend(['TILED=YES'])         # Force creation of tiled TIFF files.
+    if co_args is None:
+        co_args = []
+    if co_args == 'compress':
+        co_args = []
+        co_args.extend(['BIGTIFF=IF_SAFER'])  # Will create BigTIFF
+                                              # if the resulting file *might* exceed 4GB.
+        co_args.extend(['COMPRESS=LZW'])      # Do LZW compression on output image.
+        co_args.extend(['TILED=YES'])         # Force creation of tiled TIFF files.
     if dtype_out == 'n-bit':
-        args.extend(['NBITS={}'.format(nbits)])
+        co_args.extend(['NBITS={}'.format(nbits)])
+    co_args_print = None if len(co_args) == 0 else ' '.join(co_args)
 
+    if spat_ref is not None:
+        if projstr_wkt is None:
+            projstr_wkt = spat_ref.ExportToWkt()
+        if projstr_proj4 is None:
+            projstr_proj4 = spat_ref.ExportToProj4()
+    sys.stdout.write(" GDAL data type: {}, NoData value: {}, Creation Options: {}, Projection (Proj4): {} ...".format(
+        gdal.GetDataTypeName(dtype_gdal), nodata_val, co_args_print, projstr_proj4.strip())
+    )
+    sys.stdout.flush()
+
+    sys.stdout.write(" creating file ...")
+    sys.stdout.flush()
     driver = gdal.GetDriverByName('GTiff')
-    ds_out = driver.Create(dest, shape[1], shape[0], 1, dtype_gdal, args)
+    ds_out = driver.Create(dest, shape[1], shape[0], 1, dtype_gdal, co_args)
     ds_out.SetGeoTransform(geo_trans)
     if proj_ref is not None:
-        ds_out.SetProjection(proj_ref)
-    else:
-        warn("Missing projection reference for output raster '{}'".format(dest))
+        ds_out.SetProjection(projstr_wkt)
     band = ds_out.GetRasterBand(1)
-    band.WriteArray(array)
     if nodata_val is not None:
         band.SetNoDataValue(nodata_val)
 
+    sys.stdout.write(" writing array values ...")
+    sys.stdout.flush()
+    band.WriteArray(array)
+
     # Write the output raster dataset to disk.
-    sys.stdout.write("Saving output raster {} ...".format(dest))
+    sys.stdout.write(" finishing file ...")
+    sys.stdout.flush()
     ds_out = None  # Dereference dataset to initiate write to disk of intermediate image.
     sys.stdout.write(" done!\n")
     sys.stdout.flush()
