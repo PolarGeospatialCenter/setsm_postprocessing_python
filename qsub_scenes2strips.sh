@@ -10,10 +10,11 @@ cd $PBS_O_WORKDIR
 echo $PBS_JOBID
 echo $PBS_O_HOST
 echo $PBS_NODEFILE
-echo $a1
+echo
 
 source activate my_root
 
 echo $p1
+echo
 
 time $p1

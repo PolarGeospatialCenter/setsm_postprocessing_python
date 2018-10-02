@@ -27,6 +27,11 @@ else:
 # comparison to the spatial references of all other source raster files.
 __STRIP_SPAT_REF__ = None
 
+# Options for `hold_guess` argument to `scenes2strips`
+HOLD_GUESS_OFF = 0
+HOLD_GUESS_ON = 1
+HOLD_GUESS_ON_STATS = 2
+
 
 class InvalidArgumentError(Exception):
     def __init__(self, msg=""):
@@ -42,9 +47,8 @@ class RasterDimensionError(Exception):
 
 
 def scenes2strips(demdir, demFiles,
-                  maskSuffix=None, filter_options=(),
-                  trans_guess=None, rmse_guess=None, hold_guess=False,
-                  max_coreg_rmse=1):
+                  maskSuffix=None, filter_options=(), max_coreg_rmse=1,
+                  trans_guess=None, rmse_guess=None, hold_guess=HOLD_GUESS_OFF):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -81,23 +85,25 @@ def scenes2strips(demdir, demFiles,
     demSuffix = getDemSuffix(demFiles[0])
 
     # Order scenes in north-south or east-west direction by aspect ratio.
+    num_scenes = len(demFiles)
     if trans_guess is None and rmse_guess is None:
-        print("Ordering {} scenes".format(len(demFiles)))
+        print("Ordering {} scenes".format(num_scenes))
         demFiles_ordered = orderPairs(demdir, demFiles)
-    elif trans_guess is not None and trans_guess.shape[1] != len(demFiles):
-        raise InvalidArgumentError("`trans_guess` array must be of shape (3, N) where N=len(demFiles), "
-                                   "but was {}".format(trans_guess.shape))
-    elif rmse_guess is not None and rmse_guess.shape[1] != len(demFiles):
-        raise InvalidArgumentError("`rmse_guess` array must be of shape (1, N) where N=len(demFiles), "
-                                   "but was {}".format(rmse_guess.shape))
+    elif trans_guess is not None and trans_guess.shape[1] != num_scenes:
+        raise InvalidArgumentError("`trans_guess` array must be of shape (3, N) where N is the number "
+                                   "of scenes in `demFiles`, but was {}".format(trans_guess.shape))
+    elif rmse_guess is not None and rmse_guess.shape[1] != num_scenes:
+        raise InvalidArgumentError("`rmse_guess` array must be of shape (1, N) where N is the number "
+                                   "of scenes in `demFiles`, but was {}".format(rmse_guess.shape))
     else:
         # Files should already be properly ordered if a guess is provided.
         # Running `orderPairs` on them could detrimentally change their order.
         demFiles_ordered = list(demFiles)
+    num_scenes = len(demFiles_ordered)
 
     # Initialize output stats.
-    trans = np.zeros((3, len(demFiles_ordered))) if trans_guess is None else trans_guess.copy()
-    rmse = np.zeros((1, len(demFiles_ordered))) if rmse_guess is None else rmse_guess.copy()
+    trans = np.zeros((3, num_scenes)) if trans_guess is None else trans_guess.copy()
+    rmse = np.zeros((1, num_scenes)) if rmse_guess is None else rmse_guess.copy()
 
     # Get projection reference of the first scene to be used in equality checks
     # with the projection reference of all scenes that follow.
@@ -105,8 +111,20 @@ def scenes2strips(demdir, demFiles,
     __STRIP_SPAT_REF__ = rat.extractRasterData(os.path.join(demdir, demFiles_ordered[0]), 'spat_ref')
 
     # File loop.
+    skipped_scene = False
     segment_break = False
-    for i in range(len(demFiles_ordered)):
+    for i in range(num_scenes+1):
+
+        if skipped_scene:
+            skipped_scene = False
+            trans[:, i-1] = np.nan
+            rmse[0, i-1] = np.nan
+        if i >= num_scenes:
+            break
+        if np.any(np.isnan(trans[:, i])) or np.isnan(rmse[0, i]):
+            # State of scene is somewhere between naturally redundant
+            # or redundant by masking, as classified by prior s2s run.
+            continue
 
         # Construct filenames.
         demFile = os.path.join(demdir, demFiles_ordered[i])
@@ -134,6 +152,7 @@ def scenes2strips(demdir, demFiles,
         # Check for no data.
         if np.all(np.isnan(z)):
             print("All data is masked, skipping")
+            skipped_scene = True
             continue
 
         dx = x[1] - x[0]
@@ -221,10 +240,10 @@ def scenes2strips(demdir, demFiles,
         # Nodata in strip and data in scene is a one.
         A = rat.bwareaopen(strip_nodata & scene_data, cmin, in_place=True).astype(np.float32)
 
-        # TODO: Remove redundant scenes from strip metadata?
         # Check for redundant scene.
         if np.count_nonzero(A) <= cmin:
             print("Redundant scene, skipping")
+            skipped_scene = True
             continue
 
         # Data in strip and nodata in scene is a two.
@@ -331,14 +350,15 @@ def scenes2strips(demdir, demFiles,
 
         P1 = getDataDensityMap(m[r[0]:r[1], c[0]:c[1]]) > 0.9
 
-        # TODO: Remove redundant scenes from strip metadata?
         # Check for redundant scene.
         if not np.any(P1):
             print("Redundant scene, skipping")
+            skipped_scene = True
             continue
 
         # Coregister this scene to the strip mosaic.
-        if trans_guess is not None and hold_guess and rmse_guess is None:
+        if (    trans_guess is not None and hold_guess != HOLD_GUESS_OFF
+            and (rmse_guess is None or hold_guess != HOLD_GUESS_ON_STATS)):
             pass
         else:
             trans[:, i], rmse[0, i] = coregisterdems(
@@ -347,7 +367,7 @@ def scenes2strips(demdir, demFiles,
                 P0, P1, (trans_guess[:, i] if trans_guess is not None else None)
             )[[1, 2]]
 
-            if rmse_guess is not None:
+            if rmse_guess is not None and hold_guess == HOLD_GUESS_ON_STATS:
                 rmse_change = rmse[0, i] - rmse_guess[0, i]
                 stats_str = "First-run rmse={:.3f}, second-run rmse={:.3f}, change={:.3f}".format(
                     rmse_guess[0, i], rmse[0, i], rmse_change)
@@ -358,7 +378,7 @@ def scenes2strips(demdir, demFiles,
                 statsFile_fp.write('{}: {}\n'.format(demFiles_ordered[i], stats_str))
                 statsFile_fp.close()
 
-            if hold_guess:
+            if hold_guess != HOLD_GUESS_OFF:
                 if trans_guess is not None:
                     trans = trans_guess.copy()
                 if rmse_guess is not None:
@@ -458,7 +478,7 @@ def scenes2strips(demdir, demFiles,
         rmse = rmse[:, :i]
 
     # Crop to data.
-    if 'Z' in vars() and np.any(~np.isnan(Z)):
+    if 'Z' in vars() and ~np.all(np.isnan(Z)):
         rcrop, ccrop = cropBorder(Z, np.nan)
         if rcrop is not None:
             X = X[ccrop[0]:ccrop[1]]
@@ -665,7 +685,7 @@ def orderPairs(demdir, fnames):
             # Remove the geometry of this scene (and its index) from the input list.
             indexed_geoms.remove(selected_tup)
         else:
-            print("Break in overlap detected, returning this segment only")
+            print("Break in scene pair coverage detected, segment break")
             break
 
     return [fnames[i] for i in ordered_fname_indices]
@@ -758,21 +778,17 @@ def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
     else:
         from lib.filter_scene import mask_v2, MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 
-    # if len(filter_options) > 0:
-    #     mask_select = np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_EDGE_BIT)).astype(np.bool)
-    #     if 'nowater' not in filter_options:
-    #         mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_WATER_BIT)).astype(np.bool)] = 1
-    #     if 'nocloud' not in filter_options:
-    #         mask_select[np.bitwise_and(md, np.full_like(md, 2**MASKCOMP_CLOUD_BIT)).astype(np.bool)] = 1
-    # else:
-    #     mask_select = md
     mask_select = np.copy(md)
     if len(filter_options) > 0:
         mask_ones = np.ones_like(mask_select)
-        if 'nowater' in filter_options:
-            np.bitwise_and(mask_select, ~np.left_shift(mask_ones, MASKCOMP_WATER_BIT), out=mask_select)
-        if 'nocloud' in filter_options:
-            np.bitwise_and(mask_select, ~np.left_shift(mask_ones, MASKCOMP_CLOUD_BIT), out=mask_select)
+        for opt in filter_options:
+            unmask_bit = None
+            if opt == 'nowater':
+                unmask_bit = MASKCOMP_WATER_BIT
+            elif opt == 'nocloud':
+                unmask_bit = MASKCOMP_CLOUD_BIT
+            if unmask_bit is not None:
+                np.bitwise_and(mask_select, ~np.left_shift(mask_ones, unmask_bit), out=mask_select)
 
     mask = (mask_select > 0)
     if maskSuffix in ('mask.tif', 'bitmask.tif'):

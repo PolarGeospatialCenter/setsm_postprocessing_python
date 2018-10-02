@@ -35,6 +35,10 @@ MASKCOMP_CLOUD_NAME = 'cloudmask'
 MASKCOMP_EDGE_BIT = 0
 MASKCOMP_WATER_BIT = 1
 MASKCOMP_CLOUD_BIT = 2
+MASKCOMP_NAME_BIT_ZIP = zip(
+    [MASKCOMP_EDGE_NAME, MASKCOMP_WATER_NAME, MASKCOMP_CLOUD_NAME],
+    [MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT]
+)
 
 
 DEBUG_DIR = TESTDIR
@@ -253,9 +257,8 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
             if save_component_masks == MASK_BIT:
                 mask_bin = component_masks[mask_version]
                 mask_comp = np.zeros_like(mask_bin, dtype=np.uint8)
-                mask_comp = np.bitwise_or(mask_comp, component_masks[MASKCOMP_EDGE_NAME].astype(np.uint8) * 2**MASKCOMP_EDGE_BIT)
-                mask_comp = np.bitwise_or(mask_comp, component_masks[MASKCOMP_WATER_NAME].astype(np.uint8) * 2**MASKCOMP_WATER_BIT)
-                mask_comp = np.bitwise_or(mask_comp, component_masks[MASKCOMP_CLOUD_NAME].astype(np.uint8) * 2**MASKCOMP_CLOUD_BIT)
+                for mask_name, mask_bit in MASKCOMP_NAME_BIT_ZIP:
+                    np.bitwise_or(mask_comp, np.left_shift(component_masks[mask_name].astype(np.uint8), mask_bit), out=mask_comp)
                 try:
                     if not np.array_equal(mask_comp.astype(np.bool), mask_bin):
                         raise MaskComponentError("Coverage of edge/water/cloud component mask arrays "

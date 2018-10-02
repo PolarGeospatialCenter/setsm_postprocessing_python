@@ -32,7 +32,9 @@ class MetaReadError(Exception):
 def main():
     from lib.filter_scene import generateMasks
     from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
+    from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
     from lib.scenes2strips import scenes2strips
+    from lib.scenes2strips import HOLD_GUESS_OFF, HOLD_GUESS_ON, HOLD_GUESS_ON_STATS
     from lib.raster_array_tools import saveArrayAsTiff, getFPvertices
 
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description=(
@@ -283,7 +285,9 @@ def main():
         for demFile in filter_list:
             i += 1
             sys.stdout.write("Filtering {} of {}: ".format(i, filter_total))
-            generateMasks(demFile, mask_version, noentropy=args.noentropy)
+            generateMasks(demFile, mask_version, noentropy=args.noentropy,
+                          save_component_masks=MASK_BIT, debug_component_masks=DEBUG_NONE,
+                          nbit_masks=False)
 
         # Mosaic scenes in this strip together.
         # Output separate segments if there are breaks in overlap.
@@ -320,7 +324,7 @@ def main():
                 # `os.path.join(testing.test.TESTDIR, 's2s_stats.log')`.
                 X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
                     srcdir, input_sceneDemFnames, maskSuffix, filter_options_mask,
-                    trans_guess=trans, hold_guess=True)
+                    trans_guess=trans, rmse_guess=rmse, hold_guess=HOLD_GUESS_ON)
                 if X is None:
                     all_data_masked = True
                 if mosaicked_sceneDemFnames != input_sceneDemFnames and use_old_trans:
@@ -407,16 +411,16 @@ def writeStripMeta(o_metaFile, scenedir, scene_demFnames,
         fp_vertices = fp_vertices.astype(np.int64)
 
     strip_info = (
-"""Strip Metadata 
+"""Strip Metadata
 Creation Date: {}
 Strip creation date: {}
 Strip projection (proj4): '{}'
 
 Strip Footprint Vertices
-X: {} 
-Y: {} 
+X: {}
+Y: {}
 
-Mosaicking Alignment Statistics (meters) 
+Mosaicking Alignment Statistics (meters)
 scene, rmse, dz, dx, dy
 """.format(
     datetime.today().strftime("%d-%b-%Y %H:%M:%S"),

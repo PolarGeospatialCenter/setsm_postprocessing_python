@@ -19,6 +19,11 @@ SCHED_SUPPORTED = [
 ]
 
 
+class InvalidArgumentError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+
 class ArgumentPasser:
 
     def __init__(self, parser, executable_path, script_path):
@@ -35,10 +40,21 @@ class ArgumentPasser:
         self.cmd = None
         self.update_cmd_base()
 
-    def get(self, argstr):
-        return self.vars_dict[self.argstr2varstr[argstr]]
+    def get(self, *argstrs):
+        if len(argstrs) < 1:
+            raise InvalidArgumentError("One or more argument strings must be provided")
+        argstrs_invalid = set(argstrs).difference(set(self.argstr2varstr))
+        if argstrs_invalid:
+            raise InvalidArgumentError("This {} object does not have the following "
+                                       "argument strings: {}".format(type(self).__name__, list(argstrs_invalid)))
+        values = [self.argstr2varstr[argstr] for argstr in argstrs]
+        if len(values) == 1:
+            values = values[0]
+        return values
 
     def set(self, argstr, newval):
+        if argstr not in self.argstr2varstr:
+            raise InvalidArgumentError("This {} object has no '{}' argument string".format(type(self).__name__, argstr))
         self.vars_dict[self.argstr2varstr[argstr]] = newval
         if argstr in self.argstr_pos:
             self.update_cmd()
