@@ -7,6 +7,7 @@ import filecmp
 import glob
 import os
 import subprocess
+import re
 import sys
 from time import sleep
 from datetime import datetime
@@ -22,6 +23,9 @@ ARGDEF_QSUBSCRIPT = os.path.join(SCRIPT_DIR, 'qsub_scenes2strips.sh')
 
 SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
 SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
+
+RE_STRIPID_STR = "(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$"
+RE_STRIPID = re.compile(RE_STRIPID_STR)
 
 
 class MetaReadError(Exception):
@@ -93,8 +97,8 @@ def main():
         help="Print actions without executing.")
 
     parser.add_argument('--stripid',
-        help="Run filtering and mosaicking for a single strip with id "
-             "<catid1_catid2> (as parsed from scene DEM filenames).")
+        help="Run filtering and mosaicking for a single strip with strip ID "
+             "as parsed from scene DEM filenames using the following regex: '{}'.".format(RE_STRIPID_STR))
 
     # Parse and validate arguments.
     args = parser.parse_args()
@@ -157,14 +161,27 @@ def main():
             if scene_dems:
                 break
         if not scene_dems:
-            print("No scene DEMs found to merge, exiting")
+            print("No scene DEMs found to process, exiting")
             sys.exit(1)
 
-        # Find unique strip IDs (<catid1_catid2>).
-        stripids = list(set([os.path.basename(s)[14:47] for s in scene_dems]))
+        # Find all unique strip IDs.
+        try:
+            stripids = list(set([re.match(RE_STRIPID, os.path.basename(s)).group(1) for s in scene_dems]))
+        except AttributeError:
+            print("There are source scene DEMs for which a strip ID cannot be parsed. "
+                  "Please fix source raster filenames so that a strip ID can be parsed "
+                  "using the following regular expression: '{}'".format(RE_STRIPID_STR))
+            raise
+
         stripids.sort()
-        print("{} {} pair ids".format(len(stripids), '*'+demSuffix))
+        stripids_to_process = [sID for sID in stripids if not os.path.isfile(os.path.join(dstdir, sID+'.fin'))]
+        print("Found {} {} strip-pair IDs, {} unfinished".format(
+            len(stripids), '*'+demSuffix, len(stripids_to_process)))
         del scene_dems
+
+        if len(stripids_to_process) == 0:
+            print("No unfinished strip DEMs found to process, exiting")
+            sys.exit(0)
 
         wait_seconds = 5
         print("Sleeping {} seconds before job submission".format(wait_seconds))
@@ -204,13 +221,12 @@ def main():
                     s2s_command,
                     qsubpath
                 )
-                print(cmd)
 
             # ...else run locally.
             else:
                 cmd = s2s_command
-                print('{}, {}'.format(i, cmd))
 
+            print("{}, {}".format(i, cmd))
             if not args.dryrun:
                 # For most cases, set `shell=True`.
                 # For attaching process to PyCharm debugger,
@@ -248,21 +264,25 @@ def main():
         print("coreg filter options: {}".format(filter_options_coreg))
         print("mask filter options: {}".format(filter_options_mask))
 
+        stripid_fin_file = os.path.join(dstdir, args.stripid+'.fin')
+
         # Find scene DEMs for this stripid to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_demFiles = glob.glob(os.path.join(srcdir, '*{}*_{}_{}'.format(args.stripid, args.res, demSuffix)))
+            scene_demFiles = glob.glob(os.path.join(srcdir, '{}*_{}_{}'.format(args.stripid, args.res, demSuffix)))
             if scene_demFiles:
                 break
-        print("Merging pair id: {}, {} scenes".format(args.stripid, len(scene_demFiles)))
+        print("Processing strip-pair ID: {}, {} scenes".format(args.stripid, len(scene_demFiles)))
         if not scene_demFiles:
-            print("No scene DEMs found to merge, skipping")
+            print("No scene DEMs found to process, skipping")
             sys.exit(1)
 
         # Existence check. If output already exists, skip.
-        strip_demFiles = glob.glob(os.path.join(dstdir, '*{}_seg*_{}m_{}'.format(args.stripid, args.res, demSuffix)))
-        if strip_demFiles:
-            print("Output files exist, skipping")
+        if os.path.isfile(stripid_fin_file):
+            print("{} file exists, strip output finished, skipping".format(stripid_fin_file))
             sys.exit(0)
+        if glob.glob(os.path.join(dstdir, args.stripid+'*')):
+            print("Unfinished strip output exists, skipping")
+            sys.exit(1)
 
         # Make sure all matchtag and ortho files exist. If missing, skip.
         missingflag = False
@@ -299,8 +319,7 @@ def main():
 
             print("Building segment {}".format(segnum))
 
-            stripid_full = remaining_sceneDemFnames[0][0:47]
-            strip_demFname = "{}_seg{}_{}m_{}".format(stripid_full, segnum, args.res, demSuffix)
+            strip_demFname = "{}_seg{}_{}m_{}".format(args.stripid, segnum, args.res, demSuffix)
             strip_demFile = os.path.join(dstdir, strip_demFname)
             if use_old_trans:
                 strip_metaFile = os.path.join(metadir, strip_demFname.replace(demSuffix, 'meta.txt'))
@@ -362,6 +381,10 @@ def main():
                            trans, rmse, proj4, fp_vertices, time, args)
 
             segnum += 1
+
+        with open(stripid_fin_file, 'w'):
+            pass
+        print("Fin!")
 
 
 def getDemSuffix(demFile):
@@ -470,10 +493,9 @@ scene, rmse, dz, dx, dy
             scene_info += "{} not found".format(scene_metaFile)
         scene_info += " \n"
 
-    strip_metaFile_fp = open(o_metaFile, 'w')
-    strip_metaFile_fp.write(strip_info)
-    strip_metaFile_fp.write(scene_info)
-    strip_metaFile_fp.close()
+    with open(o_metaFile, 'w') as strip_metaFile_fp:
+        strip_metaFile_fp.write(strip_info)
+        strip_metaFile_fp.write(scene_info)
 
 
 def readStripMeta_stats(metaFile):
