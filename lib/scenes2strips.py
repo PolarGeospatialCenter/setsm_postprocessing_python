@@ -439,9 +439,11 @@ def scenes2strips(demdir, demFiles,
 
         # Make weighted elevation grid.
         A = Zsub*W + zi*(1-W)
-        A[ np.isnan(Zsub) & ~np.isnan(zi)] =   zi[ np.isnan(Zsub) & ~np.isnan(zi)]
-        A[~np.isnan(Zsub) &  np.isnan(zi)] = Zsub[~np.isnan(Zsub) &  np.isnan(zi)]
-        del zi, Zsub
+        Zsub_only = ~np.isnan(Zsub) &  np.isnan(zi)
+        zi_only   =  np.isnan(Zsub) & ~np.isnan(zi)
+        A[Zsub_only] = Zsub[Zsub_only]
+        A[zi_only]   =   zi[zi_only]
+        del Zsub, zi, Zsub_only, zi_only
 
         # Put strip subset back into full array.
         Z[r0:r1, c0:c1] = A
@@ -458,9 +460,11 @@ def scenes2strips(demdir, demFiles,
 
         del W
 
-        A[ np.isnan(Osub) & ~np.isnan(oi)] =   oi[ np.isnan(Osub) & ~np.isnan(oi)]
-        A[~np.isnan(Osub) &  np.isnan(oi)] = Osub[~np.isnan(Osub) &  np.isnan(oi)]
-        del Osub, oi
+        Osub_only = ~np.isnan(Osub) &  np.isnan(oi)
+        oi_only   =  np.isnan(Osub) & ~np.isnan(oi)
+        A[Osub_only] = Osub[Osub_only]
+        A[oi_only]   =   oi[oi_only]
+        del Osub, oi, Osub_only, oi_only
 
         A[np.isnan(A)] = 0  # convert back to uint16
         A = A.astype(np.uint16)

@@ -131,6 +131,7 @@ def openRaster(file_or_ds, target_EPSG=None):
 
 
 def reprojectGDALDataset(ds_in, sr_out, interp_str):
+    # FIXME: Finish this function.
 
     # dtype_gdal, promote_dtype = dtype_np2gdal(Z.dtype)
     # if promote_dtype is not None:
@@ -463,7 +464,7 @@ def dtype_np2gdal(dtype_np):
 
     dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_np)
     if dtype_gdal is None:
-        raise InvalidArgumentError("`array` data type ({}) does not have equivalent "
+        raise InvalidArgumentError("NumPy array data type ({}) does not have equivalent "
                                    "GDAL data type and is not supported".format(dtype_np))
 
     return dtype_gdal, promote_dtype
@@ -537,7 +538,8 @@ def saveArrayAsTiff(array, dest,
         If 'n-bit', write output raster image in an unsigned integer GDAL
         data type with ['NBITS=n'] option in driver, where n is set to `nbits`
         if `nbits` is not None. If `nbits` is None, n is calculated to be only
-        as large as necessary to capture the maximum value of `array`.
+        as large as necessary to capture the maximum value of `array`, and the
+        output array data type is unsigned integer of minimal bitdepth.
     nbits : None or 1 <= int <= 32
         Only applies when `dtype_out='nbits'`.
     co_args : None, 'compress', or list of '[ARG_NAME]=[ARG_VALUE]' strings
@@ -595,10 +597,11 @@ def saveArrayAsTiff(array, dest,
     if co_args is not None and co_args != 'compress':
         if type(co_args) != list:
             raise InvalidArgumentError("`co_args` must be a list of strings, but was {}".format(co_args))
-        for arg in co_args:
-            if arg.startswith('NBITS='):
-                raise InvalidArgumentError("`co_args` cannot include 'NBITS=X' argument. "
-                                           "Please use this function's `nbits` argument.")
+        if dtype_out == 'nbits':
+            for arg in co_args:
+                if arg.startswith('NBITS='):
+                    raise InvalidArgumentError("`co_args` cannot include 'NBITS=X' argument. "
+                                               "Please use this function's `nbits` argument.")
 
     shape = array.shape
     dtype_gdal = None
@@ -647,35 +650,24 @@ def saveArrayAsTiff(array, dest,
                                            "GDAL data type and is not supported".format(dtype_out))
 
     dtype_in = array.dtype
-    promote_dtype = None
-    if dtype_in == np.bool:
-        dtype_in = np.uint8  # np.bool values are 8-bit
-    elif dtype_in == np.int8:
-        promote_dtype = np.int16
-    elif dtype_in == np.float16:
-        promote_dtype = np.float32
+    dtype_in_gdal, promote_dtype = dtype_np2gdal(dtype_in)
     if promote_dtype is not None:
-        warn("Input array data type ({}) does not have equivalent GDAL data type and is not "
-             "supported, but will be safely promoted to {}".format(dtype_in, promote_dtype(1).dtype))
         array = array.astype(promote_dtype)
         dtype_in = promote_dtype(1).dtype
-
     if dtype_out is not None:
         if dtype_out == 'n-bit':
             if not np.issubdtype(dtype_in, np.unsignedinteger):
                 warn("Input array data type ({}) is not unsigned and may be incorrectly saved "
                      "with n-bit precision".format(dtype_in))
         elif dtype_in != dtype_out:
-            warn("Input array data type ({}) differs from "
-                 "output data type ({})".format(dtype_in, dtype_out(1).dtype))
-    elif dtype_gdal is None:
-        dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_in)
-        if dtype_gdal is None:
-            raise InvalidArgumentError("Input array data type ({}) does not have equivalent "
-                                       "GDAL data type and is not supported".format(dtype_in))
-
-    if proj_ref is not None and type(proj_ref) == osr.SpatialReference:
-        proj_ref = proj_ref.ExportToProj4()
+            warn("Input array NumPy data type ({}) differs from output "
+                 "NumPy data type ({})".format(dtype_in, dtype_out(1).dtype))
+    elif dtype_gdal is not None and dtype_gdal != dtype_in_gdal:
+        warn("Input array GDAL data type ({}) differs from output "
+             "GDAL data type ({})".format(gdal.GetDataTypeName(dtype_in_gdal),
+                                          gdal.GetDataTypeName(dtype_gdal)))
+    if dtype_gdal is None:
+        dtype_gdal = dtype_in_gdal
 
     sys.stdout.write("Saving Geotiff {} ...".format(dest))
     sys.stdout.flush()
@@ -708,7 +700,7 @@ def saveArrayAsTiff(array, dest,
     driver = gdal.GetDriverByName('GTiff')
     ds_out = driver.Create(dest, shape[1], shape[0], 1, dtype_gdal, co_args)
     ds_out.SetGeoTransform(geo_trans)
-    if proj_ref is not None:
+    if projstr_wkt is not None:
         ds_out.SetProjection(projstr_wkt)
     band = ds_out.GetRasterBand(1)
     if nodata_val is not None:
