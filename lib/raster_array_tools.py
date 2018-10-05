@@ -3635,13 +3635,13 @@ def concave_hull_image(image, concavity,
             for amin_edge in amin_instances:
                 plt.plot(boundary_points[amin_edge, 1], -boundary_points[amin_edge, 0], 'ro', lw=1.5)
             plt.show()
-            user_input = raw_input("Modify params? (y/n): ")
+            user_input = input("Modify params? (y/n): ")
             if user_input.lower() != "y":
                 break
             validInput = False
             while not validInput:
                 try:
-                    user_input = raw_input("concavity = ")
+                    user_input = input("concavity = ")
                     if user_input == "":
                         break
                     else:
@@ -3675,7 +3675,7 @@ def concave_hull_image(image, concavity,
                     print("concavity must be an int or float between 0 and 1")
             while not validInput:
                 try:
-                    user_input = raw_input("alpha_cut = ")
+                    user_input = input("alpha_cut = ")
                     if user_input == "":
                         break
                     else:

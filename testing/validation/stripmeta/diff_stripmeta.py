@@ -36,7 +36,7 @@ def main():
     # if os.path.isfile(outFile):
     #     parser.error("out file already exists")
     if not os.path.isdir(os.path.dirname(outDir)):
-        print "Creating directory for output results file: {}".format(outDir)
+        print("Creating directory for output results file: {}".format(outDir))
         os.makedirs(outDir)
 
     dir1_fnames = set([os.path.basename(p) for p in glob.glob(os.path.join(dir1, '*_meta.txt'))])
@@ -78,7 +78,7 @@ def main():
     jobnum = 0
     for stripnum, fname in enumerate(fnames_comm):
         jobnum += 1
-        print "({}/{}) {}".format(jobnum, num_jobs, fname)
+        print("({}/{}) {}".format(jobnum, num_jobs, fname))
 
         metaFile1 = os.path.join(dir1, fname)
         metaFile2 = os.path.join(dir2, fname)
@@ -297,7 +297,7 @@ def main():
 
     np.savetxt(outFile+'_AbsMaxDiff.csv', stats_array, delimiter=',', fmt='%0.3f')
 
-    print "Done!"
+    print("Done!")
 
 
 def read_lines(fp1, fp2, num=0):

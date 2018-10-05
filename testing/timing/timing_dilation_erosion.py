@@ -46,19 +46,19 @@ repeat_times = np.zeros((repeat_number, 1))
 
 
 array = test.readImage(testImageFile)
-print "Writing to '{}'".format(statsFile)
+print("Writing to '{}'".format(statsFile))
 
 statsFile_fp = open(statsFile, 'w')
 statsFile_fp.write(','.join(col_names)+'\n')
 for arr_sz_factor in array_sizes:
-    print ">>> arr_sz_factor: {} <<<".format(arr_sz_factor)
+    print(">>> arr_sz_factor: {} <<<".format(arr_sz_factor))
     arr = imresize(array, arr_sz_factor, use_gdal=False)
     row_entry[0] = str(np.prod(arr.shape))
     for struct in structures:
-        print ">> structure shape: {} <<".format(struct.shape)
+        print(">> structure shape: {} <<".format(struct.shape))
         row_entry[1] = str(np.prod(struct.shape))
         for fun in functions:
-            print "~ function: {} ~".format(fun)
+            print("~ function: {} ~".format(fun))
             row_entry[2] = fun
             for mode in function_modes:
                 stdout.write("mode: {}".format(mode))

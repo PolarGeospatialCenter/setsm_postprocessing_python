@@ -33,7 +33,7 @@ def main():
     if os.path.isfile(outfile):
         parser.error("out file already exists")
     if not os.path.isdir(os.path.dirname(outdir)):
-        print "Creating directory for output results file: {}".format(outdir)
+        print("Creating directory for output results file: {}".format(outdir))
         os.makedirs(outdir)
 
     matchFiles = glob.glob(os.path.join(srcdir, '*_matchtag.tif'))
@@ -43,11 +43,11 @@ def main():
         array = extractRasterData(m, 'array')
         if np.any(array > 1):
             affected_fname = os.path.basename(m)
-            print affected_fname
+            print(affected_fname)
             results_fp.write(affected_fname+'\n')
     results_fp.close()
 
-    print "Done!"
+    print("Done!")
 
 
 

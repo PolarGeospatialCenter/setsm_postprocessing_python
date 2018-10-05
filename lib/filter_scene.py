@@ -1847,7 +1847,7 @@ def ithresh_save(block_num, vars_dict, funcname=None):
     this_file_fp.close()
 
     # Save data necessary for performing interactive thresholding.
-    vars_dict_save = {name: data for name, data in vars_dict.iteritems() if name in ithresh_code_exec}
+    vars_dict_save = {name: data for name, data in vars_dict.items() if name in ithresh_code_exec}
     vars_dict_save['ITHRESH_FUNCTION_NAME'] = caller_funcName
     vars_dict_save['ITHRESH_BLOCK_NUM'] = block_num
     vars_dict_save['ITHRESH_CODE_RAW'] = ithresh_code_raw
@@ -1870,6 +1870,6 @@ def ithresh_load(block_num, funcname=None):
 
     print("Loading thresh vars from {}".format(vars_dict_file))
     vars_dict = np.load(vars_dict_file).item()
-    vars_dict = {name: data for name, data in vars_dict.iteritems() if 'thresh' in name}
+    vars_dict = {name: data for name, data in vars_dict.items() if 'thresh' in name}
 
     return vars_dict

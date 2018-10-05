@@ -243,7 +243,7 @@ def getCalledFunctionArgs(depth=1, funcName=None):
         if depth == 0 or depth == float('inf'):
             if funcName is None:
                 raise InvalidArgumentError("`funcName` must be provided when depth is not certain")
-            stack_iterable = xrange(len(stack))
+            stack_iterable = range(len(stack))
             if depth != 0:
                 stack_iterable = reversed(stack_iterable)
             for i in stack_iterable:
@@ -376,11 +376,11 @@ def validateTestFileSave(fname_or_file, overwrite=False):
         testFile = fname_or_file
 
     while os.path.isfile(testFile) and not overwrite:
-        opt = raw_input("Test file '{}' already exists. Overwrite? (y/n): ".format(testFile.replace(TESTDIR, '{TESTDIR}/')))
+        opt = input("Test file '{}' already exists. Overwrite? (y/n): ".format(testFile.replace(TESTDIR, '{TESTDIR}/')))
         if opt.strip().lower() == 'y':
             break
         else:
-            opt = raw_input("Append description to filename (or press [ENTER] to cancel): ")
+            opt = input("Append description to filename (or press [ENTER] to cancel): ")
             if opt == '':
                 return None
             else:
