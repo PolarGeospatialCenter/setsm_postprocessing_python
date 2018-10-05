@@ -16,10 +16,10 @@ from scipy import interpolate
 from testing.test import validateTestFileSave
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
-    from filter_scene import getDataDensityMap
+    from filter_scene import getDataDensityMap, readSceneMeta, rescaleDN
 else:
     from lib import raster_array_tools as rat
-    from lib.filter_scene import getDataDensityMap
+    from lib.filter_scene import getDataDensityMap, readSceneMeta, rescaleDN
 
 
 # The spatial reference of the strip, set at the beginning of scenes2strips()
@@ -130,16 +130,17 @@ def scenes2strips(demdir, demFiles,
         demFile = os.path.join(demdir, demFiles_ordered[i])
         matchFile = selectBestMatchtag(demFile)
         orthoFile = demFile.replace(demSuffix, 'ortho.tif')
+        metaFile  = demFile.replace(demSuffix, 'meta.txt')
         if maskSuffix is None:
             print("No mask applied")
             maskFile = None
         else:
             maskFile = demFile.replace(demSuffix, maskSuffix)
 
-        print("scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
+        print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
 
         try:
-            x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile)
+            x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile, metaFile)
         except:
             print("Data read error:")
             print_exc()
@@ -510,7 +511,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
 
     """
     if (m1 is None) ^ (m2 is None):
-        raise InvalidArgumentError("Either none of both of arguments 'm1' and 'm2' must be provided")
+        raise InvalidArgumentError("Either none of both of arguments `m1` and `m2` must be provided")
 
     # Maximum offset allowed
     maxp = 15
@@ -725,7 +726,7 @@ def rectFootprint(*geoms):
     return ogr.Geometry(wkt=fp_wkt)
 
 
-def loadData(demFile, matchFile, orthoFile, maskFile):
+def loadData(demFile, matchFile, orthoFile, maskFile, metaFile):
     """
     Load data files and perform basic conversions.
     """
@@ -733,7 +734,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile):
 
     z, x_dem, y_dem, spat_ref = rat.extractRasterData(demFile, 'array', 'x', 'y', 'spat_ref')
     if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
-        raise SpatialRefError("demFile '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
+        raise SpatialRefError("DEM '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
                               demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
 
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
@@ -742,25 +743,22 @@ def loadData(demFile, matchFile, orthoFile, maskFile):
 
     m = rat.extractRasterData(matchFile, 'array').astype(np.bool)
     if m.shape != z.shape:
-        warnings.warn("matchFile '{}' dimensions differ from dem dimensions".format(matchFile)
-                     +"\nInterpolating to dem dimensions")
+        warnings.warn("Matchtag '{}' dimensions differ from DEM dimensions".format(matchFile)
+                     +"\nInterpolating to DEM dimensions")
         x, y = rat.extractRasterData(matchFile, 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.isnan(m)] = 0  # Convert back to bool/uint8.
         m = m.astype(np.bool)
 
-    if os.path.isfile(orthoFile):
-        o = rat.extractRasterData(orthoFile, 'array')
-        if o.shape != z.shape:
-            warnings.warn("orthoFile '{}' dimensions differ from dem dimensions".format(orthoFile)
-                         +"\nInterpolating to dem dimensions")
-            x, y = rat.extractRasterData(orthoFile, 'x', 'y')
-            o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
-            o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
-            o[np.isnan(o)] = 0  # Convert back to uint16.
-            o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
-    else:
-        o = np.zeros(z.shape, dtype=np.uint16)
+    o = rat.extractRasterData(orthoFile, 'array')
+    if o.shape != z.shape:
+        warnings.warn("Ortho '{}' dimensions differ from DEM dimensions".format(orthoFile)
+                     +"\nInterpolating to DEM dimensions")
+        x, y = rat.extractRasterData(orthoFile, 'x', 'y')
+        o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
+        o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
+        o[np.isnan(o)] = 0  # Convert back to uint16.
+        o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
 
     if maskFile is None:
         md = np.zeros_like(z, dtype=np.uint8)
@@ -769,6 +767,14 @@ def loadData(demFile, matchFile, orthoFile, maskFile):
         if md.shape != z.shape:
             raise RasterDimensionError("maskFile '{}' dimensions {} do not match dem dimensions {}".format(
                                        maskFile, md.shape, z.shape))
+
+    # Re-scale ortho data if WorldView correction is detected in the meta file.
+    meta = readSceneMeta(metaFile)
+    wv_correct_flag = meta['image_1_wv_correct']
+    maxDN = meta['image_1_max'] if wv_correct_flag else None
+    if maxDN is not None:
+        print("Ortho had wv_correct applied, rescaling values to range [0, {}]".format(maxDN))
+        o = rescaleDN(o, maxDN)
 
     return x_dem, y_dem, z, m, o, md
 

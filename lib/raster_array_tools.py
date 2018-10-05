@@ -1063,8 +1063,8 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
     dtype_out_np = dtype_out if type(dtype_out) != np.dtype else dtype_out.type
 
     if isinstance(array_dtype_np(1), np.floating) and isinstance(dtype_out_np(1), np.integer):
-        # TODO: Consider replacing the following potentially costly call with:
-        # -t    np.around(array)
+        # TODO: Consider replacing the following potentially costly call with
+        # -t    np.around(array) if round-half-to-nearest-whole-even is acceptable.
         array = array_round_proper(array, allow_modify_array)
 
     return astype_cropped(array, dtype_out_np, allow_modify_array)
