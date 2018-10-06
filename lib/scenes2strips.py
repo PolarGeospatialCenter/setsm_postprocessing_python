@@ -577,7 +577,7 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
              & (np.abs(dz - np.nanmedian(dz)) <= np.nanstd(dz)))
 
         if not np.any(n):
-            sys.stdout.write("regression failure, all overlap filtered\n")
+            sys.stdout.write("Regression failure, all overlap filtered\n")
             p = np.full((3, 1), np.nan)  # initial trans variable
             d0 = np.nan
             z2out = z2
@@ -775,6 +775,7 @@ def loadData(demFile, matchFile, orthoFile, maskFile, metaFile):
     if maxDN is not None:
         print("Ortho had wv_correct applied, rescaling values to range [0, {}]".format(maxDN))
         o = rescaleDN(o, maxDN)
+        o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
 
     return x_dem, y_dem, z, m, o, md
 

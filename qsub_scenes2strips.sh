@@ -14,6 +14,7 @@ echo
 
 source activate my_root
 
+echo
 echo $p1
 echo
 

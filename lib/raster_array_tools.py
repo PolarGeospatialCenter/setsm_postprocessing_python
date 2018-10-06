@@ -459,7 +459,7 @@ def dtype_np2gdal(dtype_np):
 
     if promote_dtype is not None:
         warn("NumPy array data type ({}) does not have equivalent GDAL data type and is not "
-             "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype))
+             "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype(1).dtype))
         dtype_np = promote_dtype
 
     dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_np)
@@ -683,7 +683,6 @@ def saveArrayAsTiff(array, dest,
         co_args.extend(['TILED=YES'])         # Force creation of tiled TIFF files.
     if dtype_out == 'n-bit':
         co_args.extend(['NBITS={}'.format(nbits)])
-    co_args_print = None if len(co_args) == 0 else ' '.join(co_args)
 
     if spat_ref is not None:
         if projstr_wkt is None:
@@ -691,7 +690,7 @@ def saveArrayAsTiff(array, dest,
         if projstr_proj4 is None:
             projstr_proj4 = spat_ref.ExportToProj4()
     sys.stdout.write(" GDAL data type: {}, NoData value: {}, Creation Options: {}, Projection (Proj4): {} ...".format(
-        gdal.GetDataTypeName(dtype_gdal), nodata_val, co_args_print, projstr_proj4.strip())
+        gdal.GetDataTypeName(dtype_gdal), nodata_val, ' '.join(co_args) if co_args else None, projstr_proj4.strip())
     )
     sys.stdout.flush()
 
