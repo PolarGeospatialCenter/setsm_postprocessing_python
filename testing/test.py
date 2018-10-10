@@ -149,7 +149,7 @@ def sg(varNames_csv):
     varNames_csv must be a comma-delimited string of variable names
     accessible in the current namespace.
     """
-    if type(varNames_csv) != str:
+    if not isinstance(varNames_csv, str):
         raise InvalidArgumentError("`varNames_csv` must be a string")
     return stringifyThisFunctionForExec('"{}"'.format(varNames_csv))
 

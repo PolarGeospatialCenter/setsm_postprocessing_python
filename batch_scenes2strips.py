@@ -19,7 +19,6 @@ import numpy as np
 SCRIPT_FILE = os.path.realpath(__file__)
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
-ARGDEF_QSUBSCRIPT = os.path.join(SCRIPT_DIR, 'qsub_scenes2strips.sh')
 
 SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
 SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
@@ -88,11 +87,11 @@ def main():
              "scene coregistration step in addition to mosaicking step. "
              "Can only be used when --mask-ver='bitmask'.")
 
-    parser.add_argument('--pbs', action='store_true', default=False,
-        help="Submit tasks to PBS.")
-    parser.add_argument('--qsubscript', default=ARGDEF_QSUBSCRIPT,
-        help="Path to qsub script to use in PBS submission."
-             " (default={})".format(ARGDEF_QSUBSCRIPT))
+    parser.add_argument('--scheduler', choices=['pbs', 'slurm'], default=False,
+        help="Submit tasks to job scheduler.")
+    parser.add_argument('--jobscript',
+        help="Script to run in job submission to scheduler."
+             " (default scripts are found in {})".format(SCRIPT_DIR))
     parser.add_argument('--dryrun', action='store_true', default=False,
         help="Print actions without executing.")
 
@@ -106,7 +105,8 @@ def main():
     srcdir = os.path.abspath(args.src)
     dstdir = args.dst
     metadir = args.meta_trans_dir
-    qsubpath = os.path.abspath(args.qsubscript)
+    scheduler = args.scheduler
+    jobscript = args.jobscript
 
     if args.res == 2 and args.mask_ver not in ('maskv1', 'maskv2', 'bitmask'):
         parser.error("--mask-ver must be one of ('maskv1', 'maskv2', or 'bitmask') for 2-meter `res`")
@@ -140,10 +140,14 @@ def main():
         if os.path.isdir(metadir):
             metadir = os.path.abspath(metadir)
         else:
-            parser.error("--meta-trans-dir must be a directory")
+            parser.error("--meta-trans-dir must be an existing directory")
 
-    if not os.path.isfile(qsubpath):
-        parser.error("--qsubscript path is not a valid file path: {}".format(qsubpath))
+    if scheduler is not None:
+        if jobscript is None:
+            jobscript = os.path.join(SCRIPT_DIR, 'qsub_scenes2strips_{}.sh'.format(scheduler))
+        jobscript = os.path.abspath(jobscript)
+        if not os.path.isfile(jobscript):
+            parser.error("--jobscript must be a valid file path, but was '{}'".format(jobscript))
 
     # Create strip output directory if it doesn't already exist.
     if not os.path.isdir(dstdir):
@@ -214,13 +218,21 @@ def main():
             )
 
             # If PBS, submit to scheduler.
-            if args.pbs:
+            if args.scheduler is not None:
                 job_name = 's2s{:04g}'.format(i)
-                cmd = r'qsub -N {} -v p1="{}" {}'.format(
-                    job_name,
-                    s2s_command,
-                    qsubpath
-                )
+
+                if args.scheduler == 'pbs':
+                    cmd = r'qsub "{}" -N {} -v p1="{}"'.format(
+                        jobscript,
+                        job_name,
+                        s2s_command
+                    )
+                elif args.scheduler == 'slurm':
+                    cmd = r'sbatch "{}" -J {} --export=p1="{}"'.format(
+                        jobscript,
+                        job_name,
+                        s2s_command
+                    )
 
             # ...else run locally.
             else:

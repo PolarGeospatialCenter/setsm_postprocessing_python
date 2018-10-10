@@ -131,7 +131,7 @@ class Raster:
     @staticmethod
     def open_ds(rasterFile_or_ds):
         ds = None
-        if type(rasterFile_or_ds) == str:
+        if isinstance(rasterFile_or_ds, str):
             if not os.path.isfile(rasterFile_or_ds):
                 raise RasterIOError("No such `rasterFile`: '{}'".format(rasterFile_or_ds))
             ds = gdal.Open(rasterFile_or_ds, gdal.GA_ReadOnly)
@@ -309,7 +309,7 @@ class Raster:
         valid_parameters = vars(self).keys()
         for i in range(len(pnames)):
             p = pnames[i]
-            if type(p) == str:
+            if isinstance(p, str):
                 if p in valid_parameters:
                     continue
                 elif p == 'geom_sr':
@@ -818,7 +818,7 @@ class Raster:
                 # The parameter is already set. Without a value argument, there is nothing to do.
                 print("This Raster's '{}' data member is already set".format(pname))
                 return
-        elif type(value) == str and value == 'extract':
+        elif isinstance(value, str) and value == 'extract':
             value = self.extract_param(pname)
 
         if value is None:

@@ -11,10 +11,10 @@ from datetime import datetime
 from glob import glob
 
 
-SCHED_QSUB = 'qsub'
+SCHED_PBS = 'pbs'
 SCHED_SLURM = 'slurm'
 SCHED_SUPPORTED = [
-    SCHED_QSUB,
+    SCHED_PBS,
     SCHED_SLURM
 ]
 
@@ -115,28 +115,28 @@ class ArgumentPasser:
         self.update_cmd()
 
     def update_cmd(self):
-        arg_list = []
+        posarg_list = []
         for argstr in self.argstr_pos:
             varstr = self.argstr2varstr[argstr]
             val = self.vars_dict[varstr]
             if val is not None:
                 if isinstance(val, list) or isinstance(val, tuple):
-                    arg_list.append(' '.join([self.argval2str(item) for item in val]))
+                    posarg_list.append(' '.join([self.argval2str(item) for item in val]))
                 else:
-                    arg_list.append(self.argval2str(val))
-        self.cmd = '{} {} {}'.format(self.exe, self.script, self.cmd_optarg_base, " ".join(arg_list))
+                    posarg_list.append(self.argval2str(val))
+        self.cmd = '{} {} {} {}'.format(self.exe, self.script, self.cmd_optarg_base, " ".join(posarg_list))
 
     def get_cmd(self):
         return self.cmd
 
 
 def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s', task_delim=' '):
-    bundle_prefix = os.path.join(dstdir, '{}_{}_'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
+    bundle_prefix = os.path.join(dstdir, '{}_{}'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
     jobnum_total = int(math.ceil(len(task_list) / float(tasks_per_bundle)))
     jobnum_fmt = '{:0>'+str(len(str(jobnum_total)))+'}'
-    for i in range(0, len(task_list), tasks_per_bundle):
-        bundle_file = '{}_{}.txt'.format(bundle_prefix, jobnum_fmt.format(i+1))
-        np.savetxt(bundle_file, task_list[i:i+tasks_per_bundle], fmt=task_fmt, delimiter=task_delim)
+    for jobnum, tasknum in enumerate(range(0, len(task_list), tasks_per_bundle)):
+        bundle_file = '{}_{}.txt'.format(bundle_prefix, jobnum_fmt.format(jobnum+1))
+        np.savetxt(bundle_file, task_list[tasknum:tasknum+tasks_per_bundle], fmt=task_fmt, delimiter=task_delim)
     bundle_files = glob(bundle_prefix+'*')
     return bundle_files
 
@@ -145,19 +145,19 @@ def read_task_bundle(bundle_file, task_dtype=np.dtype(str), task_delim=' '):
     return np.loadtxt(bundle_file, dtype=task_dtype, delimiter=task_delim)
 
 
-def get_jobsubmit_cmd(scheduler, job_script, job_abbrev, *job_script_args):
+def get_jobsubmit_cmd(scheduler, job_script, job_name, *job_script_args):
     cmd = None
 
-    if scheduler == SCHED_QSUB:
-        cmd = 'qsub "{}" -N {}'.format(job_script, job_abbrev)
+    if scheduler == SCHED_PBS:
+        cmd = r'qsub "{}" -N {}'.format(job_script, job_name)
         if job_script_args is not None:
             cmd_scriptargs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(job_script_args)])
-            cmd = '{} -v {}'.format(cmd, cmd_scriptargs)
+            cmd = r'{} -v {}'.format(cmd, cmd_scriptargs)
 
     elif scheduler == SCHED_SLURM:
-        cmd = 'sbatch "{}" -J {}'.format(job_script, job_abbrev)
+        cmd = r'sbatch "{}" -J {}'.format(job_script, job_name)
         if job_script_args is not None:
             cmd_scriptargs = ' '.join(['--export=p{}="{}"'.format(i+1, a) for i, a in enumerate(job_script_args)])
-            cmd = '{} {}'.format(cmd, cmd_scriptargs)
+            cmd = r'{} {}'.format(cmd, cmd_scriptargs)
 
     return cmd

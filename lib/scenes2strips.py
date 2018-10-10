@@ -789,8 +789,10 @@ def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
     else:
         from lib.filter_scene import mask_v2, MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 
-    mask_select = np.copy(md)
+    mask_select = md
+
     if len(filter_options) > 0:
+        mask_select = np.copy(md)
         mask_ones = np.ones_like(mask_select)
         for opt in filter_options:
             unmask_bit = None
@@ -801,22 +803,23 @@ def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
             if unmask_bit is not None:
                 np.bitwise_and(mask_select, ~np.left_shift(mask_ones, unmask_bit), out=mask_select)
 
-    mask = (mask_select > 0)
-    if maskSuffix in ('mask.tif', 'bitmask.tif'):
-        mask = mask_v2(postprocess_mask=mask, postprocess_res=abs(x[1]-x[0]))
+    mask_select = (mask_select > 0)
 
-    z[mask] = np.nan
-    m[mask] = 0
+    if maskSuffix in ('mask.tif', 'bitmask.tif'):
+        mask_select = mask_v2(postprocess_mask=mask_select, postprocess_res=abs(x[1]-x[0]))
+
+    z[mask_select] = np.nan
+    m[mask_select] = 0
 
     # If there is any good data, crop the matrices of bordering NaNs.
     if np.any(~np.isnan(z)):
         rowcrop, colcrop = cropBorder(z, np.nan)
 
-        x = x[colcrop[0]:colcrop[1]]
-        y = y[rowcrop[0]:rowcrop[1]]
-        z = z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
-        m = m[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
-        o = o[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        x  =  x[colcrop[0]:colcrop[1]]
+        y  =  y[rowcrop[0]:rowcrop[1]]
+        z  =  z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        m  =  m[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        o  =  o[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
         md = md[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
 
     return x, y, z, m, o, md

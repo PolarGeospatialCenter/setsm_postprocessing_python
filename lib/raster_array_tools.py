@@ -114,7 +114,7 @@ def openRaster(file_or_ds, target_EPSG=None):
     ds = None
     if type(file_or_ds) == gdal.Dataset:
         ds = file_or_ds
-    elif type(file_or_ds) == str:
+    elif isinstance(file_or_ds, str):
         if not os.path.isfile(file_or_ds):
             raise RasterIOError("No such rasterFile: '{}'".format(file_or_ds))
         ds = gdal.Open(file_or_ds, gdal.GA_ReadOnly)
@@ -495,7 +495,7 @@ def interp_str2gdal(interp_str):
 
 def saveArrayAsTiff(array, dest,
                     X=None, Y=None, proj_ref=None, geotrans_rot_tup=(0, 0),
-                    nodata_val=None, dtype_out=None, nbits=None, co_args='compress',
+                    nodata_val='like_raster', dtype_out=None, nbits=None, co_args='compress',
                     like_raster=None):
     """
     Save a NumPy 2D array as a single-band raster image in GeoTiff format.
@@ -529,9 +529,11 @@ def saveArrayAsTiff(array, dest,
         See documentation for `getCornerCoords` for more information on the
         geometric transformation tuple.
         If None, `like_raster` must be provided.
-    nodata_val : None or int/float
+    nodata_val : 'like_raster', None, or int/float
         Non-NaN value in `array` that will be classified as "no data" in the
         output raster image.
+        If 'like_raster', allow this value to be set equal to the nodata value
+        of `like_raster`.
     dtype_out : data type as str (e.g. 'uint16'), NumPy data type
                 (e.g. np.uint16), or numpy.dtype object (e.g. from arr.dtype)
         Numeric type of values in the output raster image.
@@ -580,7 +582,7 @@ def saveArrayAsTiff(array, dest,
         pass
     elif type(proj_ref) == osr.SpatialReference:
         spat_ref = proj_ref
-    elif type(proj_ref) == str:
+    elif isinstance(proj_ref, str):
         spat_ref = osr.SpatialReference()
         if proj_ref.lstrip().startswith('PROJCS'):
             projstr_wkt = proj_ref
@@ -615,7 +617,7 @@ def saveArrayAsTiff(array, dest,
         geo_trans = extractRasterData(ds_like, 'geo_trans')
         if proj_ref is None:
             spat_ref = extractRasterData(ds_like, 'spat_ref')
-        if nodata_val is None:
+        if nodata_val == 'like_raster':
             nodata_val = extractRasterData(ds_like, 'nodata_val')
         if dtype_out is None:
             dtype_gdal = extractRasterData(ds_like, 'dtype_val')
@@ -625,6 +627,9 @@ def saveArrayAsTiff(array, dest,
                                        "the shape of `array` ({})".format(Y.size, X.size, shape))
         geo_trans = (X[0], X[1]-X[0], geotrans_rot_tup[0],
                      Y[0], geotrans_rot_tup[1], Y[1]-Y[0])
+
+    if nodata_val == 'like_raster':
+            nodata_val = None
 
     if dtype_out is not None:
         if dtype_out == 'n-bit':
@@ -642,7 +647,7 @@ def saveArrayAsTiff(array, dest,
                 raise InvalidArgumentError("Output array requires {} bits of precision, "
                                            "but GDAL supports a maximum of 32 bits")
         else:
-            if type(dtype_out) == str:
+            if isinstance(dtype_out, str):
                 dtype_out = eval('np.{}'.format(dtype_out.lower()))
             dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_out)
             if dtype_gdal is None:
@@ -1161,7 +1166,7 @@ def getDataArray(array, label=0, label_type='nodata'):
 ######################
 
 
-def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):
+def interp2_fill_oob(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):
     # Rows and columns of Zi outside the domain of Z are made NaN.
     # Assume X and Y coordinates are monotonically increasing/decreasing
     # so hopefully we only need to work a short way inwards from the edges.
@@ -1227,7 +1232,7 @@ def interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True)
     return Zi
 
 
-def interp2_gdal(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, extrap_val=np.nan):
+def interp2_gdal(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, oob_val=np.nan):
     """
     Resample array data from one set of x-y grid coordinates to another.
 
@@ -1254,8 +1259,8 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, extrap_val=np.n
         Whether or not to interpolate values for pixels with new grid coords
         `Xi` and `Yi` that fall outside the range of old grid coords `X` and `Y`.
         If True, allow the interpolation method to set the values of these pixels.
-        If False, set the values of these pixels to `extrap_val`.
-    extrap_val : int/float
+        If False, set the values of these pixels to `oob_val`.
+    oob_val : int/float
         (Option only applies when `extrapolate=True`.)
         Value to fill any regions of the output array where new grid coords
         `Xi` and `Yi` fall outside the range of old grid coords `X` and `Y`.
@@ -1288,12 +1293,12 @@ def interp2_gdal(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, extrap_val=np.n
     Zi = ds_out.GetRasterBand(1).ReadAsArray()
 
     if not extrapolate:
-        interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, extrap_val)
+        interp2_fill_oob(X, Y, Zi, Xi, Yi, oob_val)
 
     return Zi
 
 
-def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan,
+def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False, oob_val=np.nan,
                   griddata=False,
                   SBS=False,
                   RGI=False, RGI_extrap=True, RGI_fillVal=None,
@@ -1390,7 +1395,7 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False, extrap_val=np.nan,
         Zi = fn(Xi, Yi)
 
     if not extrapolate:
-        interp2_fill_extrapolate(X, Y, Zi, Xi, Yi, extrap_val)
+        interp2_fill_oob(X, Y, Zi, Xi, Yi, oob_val)
 
     return Zi
 
