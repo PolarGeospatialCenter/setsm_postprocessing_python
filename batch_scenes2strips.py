@@ -87,7 +87,7 @@ def main():
              "scene coregistration step in addition to mosaicking step. "
              "Can only be used when --mask-ver='bitmask'.")
 
-    parser.add_argument('--scheduler', choices=['pbs', 'slurm'], default=False,
+    parser.add_argument('--scheduler', choices=['pbs', 'slurm'],
         help="Submit tasks to job scheduler.")
     parser.add_argument('--jobscript',
         help="Script to run in job submission to scheduler."
