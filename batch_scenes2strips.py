@@ -167,6 +167,7 @@ def main():
         if not scene_dems:
             print("No scene DEMs found to process, exiting")
             sys.exit(1)
+        scene_dems.sort()
 
         # Find all unique strip IDs.
         try:
@@ -176,16 +177,17 @@ def main():
                   "Please fix source raster filenames so that a strip ID can be parsed "
                   "using the following regular expression: '{}'".format(RE_STRIPID_STR))
             raise
-
         stripids.sort()
+
+        # Check for existing strip output.
         stripids_to_process = [sID for sID in stripids if not os.path.isfile(os.path.join(dstdir, sID+'.fin'))]
         print("Found {} {} strip-pair IDs, {} unfinished".format(
             len(stripids), '*'+demSuffix, len(stripids_to_process)))
         del scene_dems
-
         if len(stripids_to_process) == 0:
             print("No unfinished strip DEMs found to process, exiting")
             sys.exit(0)
+        stripids_to_process.sort()
 
         wait_seconds = 5
         print("Sleeping {} seconds before job submission".format(wait_seconds))
@@ -287,6 +289,7 @@ def main():
         if not scene_demFiles:
             print("No scene DEMs found to process, skipping")
             sys.exit(1)
+        scene_demFiles.sort()
 
         # Existence check. If output already exists, skip.
         if os.path.isfile(stripid_fin_file):
@@ -296,17 +299,17 @@ def main():
             print("Unfinished strip output exists, skipping")
             sys.exit(1)
 
-        # Make sure all matchtag and ortho files exist. If missing, skip.
+        # Make sure all DEM component files exist. If missing, skip.
         missingflag = False
-        for f in scene_demFiles:
-            if selectBestMatchtag(f) is None:
-                print("matchtag file for {} missing, skipping".format(f))
+        for scene_demFile in scene_demFiles:
+            if selectBestMatchtag(scene_demFile) is None:
+                print("matchtag file for {} missing, skipping".format(scene_demFile))
                 missingflag = True
-            if not os.path.isfile(f.replace(demSuffix, 'ortho.tif')):
-                print("ortho file for {} missing, skipping".format(f))
+            if not os.path.isfile(scene_demFile.replace(demSuffix, 'ortho.tif')):
+                print("ortho file for {} missing, skipping".format(scene_demFile))
                 missingflag = True
-            if not os.path.isfile(f.replace(demSuffix, 'meta.txt')):
-                print("meta file for {} missing, skipping".format(f))
+            if not os.path.isfile(scene_demFile.replace(demSuffix, 'meta.txt')):
+                print("meta file for {} missing, skipping".format(scene_demFile))
                 missingflag = True
         if missingflag:
             sys.exit(1)
