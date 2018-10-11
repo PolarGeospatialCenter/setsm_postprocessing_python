@@ -49,8 +49,8 @@ def main():
     parser.add_argument('src',
         help="Path to source directory containing scene DEMs to process. "
              "If --dst is not specified, this path should contain the folder 'tif_results'.")
-    parser.add_argument('res', type=int, choices=[2, 8],
-        help="Resolution of target DEMs (2 or 8 meters).")
+    parser.add_argument('res', type=float,
+        help="Resolution of target DEMs (2 or 8 meters... or something else).")
 
     parser.add_argument('--dst',
         help="Path to destination directory for output mosaicked strip data."
@@ -107,6 +107,8 @@ def main():
     metadir = args.meta_trans_dir
     scheduler = args.scheduler
     jobscript = args.jobscript
+    if int(args.res) == args.res:
+        args.res = int(args.res)
 
     if args.res == 2 and args.mask_ver not in ('maskv1', 'maskv2', 'bitmask'):
         parser.error("--mask-ver must be one of ('maskv1', 'maskv2', or 'bitmask') for 2-meter `res`")
@@ -161,7 +163,7 @@ def main():
 
         # Find all scene DEMs to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_dems = glob.glob(os.path.join(srcdir, '*_{}_{}'.format(args.res, demSuffix)))
+            scene_dems = glob.glob(os.path.join(srcdir, '*_{}_{}'.format(str(args.res)[0], demSuffix)))
             if scene_dems:
                 break
         if not scene_dems:
@@ -180,7 +182,8 @@ def main():
         stripids.sort()
 
         # Check for existing strip output.
-        stripids_to_process = [sID for sID in stripids if not os.path.isfile(os.path.join(dstdir, sID+'.fin'))]
+        stripids_to_process = [sID for sID in stripids
+                               if not os.path.isfile(os.path.join(dstdir, '{}_{}m.fin'.format(sID, args.res)))]
         print("Found {} {} strip-pair IDs, {} unfinished".format(
             len(stripids), '*'+demSuffix, len(stripids_to_process)))
         del scene_dems
@@ -278,11 +281,11 @@ def main():
         print("coreg filter options: {}".format(filter_options_coreg))
         print("mask filter options: {}".format(filter_options_mask))
 
-        stripid_fin_file = os.path.join(dstdir, args.stripid+'.fin')
+        stripid_fin_file = os.path.join(dstdir, '{}_{}m.fin'.format(args.stripid, args.res))
 
         # Find scene DEMs for this stripid to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_demFiles = glob.glob(os.path.join(srcdir, '{}*_{}_{}'.format(args.stripid, args.res, demSuffix)))
+            scene_demFiles = glob.glob(os.path.join(srcdir, '{}*_{}_{}'.format(args.stripid, str(args.res)[0], demSuffix)))
             if scene_demFiles:
                 break
         print("Processing strip-pair ID: {}, {} scenes".format(args.stripid, len(scene_demFiles)))
