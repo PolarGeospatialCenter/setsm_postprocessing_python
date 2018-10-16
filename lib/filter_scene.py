@@ -229,12 +229,9 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
 
     if mask_version == 'maskv1':
         matchFile = selectBestMatchtag(demFile)
-        sys.stdout.write(matchFile+"\n")
         masks = mask_v1(matchFile, noentropy)
 
     else:
-        sys.stdout.write(demFile+"\n")
-
         if mask_version in ('mask', 'bitmask', 'maskv2_debug'):
             if mask_version == 'mask':
                 save_component_masks = MASK_FLAT

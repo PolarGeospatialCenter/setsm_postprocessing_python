@@ -4,6 +4,7 @@
 
 import argparse
 import filecmp
+import gc
 import glob
 import os
 import subprocess
@@ -323,10 +324,15 @@ def main():
         i = 0
         for demFile in filter_list:
             i += 1
-            sys.stdout.write("Filtering {} of {}: ".format(i, filter_total))
-            generateMasks(demFile, mask_version, noentropy=args.noentropy,
-                          save_component_masks=MASK_BIT, debug_component_masks=DEBUG_NONE,
-                          nbit_masks=False)
+            print("Filtering {} of {}: {}".format(i, filter_total, demFile))
+            if not args.dryrun:
+                generateMasks(demFile, mask_version, noentropy=args.noentropy,
+                              save_component_masks=MASK_BIT, debug_component_masks=DEBUG_NONE,
+                              nbit_masks=False)
+
+        print("Running scenes2strips")
+        if args.dryrun:
+            sys.exit(0)
 
         # Mosaic scenes in this strip together.
         # Output separate segments if there are breaks in overlap.
@@ -360,6 +366,7 @@ def main():
                     ', '.join(filter_options_mask) if filter_options_mask else None))
                 if 'X' in vars():
                     del X, Y, Z, M, O, MD
+                    gc.collect()
                 input_sceneDemFnames = mosaicked_sceneDemFnames
                 # Set `rmse_guess=rmse` in the following call of `scenes2strips` to get stats on the
                 # difference between RMSE values in masked versus unmasked coregistration output to
