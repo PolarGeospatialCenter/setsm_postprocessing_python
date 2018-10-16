@@ -358,6 +358,8 @@ def main():
             if not all_data_masked and filter_options_mask != filter_options_coreg or use_old_trans:
                 print("Running s2s with masking filter options: {}".format(
                     ', '.join(filter_options_mask) if filter_options_mask else None))
+                if 'X' in vars():
+                    del X, Y, Z, M, O, MD
                 input_sceneDemFnames = mosaicked_sceneDemFnames
                 # Set `rmse_guess=rmse` in the following call of `scenes2strips` to get stats on the
                 # difference between RMSE values in masked versus unmasked coregistration output to

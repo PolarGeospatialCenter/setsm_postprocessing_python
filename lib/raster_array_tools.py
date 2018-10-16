@@ -1115,7 +1115,16 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
     dtype_out_max = dtype_info_fn(dtype_out_np).max
 
     array_cropped = array if allow_modify_array else None
-    array_cropped = np.clip(array, dtype_out_min, dtype_out_max, array_cropped)
+    try:
+        array_cropped = np.clip(array, dtype_out_min, dtype_out_max, array_cropped)
+    except OverflowError:
+        dtype_out_min_float = float(dtype_out_min)
+        dtype_out_max_float = float(dtype_out_max)
+        warn("Integers for {} clip range [{}, {}] are too large for underlying C code of numpy.clip(). "
+             "Casting clip range to float: [{}, {}]".format(dtype_out_np(1).dtype,
+                                                            dtype_out_min, dtype_out_max,
+                                                            dtype_out_min_float, dtype_out_max_float))
+        array_cropped = np.clip(array, dtype_out_min_float, dtype_out_max_float, array_cropped)
 
     return array_cropped.astype(dtype_out)
 
@@ -1400,8 +1409,9 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False, oob_val=np.nan,
     return Zi
 
 
-def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input',
-             round_proper=True, one_dim_axis=1):
+def imresize(array, size, interp='bicubic', dtype_out='input',
+             method='cv2', float_resize=True, round_proper=True,
+             one_dim_axis=1):
     """
     Resize an array.
 
@@ -1413,29 +1423,23 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
         If shape tuple, returns an array of this size.
         If scalar value, returns an array of shape
         that is `size` times the shape of `array`.
-    interp : str; 'nearest', 'box', 'bilinear', 'hamming',
-                  'bicubic', or 'lanczos'
+    interp : str; 'nearest', 'area', 'bilinear', 'bicubic', or 'lanczos'
         Interpolation method to use during resizing.
+    dtype_out : str; 'input' or 'float'
+        If 'input', data type of the returned array is
+        the same as `array`.
+        If 'float' and `array` data type is of floating type,
+        data type of the returned array is the same.
+        If 'float' and `array` data type is of integer type,
+        data type of the returned array is float32.
+    method : str; 'cv2', 'pil', 'gdal', or 'scipy'
+        Specifies which method used to perform resizing.
+        'cv2' ------ cv2.resize [1]
+        'pil' ------ PIL.Image.resize [2]
+        'scipy' ---- scipy.misc.imresize (WILL BE RETIRED SOON) [3]
+        'gdal' ----- interp2_gdal (local, utilizes gdal.ReprojectImage [4])
     float_resize : bool
-        If True, convert the Pillow image of `array`
-        to PIL mode 'F' before resizing.
-        If False, allow the Pillow image to stay in its
-        default PIL mode for resizing.
-        The rounding scheme of resized integer images with
-        integer PIL modes (e.g. 'L' or 'I') is unclear when
-        compared with the same integer images in the 'F' PIL mode.
-        This option has no effect when `array` dtype is floating.
-    dtype_out : str; 'default' or 'input'
-        If 'default' and `float_resize=True`, the returned
-        array data type will be float32.
-        If 'default' and `float_resize=False`, the returned
-        array data type will be...
-          - bool if `array` is bool
-          - uint8 if `array` is uint8
-          - int32 if `array` is integer other than uint8
-          - float32 if `array` is floating
-        If 'input', the returned array data type will be
-        the same as `array` data type.
+        If True, convert integer arrays to float32 before resizing.
     round_proper : bool
         If the resized array is converted from floating
         to an integer data type (such as when `float_resize=True`
@@ -1455,6 +1459,225 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
 
     See Also
     --------
+    imresize_pil
+    imresize_old
+
+    Notes
+    -----
+    This function is meant to replicate MATLAB's `imresize` function [5].
+
+    References
+    ----------
+    .. [1] https://docs.opencv.org/2.4/modules/imgproc/doc/geometric_transformations.html#void resize(InputArray src, OutputArray dst, Size dsize, double fx, double fy, int interpolation)
+    .. [2] http://pillow.readthedocs.io/en/3.1.x/reference/Image.html
+    .. [3] https://docs.scipy.org/doc/scipy/reference/generated/scipy.misc.imresize.html
+    .. [4] http://gdal.org/java/org/gdal/gdal/gdal.html#ReprojectImage-org.gdal.gdal.Dataset-org.gdal.gdal.Dataset-java.lang.String-java.lang.String-int-double-double-org.gdal.gdal.ProgressCallback-java.util.Vector-
+           https://svn.osgeo.org/gdal/trunk/autotest/alg/reproject.py
+    .. [5] https://www.mathworks.com/help/images/ref/imresize.html
+
+    """
+    array_backup = array
+    dtype_in = array.dtype
+
+    # Handle interpolation method lookups.
+    interp_dict = None
+    if method == 'cv2':
+        interp_dict = {
+            'nearest'  : cv2.INTER_NEAREST,
+            'area'     : cv2.INTER_AREA,
+            'bilinear' : cv2.INTER_LINEAR,
+            'bicubic'  : cv2.INTER_CUBIC,
+            'lanczos'  : cv2.INTER_LANCZOS4,
+        }
+    elif method == 'pil':
+        interp_dict = {
+            'nearest'  : Image.NEAREST,
+            'box'      : Image.BOX,
+            'linear'   : Image.BILINEAR,
+            'bilinear' : Image.BILINEAR,
+            'hamming'  : Image.HAMMING,
+            'cubic'    : Image.BICUBIC,
+            'bicubic'  : Image.BICUBIC,
+            'lanczos'  : Image.LANCZOS,
+        }
+    if interp_dict is not None:
+        if interp not in interp_dict.keys():
+            raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.keys(), interp))
+        interp_code = interp_dict[interp]
+
+    dtype_out_choices = ('input', 'float')
+    if dtype_out not in dtype_out_choices:
+        raise InvalidArgumentError("`dtype_out` must be one of {}, but was '{}'".format(dtype_out_choices, dtype_out))
+
+    # Handle 1D array input.
+    one_dim_flag = False
+    if array.ndim == 1:
+        one_dim_flag = True
+        if one_dim_axis == 0:
+            array_shape_1d = (array.size, 1)
+        elif one_dim_axis == 1:
+            array_shape_1d = (1, array.size)
+        else:
+            raise InvalidArgumentError("`one_dim_axis` must be either 0 or 1")
+        array = np.reshape(array, array_shape_1d)
+
+    # If a resize factor is provided for size, round up the x, y pixel
+    # sizes for the output array to match MATLAB's imresize function.
+    new_shape = size if type(size) == tuple else tuple(np.ceil(np.dot(size, array.shape)).astype(int))
+    if one_dim_flag and type(size) != tuple:
+        new_shape = (new_shape[0], 1) if one_dim_axis == 0 else (1, new_shape[1])
+    # The trivial case
+    if new_shape == array.shape:
+        return array_backup.copy()
+
+    # Handle input data type and conversions.
+    promote_dtype = None
+    promote_is_demote = False
+    if float_resize:
+        if isinstance(dtype_in.type(1), np.floating):
+            pass
+        else:
+            array = array.astype(np.float32)
+    elif method == 'cv2':
+        if dtype_in == np.bool:
+            promote_dtype = np.uint8
+        elif dtype_in == np.int8:
+            promote_dtype = np.int16
+        elif dtype_in == np.float16:
+            promote_dtype = np.float32
+        elif dtype_in in (np.int32, np.uint32, np.int64, np.uint64):
+            raise InvalidArgumentError("`array` data type cannot be of 32/64-bit int/uint "
+                                       "when method='{}', but was {}; consider setting "
+                                       "`float_resize=True`".format(method, dtype_in))
+    elif method == 'pil':
+        if dtype_in == np.uint16:
+            promote_dtype = np.int32
+        elif dtype_in in (np.uint32, np.int64, np.uint64):
+            if np.any(array > np.iinfo(np.int32).max) or np.any(array < np.iinfo(np.int32).min):
+                raise InvalidArgumentError("`array` data type ({}) is not supported by method='{}', "
+                                           "but values cannot fit in int32; consider setting "
+                                           "`float_resize=True`")
+            promote_dtype = np.int32
+            promote_is_demote = True
+        elif dtype_in == np.float16:
+            promote_dtype = np.float32
+    if promote_dtype is not None:
+        warn("`array` data type ({}) is not supported by '{}' resizing method, "
+             "but can safely be {}{} to {} for processing".format(dtype_in, method,
+            'promoted'*(not promote_is_demote), 'demoted'*promote_is_demote, promote_dtype(1).dtype))
+        array = array.astype(promote_dtype)
+
+    # Resize array.
+    if method == 'cv2':
+        array_r = cv2.resize(array, tuple(list(new_shape)[::-1]), interpolation=interp_code)
+
+    elif method == 'pil':
+        image = (Image.frombytes(mode='1', size=array.shape[::-1], data=np.packbits(array, axis=1))
+                 if array.dtype == np.bool else Image.fromarray(array))
+
+        image = image.resize(tuple(list(new_shape)[::-1]), interp_code)
+
+        # Set "default" data type for reading data into NumPy array.
+        if image.mode == '1':
+            dtype_out_pil = np.bool
+            image = image.convert('L')
+        elif image.mode == 'L':
+            dtype_out_pil = np.uint8
+        elif image.mode == 'I':
+            dtype_out_pil = np.int32
+        elif image.mode == 'F':
+            dtype_out_pil = np.float32
+
+        # Convert Pillow Image to NumPy array.
+        array_r = np.fromstring(image.tobytes(), dtype=dtype_out_pil)
+        array_r = array_r.reshape((image.size[1], image.size[0]))
+
+    elif method == 'gdal':
+        # Set up grid coordinate arrays, then run interp2_gdal.
+        X = np.arange(array.shape[1]) + 1
+        Y = np.arange(array.shape[0]) + 1
+        Xi = np.linspace(X[0], X[-1] + (X[1]-X[0]), num=(new_shape[1] + 1))[0:-1]
+        Yi = np.linspace(Y[0], Y[-1] + (Y[1]-Y[0]), num=(new_shape[0] + 1))[0:-1]
+        array_r = interp2_gdal(X, Y, array, Xi, Yi, interp, extrapolate=False)
+
+    elif method == 'scipy':
+        PILmode = 'L' if array.dtype in (np.bool, np.uint8) else 'F'
+        if PILmode == 'L' and array.dtype != np.uint8:
+            array = array.astype(np.uint8)
+        array_r = scipy.misc.imresize(array, new_shape, interp, PILmode)
+
+    # Handle output data type and conversions.
+    if dtype_out == 'input' and array_r.dtype != dtype_in:
+        if round_proper:
+            array_r = astype_round_and_crop(array_r, dtype_in, allow_modify_array=True)
+        else:
+            array_r = astype_cropped(array_r, dtype_in, allow_modify_array=True)
+    elif dtype_out == 'float' and not isinstance(array_r.dtype.type(1), np.floating):
+        array_r = array_r.astype(np.float32)
+    if one_dim_flag:
+        result_size_1d = new_shape[0] if one_dim_axis == 0 else new_shape[1]
+        array_r = np.reshape(array_r, result_size_1d)
+
+    return array_r
+
+
+def imresize_pil(array, size, interp='bicubic', dtype_out='input',
+                 float_resize=True, round_proper=True,
+                 one_dim_axis=1):
+    """
+    Resize an array.
+
+    Parameters
+    ----------
+    array : ndarray, 2D
+        The array to resize.
+    size : shape tuple (2D) or scalar value
+        If shape tuple, returns an array of this size.
+        If scalar value, returns an array of shape
+        that is `size` times the shape of `array`.
+    interp : str; 'nearest', 'box', 'bilinear', 'hamming',
+                  'bicubic', or 'lanczos'
+        Interpolation method to use during resizing.
+    dtype_out : str; 'default' or 'input'
+        If 'default' and `float_resize=True`, the returned
+        array data type will be float32.
+        If 'default' and `float_resize=False`, the returned
+        array data type will be...
+          - bool if `array` is bool
+          - uint8 if `array` is uint8
+          - int32 if `array` is integer other than uint8
+          - float32 if `array` is floating
+        If 'input', the returned array data type will be
+        the same as `array` data type.
+    float_resize : bool
+        If True, convert the Pillow image of `array`
+        to PIL mode 'F' before resizing.
+        If False, allow the Pillow image to stay in its
+        default PIL mode for resizing.
+        The rounding scheme of resized integer images with
+        integer PIL modes (e.g. 'L' or 'I') is unclear when
+        compared with the same integer images in the 'F' PIL mode.
+        This option has no effect when `array` dtype is floating.
+    round_proper : bool
+        If the resized array is converted from floating
+        to an integer data type (such as when `float_resize=True`
+        and `dtype_out='input'`)...
+          - If True, round X.5 values up to (X + 1).
+          - If False, round X.5 values to nearest even integer to X.
+    one_dim_axis : int, 0 or 1
+        Which directional layout to give to a one-dimensional
+        `array` before resizing.
+        If 0, array runs vertically downwards across rows.
+        If 1, array runs horizontally rightwards across columns.
+
+    Returns
+    -------
+    array_r : ndarray, 2D, same type as `array`
+        The resized array.
+
+    See Also
+    --------
+    imresize
     imresize_old
 
     Notes
@@ -1465,7 +1688,7 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
     References
     ----------
     .. [1] http://pillow.readthedocs.io/en/3.1.x/reference/Image.html
-    .. [4] https://www.mathworks.com/help/images/ref/imresize.html
+    .. [2] https://www.mathworks.com/help/images/ref/imresize.html
 
     """
     array_backup = array
@@ -1528,6 +1751,7 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
             elif array_dtype_in == np.uint32:
                 if np.any(array > np.iinfo(np.int32).max):
                     raise InvalidArgumentError("`array` of uint32 cannot be converted to int32")
+                array = array.astype(np.int32)
         image = Image.fromarray(array)
 
     if float_resize and image.mode != 'F':
@@ -1564,7 +1788,8 @@ def imresize(array, size, interp='bicubic', float_resize=True, dtype_out='input'
     return array_r
 
 
-def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
+def imresize_old(array, size, interp='bicubic', dtype_out='input',
+                 method='pil',
                  one_dim_axis=1):
     """
     Resize an array.
@@ -1580,20 +1805,19 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
     interp : str
         Interpolation method to use during resizing.
         See documentation for a particular `method`.
-    method : str; 'auto', 'scipy', 'gdal', 'cv2'
-        Specifies which method used to perform resizing.
-        'auto' ----- ??????????????
-        'cv2' ------ cv2.resize [1]
-        'gdal' ----- interp2_gdal (local, utilizes gdal.ReprojectImage [2])
-        'pil' ------ PIL.Image.resize [3]
-        'scipy' ---- scipy.misc.imresize (WILL BE RETIRED SOON) [4]
-    dtype_out : str; 'float' or 'input'
-        If 'float' and `array` data type is floating,
-        data type of the returned array is the same.
-        If 'float' and `array` data type is not floating,
-        data type of the returned array is float32.
+    dtype_out : str; 'input' or 'float'
         If 'input', data type of the returned array is
         the same as `array`.
+        If 'float' and `array` data type is of floating type,
+        data type of the returned array is the same.
+        If 'float' and `array` data type is of integer type,
+        data type of the returned array is float32.
+    method : str; 'cv2', 'pil', 'gdal', or 'scipy'
+        Specifies which method used to perform resizing.
+        'cv2' ------ cv2.resize [1]
+        'pil' ------ PIL.Image.resize [2]
+        'scipy' ---- scipy.misc.imresize (WILL BE RETIRED SOON) [3]
+        'gdal' ----- interp2_gdal (local, utilizes gdal.ReprojectImage [4])
     one_dim_axis : int, 0 or 1
         Which directional layout to give to a one-dimensional
         `array` before resizing.
@@ -1608,6 +1832,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
     See Also
     --------
     imresize
+    imresize_pil
 
     Notes
     -----
@@ -1616,10 +1841,10 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
     References
     ----------
     .. [1] https://docs.opencv.org/2.4/modules/imgproc/doc/geometric_transformations.html#void resize(InputArray src, OutputArray dst, Size dsize, double fx, double fy, int interpolation)
-    .. [2] http://gdal.org/java/org/gdal/gdal/gdal.html#ReprojectImage-org.gdal.gdal.Dataset-org.gdal.gdal.Dataset-java.lang.String-java.lang.String-int-double-double-org.gdal.gdal.ProgressCallback-java.util.Vector-
+    .. [2] http://pillow.readthedocs.io/en/3.1.x/reference/Image.html
+    .. [3] https://docs.scipy.org/doc/scipy/reference/generated/scipy.misc.imresize.html
+    .. [4] http://gdal.org/java/org/gdal/gdal/gdal.html#ReprojectImage-org.gdal.gdal.Dataset-org.gdal.gdal.Dataset-java.lang.String-java.lang.String-int-double-double-org.gdal.gdal.ProgressCallback-java.util.Vector-
            https://svn.osgeo.org/gdal/trunk/autotest/alg/reproject.py
-    .. [3] http://pillow.readthedocs.io/en/3.1.x/reference/Image.html
-    .. [4] https://docs.scipy.org/doc/scipy/reference/generated/scipy.misc.imresize.html
     .. [5] https://www.mathworks.com/help/images/ref/imresize.html
 
     """
@@ -1676,6 +1901,8 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
         except KeyError:
             raise InvalidArgumentError("For `method=cv2`, `interp` must be one of {}, "
                                        "but was '{}'".format(interp_dict.keys(), interp))
+        if array_dtype_in == np.bool:
+            array = array.astype(np.uint8)
         array_r = cv2.resize(array, tuple(list(new_shape)[::-1]), interpolation=interp_cv2)
 
     elif method == 'gdal':
@@ -1687,7 +1914,7 @@ def imresize_old(array, size, interp='bicubic', method='pil', dtype_out='input',
         array_r = interp2_gdal(X, Y, array, Xi, Yi, interp, extrapolate=False)
 
     elif method == 'pil':
-        return imresize(array, new_shape, interp)
+        return imresize_pil(array, new_shape, interp)
 
     elif method == 'scipy':
         PILmode = 'L' if array.dtype in (np.bool, np.uint8) else 'F'
