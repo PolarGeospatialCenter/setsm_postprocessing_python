@@ -26,6 +26,8 @@ else:
     from lib import raster_array_tools as rat
 
 
+BITMASK_VERSION_NUM = 1.0
+
 MASK_FLAT = 0
 MASK_SEPARATE = 1
 MASK_BIT = 2

@@ -22,7 +22,6 @@ from scipy.misc import imread as scipy_imread
 from tifffile import imread, imsave
 
 from batch_scenes2strips import getDemSuffix
-import lib.filter_scene
 import lib.raster_array_tools as rat
 from testing import TESTDIR, PREFIX_RUNNUM, PROJREF_POLAR_STEREO
 
@@ -369,25 +368,27 @@ def getNextImgnum(runnum=getRunnum(), compare=False, concurrent=False):
     return next_imgnum
 
 
-def validateTestFileSave(fname_or_file, overwrite=False):
-    if os.path.basename(fname_or_file) == fname_or_file:
-        testFile = os.path.join(TESTDIR, fname_or_file)
+def validateTestFileSave(path, allow_existing=False):
+    if os.path.basename(path) == path:
+        path_full = os.path.join(TESTDIR, path)
     else:
-        testFile = fname_or_file
+        path_full = path
 
-    while os.path.isfile(testFile) and not overwrite:
-        opt = input("Test file '{}' already exists. Overwrite? (y/n): ".format(testFile.replace(TESTDIR, '{TESTDIR}/')))
-        if opt.strip().lower() == 'y':
-            break
-        else:
-            opt = input("Append description to filename (or press [ENTER] to cancel): ")
-            if opt == '':
-                return None
+    if not allow_existing:
+        while os.path.isfile(path_full):
+            opt = input("Test file '{}' already exists. "
+                        "Overwrite/append? (y/n): ".format(path_full.replace(TESTDIR, '{TESTDIR}')))
+            if opt.strip().lower() == 'y':
+                break
             else:
-                root, ext = os.path.splitext(fname_or_file)
-                testFile = '{}~{}{}'.format(root, opt.replace(' ', '-'), ext)
+                opt = input("Append description to filename (or press [ENTER] to cancel): ")
+                if opt == '':
+                    return None
+                else:
+                    path_fname_root, path_ext = os.path.splitext(path_full)
+                    path_full = '{}~{}{}'.format(path_fname_root, opt.replace(' ', '-'), path_ext)
 
-    return testFile
+    return path_full
 
 
 def interpretImageRasterFlavor(flavor):
@@ -561,8 +562,8 @@ def saveRaster(Z, X=None, Y=None, fname_or_file='testRaster_py.tif',
 
     rat.saveArrayAsTiff(Z, testFile,
                         X, Y, proj_ref, geotrans_rot_tup,
-                        like_raster,
-                        nodata_val, dtype_out)
+                        nodata_val, dtype_out,
+                        like_raster=like_raster)
 
     print("'{}' saved".format(testFile))
 
@@ -601,7 +602,9 @@ def sra(Z, X, Y, flavor='auto', matchkey='auto', descr='', compare=False, concur
         Z_copy[np.where(np.isnan(Z_copy))] = nodata
     else:
         Z_copy = Z
-    saveRaster(Z_copy, X, Y, fname=testFname, proj_ref=proj_ref, nodata_val=nodata, dtype_out=fmtstr)
+    saveRaster(Z_copy, X, Y, fname_or_file=testFname,
+               proj_ref=proj_ref,
+               nodata_val=nodata, dtype_out=fmtstr)
 
 
 def waitForComparison(expected_imgnum):
@@ -649,7 +652,8 @@ def getWindow(array, window_shape, x_y_tup, one_based_index=True):
 
 
 def doMasking(demFile, maskFileSuffix, noentropy=False):
-    lib.filter_scene.generateMasks(findTestFile(demFile), maskFileSuffix, noentropy)
+    from lib.filter_scene import generateMasks
+    generateMasks(findTestFile(demFile), maskFileSuffix, noentropy)
 
 
 def getFP(demFile):

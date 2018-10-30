@@ -95,7 +95,7 @@ class ArgumentPasser:
         return {act.dest: type(act) for act in self.parser._actions}
 
     def argval2str(self, item):
-        return '"{}"'.format(item) if type(item) is str else item
+        return '"{}"'.format(item) if type(item) is str else '{}'.format(item)
 
     def update_cmd_base(self):
         arg_list = []
@@ -143,6 +143,10 @@ def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s'
 
 def read_task_bundle(bundle_file, task_dtype=np.dtype(str), task_delim=' '):
     return np.loadtxt(bundle_file, dtype=task_dtype, delimiter=task_delim)
+
+
+def get_jobnum_fmtstr(processing_list):
+    return '{:0>'+str(len(str(len(processing_list))))+'}'
 
 
 def get_jobsubmit_cmd(scheduler, job_script, job_name, *job_script_args):

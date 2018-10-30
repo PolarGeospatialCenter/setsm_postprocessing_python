@@ -52,7 +52,7 @@ statsFile_fp = open(statsFile, 'w')
 statsFile_fp.write(','.join(col_names)+'\n')
 for arr_sz_factor in array_sizes:
     print(">>> arr_sz_factor: {} <<<".format(arr_sz_factor))
-    arr = imresize(array, arr_sz_factor, use_gdal=False)
+    arr = imresize(array, arr_sz_factor)
     row_entry[0] = str(np.prod(arr.shape))
     for struct in structures:
         print(">> structure shape: {} <<".format(struct.shape))

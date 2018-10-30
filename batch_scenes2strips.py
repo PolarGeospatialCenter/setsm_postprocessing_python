@@ -1,5 +1,5 @@
 
-# Version 3.1; Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2018
+# Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2018
 
 
 import argparse
@@ -15,11 +15,77 @@ from datetime import datetime
 
 import numpy as np
 
+from lib import batch_handler
+
+
+SCRIPT_VERSION_NUM = 3.1
+
 
 # Script argument defaults
 SCRIPT_FILE = os.path.realpath(__file__)
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
+SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
+
+# Script argument option strings
+ARGSTR_SRC = 'src'
+ARGSTR_RES = 'res'
+ARGSTR_DST = '--dst'
+ARGSTR_META_TRANS_DIR = '--meta-trans-dir'
+ARGSTR_MASK_VER = '--mask-ver'
+ARGSTR_NOENTROPY = '--noentropy'
+ARGSTR_NOWATER = '--nowater'
+ARGSTR_NOCLOUD = '--nocloud'
+ARGSTR_NOFILTER_COREG = '--nofilter-coreg'
+ARGSTR_SAVE_COREG_STEP = '--save-coreg-step'
+ARGSTR_SCHEDULER = '--scheduler'
+ARGSTR_JOBSCRIPT = '--jobscript'
+ARGSTR_DRYRUN = '--dryrun'
+ARGSTR_STRIPID = '--stripid'
+
+# Script argument option choices
+ARGCHO_MASK_VER_MASKV1 = 'maskv1'
+ARGCHO_MASK_VER_MASKV2 = 'maskv2'
+ARGCHO_MASK_VER_REMA2A = 'rema2a'
+ARGCHO_MASK_VER_MASK8M = 'mask8m'
+ARGCHO_MASK_VER_BITMASK = 'bitmask'
+ARGCHO_MASK_VER = [
+    ARGCHO_MASK_VER_MASKV1,
+    ARGCHO_MASK_VER_MASKV2,
+    ARGCHO_MASK_VER_REMA2A,
+    ARGCHO_MASK_VER_MASK8M,
+    ARGCHO_MASK_VER_BITMASK
+]
+ARGCHO_SAVE_COREG_STEP_OFF = 'off'
+ARGCHO_SAVE_COREG_STEP_META = 'meta'
+ARGCHO_SAVE_COREG_STEP_ALL = 'all'
+ARGCHO_SAVE_COREG_STEP = [
+    ARGCHO_SAVE_COREG_STEP_OFF,
+    ARGCHO_SAVE_COREG_STEP_META,
+    ARGCHO_SAVE_COREG_STEP_ALL
+]
+
+# Segregation of argument option choices
+MASK_VER_2M = [
+    ARGCHO_MASK_VER_MASKV1,
+    ARGCHO_MASK_VER_MASKV2,
+    ARGCHO_MASK_VER_BITMASK
+]
+MASK_VER_8M = [
+    ARGCHO_MASK_VER_MASKV1,
+    ARGCHO_MASK_VER_REMA2A,
+    ARGCHO_MASK_VER_MASK8M
+]
+
+# Script batch arguments
+BATCH_ARGSTR = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT]
+
+# Batch settings
+JOB_ABBREV = 's2s'
+PYTHON_EXE = 'python -u'
+
+
+# Per-script globals
 
 SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
 SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
@@ -33,138 +99,258 @@ class MetaReadError(Exception):
         super(Exception, self).__init__(msg)
 
 
+def parse_args():
+
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawTextHelpFormatter,
+        description=' '.join([
+            "Filters scene dems in a source directory,",
+            "then mosaics them into strips and saves the results.\n",
+            "Batch work is done in units of strip-pair ID, as parsed from scene dem filenames",
+            "(see {} argument for how this is parsed).".format(ARGSTR_STRIPID)
+        ])
+    )
+
+    # Positional arguments
+
+    parser.add_argument(
+        ARGSTR_SRC,
+        help=' '.join([
+            "Path to source directory containing scene DEMs to process.",
+            "If {} is not specified, this path should contain the folder 'tif_results'.".format(ARGSTR_DST)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_RES,
+        type=float,
+        help="Resolution of target DEMs in meters."
+    )
+
+    # Optional arguments
+
+    parser.add_argument(
+        ARGSTR_DST,
+        help=' '.join([
+            "Path to destination directory for output mosaicked strip data.",
+            "(default is src.(reverse)replace('tif_results', 'strips'))"
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_META_TRANS_DIR,
+        help=' '.join([
+            "Path to directory of old strip metadata from which translation values",
+            "will be parsed to skip scene coregistration step."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_MASK_VER,
+        choices=ARGCHO_MASK_VER,
+        default=ARGCHO_MASK_VER_BITMASK,
+        help=' '.join([
+            "Filtering scheme to use when generating mask raster images,",
+            "to classify bad data in scene DEMs.",
+            "\n'{}': Two-component (edge, data density) filter to create".format(ARGCHO_MASK_VER_MASKV1),
+                    "separate edgemask and datamask files for each scene.",
+            "\n'{}': Three-component (edge, water, cloud) filter to create".format(ARGCHO_MASK_VER_MASKV2),
+                    "classical 'flat' binary masks for 2m DEMs.",
+            "\n'{}': Same filter as '{}', but distinguish between".format(ARGCHO_MASK_VER_BITMASK, ARGCHO_MASK_VER_MASKV2),
+                    "the different filter components by creating a bitmask.",
+            "\n'{}': Filter designed specifically for 8m Antarctic DEMs.".format(ARGCHO_MASK_VER_REMA2A),
+            "\n'{}': General-purpose filter for 8m DEMs.".format(ARGCHO_MASK_VER_MASK8M)
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_NOENTROPY,
+        action='store_true',
+        default=False,
+        help=' '.join([
+            "Use filter without entropy protection.",
+            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_MASKV1)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_NOWATER,
+        action='store_true',
+        default=False,
+        help=' '.join([
+            "Use filter without water masking.",
+            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_NOCLOUD,
+        action='store_true',
+        default=False,
+        help=' '.join([
+            "Use filter without cloud masking.",
+            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_NOFILTER_COREG,
+        action='store_true',
+        default=False,
+        help=' '.join([
+            "If {}/{}, turn off filter(s) during".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+            "coregistration step in addition to mosaicking step.",
+            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_SAVE_COREG_STEP,
+        choices=ARGCHO_SAVE_COREG_STEP,
+        default=ARGCHO_SAVE_COREG_STEP_META,
+        help=' '.join([
+            "If {}/{}, save output from coregistration step in directory".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+             "'`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components",
+             "([cloud, water, edge], respectively) applied during the coregistration step.",
+             "By default, all three filter components are applied so this code is 111.",
+             "\nIf '{}', do not save output from coregistration step.".format(ARGCHO_SAVE_COREG_STEP_OFF),
+             "\nIf '{}', save only the *_meta.txt component of output strip segments.".format(ARGCHO_SAVE_COREG_STEP_META),
+                "(useful for subsequent runs with {} argument)".format(ARGSTR_META_TRANS_DIR),
+             "\nIf '{}', save all output from coregistration step, including both".format(ARGCHO_SAVE_COREG_STEP_ALL),
+             "metadata and raster components.",
+             "\nCan only be used when {}='{}', and has no affect if neither".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK),
+             "{} or {} arguments are provided, or either".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+             "{} or {} arguments are provided since then the".format(ARGSTR_META_TRANS_DIR, ARGSTR_NOFILTER_COREG),
+             "coregistration and mosaicking steps are effectively rolled into one step."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_SCHEDULER,
+        choices=batch_handler.SCHED_SUPPORTED,
+        help="Submit tasks to job scheduler."
+    )
+    parser.add_argument(
+        ARGSTR_JOBSCRIPT,
+        help=' '.join([
+            "Script to run in job submission to scheduler.",
+            "(default scripts are found in {})".format(SCRIPT_DIR)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_DRYRUN,
+        action='store_true',
+        default=False,
+        help="Print actions without executing."
+    )
+
+    parser.add_argument(
+        ARGSTR_STRIPID,
+        help=' '.join([
+            "Run filtering and mosaicking for a single strip with strip-pair ID",
+            "as parsed from scene DEM filenames using the following regex: '{}'".format(RE_STRIPID_STR)
+        ])
+    )
+
+    return parser
+
+
 def main():
     from lib.filter_scene import generateMasks
     from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
     from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
     from lib.scenes2strips import scenes2strips
-    from lib.scenes2strips import HOLD_GUESS_OFF, HOLD_GUESS_ON, HOLD_GUESS_ON_STATS
-    from lib.raster_array_tools import saveArrayAsTiff, getFPvertices
-
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, description=(
-        "Filters scene dems in a source directory, "
-        "then mosaics them into strips and saves the results.\n"
-        "Batch work is done in units of strip ID (<catid1_catid2>), as parsed from scene dem "
-        "filenames."))
-
-    parser.add_argument('src',
-        help="Path to source directory containing scene DEMs to process. "
-             "If --dst is not specified, this path should contain the folder 'tif_results'.")
-    parser.add_argument('res', type=float,
-        help="Resolution of target DEMs (2 or 8 meters... or something else).")
-
-    parser.add_argument('--dst',
-        help="Path to destination directory for output mosaicked strip data."
-             " (default is src.(reverse)replace('tif_results', 'strips'))")
-
-    parser.add_argument('--meta-trans-dir',
-        help="Path to directory of old strip metadata from which translation values "
-             "will be parsed to skip scene coregistration step.")
-
-    parser.add_argument('--mask-ver', choices=['maskv1','maskv2','rema2a','mask8m','bitmask'],
-        default='bitmask',
-        help="Filtering scheme to use when generating mask raster images "
-             "to classify bad data in scene DEMs. "
-             "\n'maskv1': Two-component (edge, data density) filter to create "
-                         "separate edgemask and datamask files for each scene. "
-             "\n'maskv2': Three-component (edge, water, cloud) filter to create "
-                         "classical 'flat' binary masks for 2m DEMs."
-             "\n'bitmask': Same filter as 'maskv2', but distinguish between "
-                          "the different filter components by creating a bitmask."
-             "\n'rema2a': Filter designed specifically for 8m Antarctic DEMs. "
-             "\n'mask8m': General-purpose filter for 8m DEMs.")
-
-    parser.add_argument('--noentropy', action='store_true', default=False,
-        help="Use filter without entropy protection. "
-             "Can only be used when --mask-ver='maskv1'.")
-    parser.add_argument('--nowater', action='store_true', default=False,
-        help="Use filter without water masking. "
-             "Can only be used when --mask-ver='bitmask'.")
-    parser.add_argument('--nocloud', action='store_true', default=False,
-        help="Use filter without cloud masking. "
-             "Can only be used when --mask-ver='bitmask'.")
-    parser.add_argument('--nofilter-coreg', action='store_true', default=False,
-        help="If --nowater/--nocloud, turn off filter(s) during "
-             "scene coregistration step in addition to mosaicking step. "
-             "Can only be used when --mask-ver='bitmask'.")
-
-    parser.add_argument('--scheduler', choices=['pbs', 'slurm'],
-        help="Submit tasks to job scheduler.")
-    parser.add_argument('--jobscript',
-        help="Script to run in job submission to scheduler."
-             " (default scripts are found in {})".format(SCRIPT_DIR))
-    parser.add_argument('--dryrun', action='store_true', default=False,
-        help="Print actions without executing.")
-
-    parser.add_argument('--stripid',
-        help="Run filtering and mosaicking for a single strip with strip ID "
-             "as parsed from scene DEM filenames using the following regex: '{}'.".format(RE_STRIPID_STR))
+    from batch_mask import get_mask_bitstring
 
     # Parse and validate arguments.
-    args = parser.parse_args()
-    scriptpath = os.path.abspath(sys.argv[0])
-    srcdir = os.path.abspath(args.src)
-    dstdir = args.dst
-    metadir = args.meta_trans_dir
-    scheduler = args.scheduler
-    jobscript = args.jobscript
-    if int(args.res) == args.res:
-        args.res = int(args.res)
 
-    if args.res == 2 and args.mask_ver not in ('maskv1', 'maskv2', 'bitmask'):
-        parser.error("--mask-ver must be one of ('maskv1', 'maskv2', or 'bitmask') for 2-meter `res`")
-    if args.res == 8 and args.mask_ver not in ('maskv1', 'rema2a', 'mask8m'):
-        parser.error("--mask-ver must be one of ('maskv1', 'rema2a', or 'mask8m') for 8-meter `res`")
-    if args.noentropy and args.mask_ver != 'maskv1':
-        parser.error("--noentropy option is compatible only with --maskv1 option")
-    if (args.nowater or args.nocloud) and args.mask_ver != 'bitmask':
-        parser.error("--nowater/--nocloud can only be used when --mask-ver='bitmask'")
-    if args.nofilter_coreg and [args.nowater, args.nocloud].count(True) == 0:
-        parser.error("--nofilter-coreg option must be used in conjunction with --nowater/--nocloud option(s)")
-    if args.nofilter_coreg and args.meta_trans_dir is not None:
-        parser.error("--nofilter-coreg option cannot be used in conjunction with --meta-trans-dir argument")
+    arg_parser = parse_args()
+    args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, SCRIPT_FILE)
+    srcdir = os.path.abspath(args.get(ARGSTR_SRC))
+    res = args.get(ARGSTR_RES)
+    if int(res) == res:
+        res = int(res)
+    dstdir = args.get(ARGSTR_DST)
+    metadir = args.get(ARGSTR_META_TRANS_DIR)
+    mask_version = args.get(ARGSTR_MASK_VER)
+    noentropy = args.get(ARGSTR_NOENTROPY)
+    nowater = args.get(ARGSTR_NOWATER)
+    nocloud = args.get(ARGSTR_NOCLOUD)
+    nofilter_coreg = args.get(ARGSTR_NOFILTER_COREG)
+    save_coreg_step = args.get(ARGSTR_SAVE_COREG_STEP)
+    scheduler = args.get(ARGSTR_SCHEDULER)
+    jobscript = args.get(ARGSTR_JOBSCRIPT)
+    jobscript_default = os.path.join(SCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
+    dryrun = args.get(ARGSTR_DRYRUN)
+    stripid = args.get(ARGSTR_STRIPID)
+
+    res_req_mask_ver = None
+    if res == 2:
+        res_req_mask_ver = MASK_VER_2M
+    elif res == 8:
+        res_req_mask_ver = MASK_VER_8M
+    if res_req_mask_ver is not None and mask_version not in res_req_mask_ver:
+        arg_parser.error("{} must be one of {} for {}-meter `{}`".format(
+            ARGSTR_MASK_VER, res_req_mask_ver, res, ARGSTR_RES
+        ))
+
+    if args.get(ARGSTR_NOENTROPY) and mask_version != ARGCHO_MASK_VER_MASKV1:
+        arg_parser.error("{} option is compatible only with {} option".format(
+            ARGSTR_NOENTROPY, ARGCHO_MASK_VER_MASKV1
+        ))
+    if (nowater or nocloud) and mask_version != ARGCHO_MASK_VER_BITMASK:
+        arg_parser.error("{}/{} option(s) can only be used when {}='{}'".format(
+            ARGSTR_NOWATER, ARGSTR_NOCLOUD, ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK
+        ))
+    if nofilter_coreg and [nowater, nocloud].count(True) == 0:
+        arg_parser.error("{} option must be used in conjunction with {}/{} option(s)".format(
+            ARGSTR_NOFILTER_COREG, ARGSTR_NOWATER, ARGSTR_NOCLOUD
+        ))
+    if nofilter_coreg and metadir is not None:
+        arg_parser.error("{} option cannot be used in conjunction with {} argument".fomat(
+            ARGSTR_NOFILTER_COREG, ARGSTR_META_TRANS_DIR
+        ))
 
     if not os.path.isdir(srcdir):
-        parser.error("`src` must be a directory")
+        arg_parser.error("`{}` must be a directory".format(ARGSTR_SRC))
 
     if dstdir is not None:
         dstdir = os.path.abspath(dstdir)
         if os.path.isdir(dstdir) and filecmp.cmp(srcdir, dstdir):
-            parser.error("`src` dir is the same as --dst dir: {}".format(srcdir))
+            arg_parser.error("`{}` dir is the same as {} dir".format(ARGSTR_SRC, ARGSTR_DST))
     else:
         # Set default dst dir.
         split_ind = srcdir.rfind('tif_results')
         if split_ind == -1:
-            parser.error("`src` path does not contain 'tif_results', so default --dst cannot be set")
+            arg_parser.error("`{}` path does not contain 'tif_results', "
+                             "so default {} cannot be set".format(ARGSTR_SRC, ARGSTR_DST))
         dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
-        print("--dst dir set to: {}".format(dstdir))
+        dstdir = os.path.abspath(dstdir)
+        print("{} dir set to: {}".format(ARGSTR_DST, dstdir))
 
     if metadir is not None:
         if os.path.isdir(metadir):
             metadir = os.path.abspath(metadir)
         else:
-            parser.error("--meta-trans-dir must be an existing directory")
+            arg_parser.error("{} must be an existing directory".format(ARGSTR_META_TRANS_DIR))
 
     if scheduler is not None:
         if jobscript is None:
-            jobscript = os.path.join(SCRIPT_DIR, 'qsub_scenes2strips_{}.sh'.format(scheduler))
+            jobscript = jobscript_default
         jobscript = os.path.abspath(jobscript)
         if not os.path.isfile(jobscript):
-            parser.error("--jobscript must be a valid file path, but was '{}'".format(jobscript))
+            arg_parser.error("{} must be a valid file path, but was '{}'".format(
+                ARGSTR_JOBSCRIPT, jobscript
+            ))
 
     # Create strip output directory if it doesn't already exist.
     if not os.path.isdir(dstdir):
-        if not args.dryrun:
+        if not dryrun:
             os.makedirs(dstdir)
 
 
-    if args.stripid is None:
+    if stripid is None:
         # Do batch processing.
 
 
         # Find all scene DEMs to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_dems = glob.glob(os.path.join(srcdir, '*_{}_{}'.format(str(args.res)[0], demSuffix)))
+            scene_dems = glob.glob(os.path.join(srcdir, '*_{}_{}'.format(str(res)[0], demSuffix)))
             if scene_dems:
                 break
         if not scene_dems:
@@ -184,7 +370,7 @@ def main():
 
         # Check for existing strip output.
         stripids_to_process = [sID for sID in stripids
-                               if not os.path.isfile(os.path.join(dstdir, '{}_{}m.fin'.format(sID, args.res)))]
+                               if not os.path.isfile(os.path.join(dstdir, '{}_{}m.fin'.format(sID, res)))]
         print("Found {} {} strip-pair IDs, {} unfinished".format(
             len(stripids), '*'+demSuffix, len(stripids_to_process)))
         del scene_dems
@@ -193,59 +379,39 @@ def main():
             sys.exit(0)
         stripids_to_process.sort()
 
+
         wait_seconds = 5
         print("Sleeping {} seconds before job submission".format(wait_seconds))
         sleep(wait_seconds)
 
-        # Process each strip ID.
-        i = 0
-        for stripid in stripids:
-            i += 1
+
+        # Process each strip-pair ID.
+
+        jobnum_fmt = batch_handler.get_jobnum_fmtstr(stripids)
+        args.remove_args(*BATCH_ARGSTR)
+        for i, stripid in enumerate(stripids):
 
             # If output does not already exist, add to task list.
-            dst_dems = glob.glob(os.path.join(dstdir, '*{}_seg*_{}m_{}'.format(stripid, args.res, demSuffix)))
-            if dst_dems:
-                print("--stripid {} output files exist, skipping".format(stripid))
+            stripid_finFile = os.path.join(dstdir, '{}_{}m.fin'.format(stripid, res))
+            dst_dems = glob.glob(os.path.join(dstdir, '*{}_seg*_{}m_{}'.format(stripid, res, demSuffix)))
+            if os.path.isfile(stripid_finFile):
+                print("{} {}_{}m.fin file exists, skipping".format(ARGSTR_STRIPID, stripid, res))
+                continue
+            elif dst_dems:
+                print("{} {} (potentially) unfinished output files exist, skipping".format(ARGSTR_STRIPID, stripid))
                 continue
 
-            s2s_command = r'{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}'.format(
-                'python -u',
-                scriptpath,
-                srcdir,
-                args.res,
-                '--dst {}'.format(dstdir),
-                '--stripid {}'.format(stripid),
-                '--mask-ver {}'.format(args.mask_ver),
-                '--meta-trans-dir {}'.format(metadir) if metadir is not None else '',
-                '--noentropy' * args.noentropy,
-                '--nowater' * args.nowater,
-                '--nocloud' * args.nocloud,
-                '--nofilter-coreg' * args.nofilter_coreg,
-            )
+            args.set(ARGSTR_STRIPID, stripid)
+            s2s_command = args.get_cmd()
 
-            # If PBS, submit to scheduler.
-            if args.scheduler is not None:
-                job_name = 's2s{:04g}'.format(i)
-
-                if args.scheduler == 'pbs':
-                    cmd = r'qsub "{}" -N {} -v p1="{}"'.format(
-                        jobscript,
-                        job_name,
-                        s2s_command
-                    )
-                elif args.scheduler == 'slurm':
-                    cmd = r'sbatch "{}" -J {} --export=p1="{}"'.format(
-                        jobscript,
-                        job_name,
-                        s2s_command
-                    )
-
-            # ...else run locally.
+            if scheduler is not None:
+                job_name = JOB_ABBREV+jobnum_fmt.format(i+1)
+                cmd = batch_handler.get_jobsubmit_cmd(scheduler, jobscript, job_name, s2s_command)
             else:
                 cmd = s2s_command
 
-            print("{}, {}".format(i, cmd))
-            if not args.dryrun:
+            print("{}, {}".format(i+1, cmd))
+            if not dryrun:
                 # For most cases, set `shell=True`.
                 # For attaching process to PyCharm debugger,
                 # set `shell=False`.
@@ -258,49 +424,68 @@ def main():
 
         # Handle arguments.
 
-        metadir = args.meta_trans_dir
         use_old_trans = True if metadir is not None else False
 
-        filter_options_mask = ()
-        if args.nowater:
-            filter_options_mask += ('nowater',)
-        if args.nocloud:
-            filter_options_mask += ('nocloud',)
-        filter_options_coreg = filter_options_mask if args.nofilter_coreg else ()
+        mask_name = 'mask' if mask_version == ARGCHO_MASK_VER_MASKV2 else mask_version
 
-        if args.mask_ver == 'maskv2':
-            mask_version = 'mask'
-        else:
-            mask_version = args.mask_ver
+        filter_options_mask = ()
+        if nowater:
+            filter_options_mask += ('nowater',)
+        if nocloud:
+            filter_options_mask += ('nocloud',)
+
+        filter_options_coreg = filter_options_mask if nofilter_coreg else ()
+
+        dstdir_coreg = os.path.join(
+            os.path.dirname(dstdir),
+            '{}_coreg_filt{}'.format(
+                os.path.basename(dstdir),
+                get_mask_bitstring(True,
+                                   not 'nowater' in filter_options_coreg,
+                                   not 'nocloud' in filter_options_coreg)))
 
         # Print arguments for this run.
-        print("res: {}m".format(args.res))
+        print("stripid: {}".format(stripid))
+        print("res: {}m".format(res))
         print("srcdir: {}".format(srcdir))
         print("dstdir: {}".format(dstdir))
+        print("dstdir for coreg step: {}".format(dstdir_coreg))
         print("metadir: {}".format(metadir))
         print("mask version: {}".format(mask_version))
+        print("mask name: {}".format(mask_name))
         print("coreg filter options: {}".format(filter_options_coreg))
         print("mask filter options: {}".format(filter_options_mask))
+        print("dryrun: {}".format(dryrun))
+        print('')
 
-        stripid_fin_file = os.path.join(dstdir, '{}_{}m.fin'.format(args.stripid, args.res))
+        if os.path.isdir(dstdir_coreg) and save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+            dstdir_coreg_stripFiles = glob.glob(os.path.join(dstdir_coreg, stripid+'*'))
+            if len(dstdir_coreg_stripFiles) > 0:
+                print("Deleting old strip output in dstdir for coreg step")
+                if not dryrun:
+                    for f in dstdir_coreg_stripFiles:
+                        os.remove(f)
+
+        stripid_finFile = os.path.join(dstdir, '{}_{}m.fin'.format(stripid, res))
+        stripid_finFile_coreg = os.path.join(dstdir_coreg, '{}_{}m.fin'.format(stripid, res))
 
         # Find scene DEMs for this stripid to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_demFiles = glob.glob(os.path.join(srcdir, '{}*_{}_{}'.format(args.stripid, str(args.res)[0], demSuffix)))
+            scene_demFiles = glob.glob(os.path.join(srcdir, '{}*_{}_{}'.format(stripid, str(res)[0], demSuffix)))
             if scene_demFiles:
                 break
-        print("Processing strip-pair ID: {}, {} scenes".format(args.stripid, len(scene_demFiles)))
+        print("Processing strip-pair ID: {}, {} scenes".format(stripid, len(scene_demFiles)))
         if not scene_demFiles:
             print("No scene DEMs found to process, skipping")
             sys.exit(1)
         scene_demFiles.sort()
 
         # Existence check. If output already exists, skip.
-        if os.path.isfile(stripid_fin_file):
-            print("{} file exists, strip output finished, skipping".format(stripid_fin_file))
+        if os.path.isfile(stripid_finFile):
+            print("{} file exists, strip output finished, skipping".format(stripid_finFile))
             sys.exit(0)
-        if glob.glob(os.path.join(dstdir, args.stripid+'*')):
-            print("Unfinished strip output exists, skipping")
+        if glob.glob(os.path.join(dstdir, stripid+'*')):
+            print("(Potentially) unfinished strip output exists, skipping")
             sys.exit(1)
 
         # Make sure all DEM component files exist. If missing, skip.
@@ -318,33 +503,42 @@ def main():
         if missingflag:
             sys.exit(1)
 
+        print('')
+
         # Filter all scenes in this strip.
-        filter_list = [f for f in scene_demFiles if shouldDoMasking(selectBestMatchtag(f), mask_version)]
+        filter_list = [f for f in scene_demFiles if shouldDoMasking(selectBestMatchtag(f), mask_name)]
         filter_total = len(filter_list)
         i = 0
         for demFile in filter_list:
             i += 1
             print("Filtering {} of {}: {}".format(i, filter_total, demFile))
-            if not args.dryrun:
-                generateMasks(demFile, mask_version, noentropy=args.noentropy,
+            if not dryrun:
+                generateMasks(demFile, mask_name, noentropy=noentropy,
                               save_component_masks=MASK_BIT, debug_component_masks=DEBUG_NONE,
                               nbit_masks=False)
 
+        print('')
+        print("All *_{}.tif scene masks have been created in source scene directory".format(mask_name))
+        print('')
+
         print("Running scenes2strips")
-        if args.dryrun:
+        if dryrun:
             sys.exit(0)
+        print('')
 
         # Mosaic scenes in this strip together.
         # Output separate segments if there are breaks in overlap.
-        maskSuffix = mask_version+'.tif'
+        maskSuffix = mask_name+'.tif'
         remaining_sceneDemFnames = [os.path.basename(f) for f in scene_demFiles]
         segnum = 1
         while len(remaining_sceneDemFnames) > 0:
 
             print("Building segment {}".format(segnum))
 
-            strip_demFname = "{}_seg{}_{}m_{}".format(args.stripid, segnum, args.res, demSuffix)
+            strip_demFname = "{}_seg{}_{}m_{}".format(stripid, segnum, res, demSuffix)
             strip_demFile = os.path.join(dstdir, strip_demFname)
+            strip_demFile_coreg = os.path.join(dstdir_coreg, strip_demFname)
+
             if use_old_trans:
                 strip_metaFile = os.path.join(metadir, strip_demFname.replace(demSuffix, 'meta.txt'))
                 mosaicked_sceneDemFnames, rmse, trans = readStripMeta_stats(strip_metaFile)
@@ -361,19 +555,28 @@ def main():
                 if X is None:
                     all_data_masked = True
 
-            if not all_data_masked and filter_options_mask != filter_options_coreg or use_old_trans:
+            if not all_data_masked and (filter_options_mask != filter_options_coreg or use_old_trans):
                 print("Running s2s with masking filter options: {}".format(
                     ', '.join(filter_options_mask) if filter_options_mask else None))
+
                 if 'X' in vars():
+                    if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+                        if not os.path.isdir(dstdir_coreg):
+                            os.makedirs(dstdir_coreg)
+                        if save_coreg_step in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
+                            saveStripMeta(strip_demFile_coreg, demSuffix,
+                                          X, Y, Z, trans, rmse, spat_ref,
+                                          srcdir, mosaicked_sceneDemFnames, args)
+                        if save_coreg_step == ARGCHO_SAVE_COREG_STEP_ALL:
+                            saveStripRasters(strip_demFile_coreg, demSuffix, maskSuffix,
+                                             X, Y, Z, M, O, MD, spat_ref)
                     del X, Y, Z, M, O, MD
                     gc.collect()
+
                 input_sceneDemFnames = mosaicked_sceneDemFnames
-                # Set `rmse_guess=rmse` in the following call of `scenes2strips` to get stats on the
-                # difference between RMSE values in masked versus unmasked coregistration output to
-                # `os.path.join(testing.test.TESTDIR, 's2s_stats.log')`.
                 X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
                     srcdir, input_sceneDemFnames, maskSuffix, filter_options_mask,
-                    trans_guess=trans, rmse_guess=rmse, hold_guess=HOLD_GUESS_ON)
+                    trans_guess=trans, rmse_guess=(rmse if use_old_trans else None), hold_guess=True)
                 if X is None:
                     all_data_masked = True
                 if mosaicked_sceneDemFnames != input_sceneDemFnames and use_old_trans:
@@ -388,32 +591,57 @@ def main():
 
             print("DEM: {}".format(strip_demFile))
 
-            strip_matchFile = strip_demFile.replace(demSuffix, 'matchtag.tif')
-            strip_maskFile  = strip_demFile.replace(demSuffix, maskSuffix)
-            strip_orthoFile = strip_demFile.replace(demSuffix, 'ortho.tif')
-            strip_metaFile  = strip_demFile.replace(demSuffix, 'meta.txt')
-
-            saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999, dtype_out='float32')
-            saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
-            del M
-            saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodata_val=0,     dtype_out='int16')
-            del O
-            saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
-            del MD
-
-            fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
-            del Z, X, Y
-
-            proj4 = spat_ref.ExportToProj4()
-            time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
-            writeStripMeta(strip_metaFile, srcdir, mosaicked_sceneDemFnames,
-                           trans, rmse, proj4, fp_vertices, time, args)
+            saveStripMeta(strip_demFile, demSuffix,
+                          X, Y, Z, trans, rmse, spat_ref,
+                          srcdir, mosaicked_sceneDemFnames, args)
+            saveStripRasters(strip_demFile, demSuffix, maskSuffix,
+                             X, Y, Z, M, O, MD, spat_ref)
+            del X, Y, Z, M, O, MD
 
             segnum += 1
 
-        with open(stripid_fin_file, 'w'):
+        with open(stripid_finFile, 'w'):
             pass
+        if save_coreg_step == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
+            with open(stripid_finFile_coreg, 'w'):
+                pass
+
+        print('')
         print("Fin!")
+
+
+def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
+                     X, Y, Z, M, O, MD, spat_ref):
+    from lib.raster_array_tools import saveArrayAsTiff
+
+    strip_matchFile = strip_demFile.replace(demSuffix, 'matchtag.tif')
+    strip_maskFile  = strip_demFile.replace(demSuffix, maskSuffix)
+    strip_orthoFile = strip_demFile.replace(demSuffix, 'ortho.tif')
+
+    saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999, dtype_out='float32')
+    del Z
+    saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
+    del M
+    saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodata_val=0,     dtype_out='int16')
+    del O
+    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
+    del MD
+
+
+def saveStripMeta(strip_demFile, demSuffix,
+                  X, Y, Z, trans, rmse, spat_ref,
+                  scenedir, scene_demFnames, args):
+    from lib.raster_array_tools import getFPvertices
+
+    strip_metaFile = strip_demFile.replace(demSuffix, 'meta.txt')
+
+    fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
+    del Z, X, Y
+    proj4 = spat_ref.ExportToProj4()
+    time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
+
+    writeStripMeta(strip_metaFile, scenedir, scene_demFnames,
+                   trans, rmse, proj4, fp_vertices, time, args)
 
 
 def getDemSuffix(demFile):
@@ -439,11 +667,11 @@ def selectBestMatchtag(demFile):
     return None
 
 
-def shouldDoMasking(matchFile, mask_version='mask'):
+def shouldDoMasking(matchFile, mask_name):
     matchFile_date = os.path.getmtime(matchFile)
     demFile_base = matchFile.replace(getMatchtagSuffix(matchFile), '')
-    maskFiles = (     [demFile_base+s for s in ('edgemask.tif', 'datamask.tif')] if mask_version == 'maskv1'
-                 else ['{}{}.tif'.format(demFile_base, mask_version)])
+    maskFiles = (     [demFile_base+s for s in ('edgemask.tif', 'datamask.tif')] if mask_name == ARGCHO_MASK_VER_MASKV1
+                 else ['{}{}.tif'.format(demFile_base, mask_name)])
     for m in maskFiles:
         if os.path.isfile(m):
             # Update Mode - will only reprocess masks older than the matchtag file.
@@ -458,13 +686,18 @@ def shouldDoMasking(matchFile, mask_version='mask'):
 def writeStripMeta(o_metaFile, scenedir, scene_demFnames,
                    trans, rmse, proj4, fp_vertices, strip_time, args):
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
+    from lib.filter_scene import BITMASK_VERSION_NUM
 
     demSuffix = getDemSuffix(scene_demFnames[0])
     if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
         fp_vertices = fp_vertices.astype(np.int64)
 
+    mask_version = args.get(ARGSTR_MASK_VER)
+    nowater, nocloud = args.get(ARGSTR_NOWATER, ARGSTR_NOCLOUD)
+    nofilter_coreg = args.get(ARGSTR_NOFILTER_COREG)
+
     strip_info = (
-"""Strip Metadata
+"""Strip Metadata (v{})
 Creation Date: {}
 Strip creation date: {}
 Strip projection (proj4): '{}'
@@ -476,6 +709,7 @@ Y: {}
 Mosaicking Alignment Statistics (meters)
 scene, rmse, dz, dx, dy
 """.format(
+    SCRIPT_VERSION_NUM,
     datetime.today().strftime("%d-%b-%Y %H:%M:%S"),
     strip_time,
     proj4,
@@ -489,9 +723,9 @@ scene, rmse, dz, dx, dy
             scene_demFnames[i], rmse[0, i], trans[0, i], trans[1, i], trans[2, i])
         strip_info += line
 
-        filter_info = "\nFiltering Applied: {} (v3.1)\n".format(args.mask_ver)
+        filter_info = "\nFiltering Applied: {} (v{})\n".format(mask_version, BITMASK_VERSION_NUM)
 
-    if args.mask_ver == 'bitmask':
+    if mask_version == 'bitmask':
         filter_info += "bit, class, coreg, mosaic\n"
         filter_info_components = (
 """
@@ -500,8 +734,8 @@ scene, rmse, dz, dx, dy
 {} cloud {} {}
 """.format(
         MASKCOMP_EDGE_BIT,
-        MASKCOMP_WATER_BIT, int(not args.nofilter_coreg*args.nowater), int(not args.nowater),
-        MASKCOMP_CLOUD_BIT, int(not args.nofilter_coreg*args.nocloud), int(not args.nocloud),
+        MASKCOMP_WATER_BIT, int(not nofilter_coreg*nowater), int(not nowater),
+        MASKCOMP_CLOUD_BIT, int(not nofilter_coreg*nocloud), int(not nocloud),
     )
         )
         filter_info += '\n'.join(sorted(filter_info_components.strip().splitlines())) + '\n'

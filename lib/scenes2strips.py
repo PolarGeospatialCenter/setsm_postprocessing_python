@@ -13,7 +13,6 @@ import ogr
 import numpy as np
 from scipy import interpolate
 
-from testing.test import validateTestFileSave
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
     from filter_scene import getDataDensityMap, readSceneMeta, rescaleDN
@@ -26,11 +25,6 @@ else:
 # to the spatial reference of the first scene DEM in order and used for
 # comparison to the spatial references of all other source raster files.
 __STRIP_SPAT_REF__ = None
-
-# Options for `hold_guess` argument to `scenes2strips`
-HOLD_GUESS_OFF = 0
-HOLD_GUESS_ON = 1
-HOLD_GUESS_ON_STATS = 2
 
 
 class InvalidArgumentError(Exception):
@@ -48,7 +42,7 @@ class RasterDimensionError(Exception):
 
 def scenes2strips(demdir, demFiles,
                   maskSuffix=None, filter_options=(), max_coreg_rmse=1,
-                  trans_guess=None, rmse_guess=None, hold_guess=HOLD_GUESS_OFF):
+                  trans_guess=None, rmse_guess=None, hold_guess=False):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -102,8 +96,8 @@ def scenes2strips(demdir, demFiles,
     num_scenes = len(demFiles_ordered)
 
     # Initialize output stats.
-    trans = np.zeros((3, num_scenes)) if trans_guess is None else trans_guess.copy()
-    rmse = np.zeros((1, num_scenes)) if rmse_guess is None else rmse_guess.copy()
+    trans = np.zeros((3, num_scenes))
+    rmse = np.zeros((1, num_scenes))
 
     # Get projection reference of the first scene to be used in equality checks
     # with the projection reference of all scenes that follow.
@@ -121,7 +115,8 @@ def scenes2strips(demdir, demFiles,
             rmse[0, i-1] = np.nan
         if i >= num_scenes:
             break
-        if np.any(np.isnan(trans[:, i])) or np.isnan(rmse[0, i]):
+        if (   (trans_guess is not None and np.any(np.isnan(trans_guess[:, i])))
+            or (rmse_guess is not None and np.isnan(rmse_guess[0, i]))):
             # State of scene is somewhere between naturally redundant
             # or redundant by masking, as classified by prior s2s run.
             continue
@@ -358,32 +353,28 @@ def scenes2strips(demdir, demFiles,
             continue
 
         # Coregister this scene to the strip mosaic.
-        if (    trans_guess is not None and hold_guess != HOLD_GUESS_OFF
-            and (rmse_guess is None or hold_guess != HOLD_GUESS_ON_STATS)):
-            pass
-        else:
-            trans[:, i], rmse[0, i] = coregisterdems(
-                Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
-                   x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
-                P0, P1, (trans_guess[:, i] if trans_guess is not None else None)
-            )[[1, 2]]
+        trans[:, i], rmse[0, i] = coregisterdems(
+            Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
+               x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
+            P0, P1,
+            (trans_guess[:, i] if trans_guess is not None else trans_guess),
+            hold_guess
+        )[[1, 2]]
 
-            if rmse_guess is not None and hold_guess == HOLD_GUESS_ON_STATS:
-                rmse_change = rmse[0, i] - rmse_guess[0, i]
-                stats_str = "First-run rmse={:.3f}, second-run rmse={:.3f}, change={:.3f}".format(
-                    rmse_guess[0, i], rmse[0, i], rmse_change)
-                print(stats_str)
-                statsFile = validateTestFileSave('s2s_stats.log', overwrite=True)
-                print("Writing to {} ...".format(statsFile))
-                statsFile_fp = open(statsFile, 'a')
-                statsFile_fp.write('{}: {}\n'.format(demFiles_ordered[i], stats_str))
-                statsFile_fp.close()
-
-            if hold_guess != HOLD_GUESS_OFF:
-                if trans_guess is not None:
-                    trans = trans_guess.copy()
-                if rmse_guess is not None:
-                    rmse = rmse_guess.copy()
+        if trans_guess is not None and hold_guess:
+            if not np.array_equal(trans[:, i], trans_guess[:, i]):
+                print("Under `hold_guess`, `trans` vector out of `coregisterdems` does not match `trans_guess`")
+                print("`trans_guess`:")
+                print(np.array2string(trans_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
+                print("`trans`")
+                print(np.array2string(trans, precision=4, max_line_width=np.inf, threshold=np.inf))
+        if rmse_guess is not None:
+            if rmse[0, i] != rmse_guess[0, i]:
+                print("`rmse` out of `coregisterdems` does not match `rmse_guess`")
+                print("`rmse_guess`:")
+                print(np.array2string(rmse_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
+                print("`rmse`")
+                print(np.array2string(rmse, precision=4, max_line_width=np.inf, threshold=np.inf))
 
         # Check for segment break.
         if np.isnan(rmse[0, i]) or rmse[0, i] > max_coreg_rmse:
@@ -499,7 +490,11 @@ def scenes2strips(demdir, demFiles,
     return X, Y, Z, M, O, MD, trans, rmse, demFiles_ordered, __STRIP_SPAT_REF__
 
 
-def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
+def coregisterdems(x1, y1, z1,
+                   x2, y2, z2,
+                   m1=None, m2=None,
+                   trans_guess=None, hold_guess=False,
+                   max_horiz_offset=15, rmse_step_tresh=-0.001):
     """
     % COREGISTERDEM registers a floating to a reference DEM
 
@@ -510,12 +505,6 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
     % parameters and rms is the rms of the transformation in the vertical.
 
     """
-    if (m1 is None) ^ (m2 is None):
-        raise InvalidArgumentError("Either none of both of arguments `m1` and `m2` must be provided")
-
-    # Maximum offset allowed
-    maxp = 15
-
     if len(x1) < 3 or len(y1) < 3 or len(x2) < 3 or len(y2) < 3:
         raise RasterDimensionError("Minimum array dimension is 3")
 
@@ -524,18 +513,37 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
         if not np.any(x2 - x1) and not np.any(y2 - y1):
             interpflag = False
 
-    # initial trans variable
+    if (m1 is None) ^ (m2 is None):
+        raise InvalidArgumentError("Either none of both of arguments `m1` and `m2` must be provided")
+
+    rx = x1[1] - x1[0]  # coordinate spacing
+
+    # Initial trans and RMSE settings
     if trans_guess is not None:
         p = np.reshape(trans_guess, (3, 1))
+        interpflag = True
     else:
-        p = np.zeros((3, 1))
-    d0 = np.inf            # initial rmse
+        p = np.zeros((3, 1))  # p  is prior iteration trans var
+    pn = p.copy()             # pn is current iteration trans var
+    d0 = np.inf  # initial RMSE
 
-    rx = x1[1] - x1[0]     # coordinate spacing
-    pn = p.copy()          # iteration variable
-    it = 1                 # iteration step
+    # Edge case markers
+    meddz = None
+    return_meddz = False
+    critical_failure = False
 
-    while it:
+    it = -1
+    while True:
+        it += 1
+
+        print("Planimetric Correction Iteration {}".format(it))
+
+        print("Offset (z,x,y): {:.3f}, {:.3f}, {:.3f}".format(pn[0, 0], pn[1, 0], pn[2, 0]))
+
+        if np.any(np.abs(pn[1:]) > max_horiz_offset):
+            print("Maximum horizontal offset reached")
+            return_meddz = True
+            break
 
         if interpflag:
             # Interpolate the floating data to the reference grid.
@@ -553,11 +561,9 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
 
         interpflag = True
 
-        # Slopes
+        # Calculate slopes.
         sy, sx = np.gradient(z2n, rx)
         sx = -sx
-
-        sys.stdout.write("Planimetric Correction Iteration {} ".format(it))
 
         # Difference grids.
         dz = z2n - z1
@@ -567,75 +573,84 @@ def coregisterdems(x1, y1, z1, x2, y2, z2, m1=None, m2=None, trans_guess=None):
 
         if not np.any(~np.isnan(dz)):
             print("No overlap")
-            z2out = z2
-            p = np.full((3, 1), np.nan)
-            d0 = np.nan
+            critical_failure = True
             break
 
         # Filter NaNs and outliers.
-        n = (~np.isnan(sx) & ~np.isnan(sy)
+        n = (  ~np.isnan(sx)
+             & ~np.isnan(sy)
              & (np.abs(dz - np.nanmedian(dz)) <= np.nanstd(dz)))
 
         if not np.any(n):
-            sys.stdout.write("Regression failure, all overlap filtered\n")
-            p = np.full((3, 1), np.nan)  # initial trans variable
-            d0 = np.nan
-            z2out = z2
+            print("All overlap filtered")
+            critical_failure = True
             break
 
-        # Get RMSE and break if below threshold.
-        RMSE_THRESH = 0.001
+        # Get RMSE and break if above threshold.
         d1 = np.sqrt(np.mean(np.power(dz[n], 2)))
 
+        print("RMSE = {}".format(d1))
+
         # Keep median dz if first iteration.
-        if it == 1:
+        if it == 0 and trans_guess is None:
             meddz = np.median(dz[n])
             d00 = np.sqrt(np.mean(np.power(dz[n] - meddz, 2)))
 
-        sys.stdout.write("rmse= {:.3f} ".format(d1))
+        rmse_step = d1 - d0
 
-        if ((d0 - d1) < RMSE_THRESH) or np.isnan(d0):
-            sys.stdout.write("stopping \n")
+        if rmse_step > rmse_step_tresh:
+            print("RMSE step in this iteration ({:.5f}) is above threshold ({}), "
+                  "stopping and returning values of prior iteration".format(rmse_step, rmse_step_tresh))
             # If fails after first registration attempt,
             # set dx and dy to zero and subtract the median offset.
-            if it == 2:
-                sys.stdout.write(
-                    "regression failure, returning median vertical offset: {:.3f}\n".format(meddz)
-                )
-                p[0] = meddz
-                d0 = d00
-                z2out = z2 - meddz
+            if it == 1 and trans_guess is None:
+                print("Iteration 1 regression failure")
+                return_meddz = True
             break
 
         # Keep this adjustment.
+        z2out = z2n.copy()
         p = pn.copy()
         d0 = d1
-        z2out = z2n.copy()
+
+        if trans_guess is not None and hold_guess:
+            print("Holding trans guess, stopping")
+            break
 
         # Build design matrix.
         X = np.column_stack((np.ones(dz[n].size), sx[n], sy[n]))
 
         # Solve for new adjustment.
         px = np.array([np.linalg.lstsq(X, dz[n], rcond=None)[0]]).T
-
         pn = p + px
 
-        # Display offsets.
-        sys.stdout.write("offset(z,x,y): {:.3f}, {:.3f}, {:.3f}\n".format(
-            pn[0, 0], pn[1, 0], pn[2, 0]))
-
-        if np.any(np.abs(pn[1:]) > maxp):
-            sys.stdout.write(
-                "maximum horizontal offset reached, "
-                "returning median vertical offset: {:.3f}\n".format(meddz)
-            )
+    if return_meddz:
+        if meddz is None:
+            assert trans_guess is None, "`trans_guess` is not None"
+            if hold_guess:
+                print("Regression failure under held trans guess")
+                critical_failure = True
+            else:
+                print("Rerunning coregistration without `trans_guess`")
+                return coregisterdems(x1, y1, z1,
+                                      x2, y2, z2,
+                                      m1=m1, m2=m2,
+                                      max_horiz_offset=max_horiz_offset,
+                                      rmse_step_tresh=rmse_step_tresh)
+        else:
+            print("Returning median vertical offset: {:.3f}".format(meddz))
+            z2out = z2 - meddz
             p = np.array([[meddz, 0, 0]]).T
             d0 = d00
-            z2out = z2 - meddz
-            break
 
-        # Update iteration vars.
-        it += 1
+    if critical_failure:
+        print("Regression critical failure, returning NaN trans and RMSE")
+        z2out = z2
+        p = np.full((3, 1), np.nan)
+        d0 = np.nan
+
+    print("Final offset (z,x,y): {:.3f}, {:.3f}, {:.3f}".format(p[0, 0], p[1, 0], p[2, 0]))
+    print("Final RMSE = {}".format(d0))
 
     return np.array([z2out, p.T[0], d0])
 

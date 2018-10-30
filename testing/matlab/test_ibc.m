@@ -4,14 +4,20 @@ function test_ibc
 
 %%%%%% MAKE CHANGES HERE %%%%%%
 
-tifDir_1_name = 'MATLAB';
-tifDir_2_name = 'Python';
+tifDir_1_name = 'Original PIL';
+tifDir_2_name = 'New PIL';
 
 
-tifFnameSearch = '*_mask.tif';
+tifFnameSearch = '*_bitmask.tif';
 
-tifDir_1 = 'D:\test_s2s\reg34_masks\matlab\';
-tifDir_2 = 'D:\test_s2s\reg34_masks\python\';
+tifDir_1 = 'V:\pgc\data\elev\dem\setsm\klassen\region-2018jun13\tif_results\2m\bitmask_lsf_pil';
+tifDir_2 = 'V:\pgc\data\elev\dem\setsm\klassen\region-2018jun13\tif_results\2m';
+
+% tifDir_1 = 'D:\test_s2s\reg34_masks\matlab\';
+% tifDir_2 = 'D:\test_s2s\reg34_masks\python\';
+
+% tifDir_1 = 'V:\pgc\data\scratch\erik\test_s2s\PBS\region_31_alaska_south\tif_results\old_mask_sel\';
+% tifDir_2 = 'V:\pgc\data\scratch\erik\test_s2s\PBS\region_31_alaska_south\tif_results\new_mask_sel\';
 
 % tifDir_1 = 'V:\pgc\data\scratch\erik\test_s2s\matlab\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
 % tifDir_2 = 'V:\pgc\data\scratch\erik\test_s2s\python\setsm\REMA\region\region_01_subantarctic_islands\strips\8m';
@@ -36,7 +42,7 @@ tifDir_2 = 'D:\test_s2s\reg34_masks\python\';
 
 
 nodata_val = [];
-nodata_val = -9999;
+% nodata_val = -9999;
 mask_nans = true;
 
 display_image = true;

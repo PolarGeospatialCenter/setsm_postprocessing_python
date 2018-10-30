@@ -1241,6 +1241,12 @@ def interp2_fill_oob(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):
     return Zi
 
 
+# def interp2_cv2(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, oob_val=np.nan):
+#     xx = np.repeat(np.reshape(Xi-X, (1, X.shape[0])), Y.shape[0], axis=0)
+#     yy = np.repeat(np.reshape(Yi-Y, (Y.shape[0], 1)), X.shape[0], axis=1)
+#     pass
+
+
 def interp2_gdal(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, oob_val=np.nan):
     """
     Resample array data from one set of x-y grid coordinates to another.
@@ -1410,7 +1416,7 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False, oob_val=np.nan,
 
 
 def imresize(array, size, interp='bicubic', dtype_out='input',
-             method='cv2', float_resize=True, round_proper=True,
+             method='pil', float_resize=True, round_proper=True,
              one_dim_axis=1):
     """
     Resize an array.
@@ -2314,7 +2320,7 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
 
     # Perform convolution.
     array_c = cv2.filter2D(array, ddepth, np.rot90(kernel, 2),
-                          borderType=(cv2.BORDER_CONSTANT if zero_border else cv2.BORDER_REPLICATE))
+                           borderType=(cv2.BORDER_CONSTANT if zero_border else cv2.BORDER_REPLICATE))
     if fix_float_zeros and isinstance(array_c.dtype.type(1), np.floating):
         # Fix FLOP error where we assume zero was the desired result.
         if array_c.dtype == np.float32:

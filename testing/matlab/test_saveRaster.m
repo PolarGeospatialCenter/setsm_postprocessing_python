@@ -13,7 +13,7 @@ test_setGlobals();
 global TESTDIR;
 
 
-testFile = test_getTestFileFromFname(fname);
+testFile = test_validateTestFileSave(fname);
 if isempty(testFile)
     return;
 end

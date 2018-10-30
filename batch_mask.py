@@ -1,6 +1,5 @@
-#!/usr/bin/env python2
 
-# Version 1.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
 
 
 from __future__ import division
@@ -18,11 +17,16 @@ from lib import batch_handler
 import lib.raster_array_tools as rat
 
 
+SCRIPT_VERSION_NUM = 1.0
+
+
+# Script paths
 SCRIPT_FILE = os.path.realpath(__file__)
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
+SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 
-# Argument option strings
+# Script argument option strings
 ARGSTR_SRC = 'src'
 ARGSTR_DSTDIR = '--dstdir'
 ARGSTR_SRC_SUFFIX = '--src-suffix'
@@ -36,7 +40,7 @@ ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_SCRATCH = '--scratch'
 ARGSTR_DRYRUN = '--dryrun'
 
-# Argument option choices
+# Script argument option choices
 ARGCHO_DST_NODATA_SAME = 'same'
 ARGCHO_DST_NODATA_ADD = 'add'
 ARGCHO_DST_NODATA_SWITCH = 'switch'
@@ -50,17 +54,19 @@ ARGCHO_DST_NODATA = [
     ARGCHO_DST_NODATA_UNSET
 ]
 
-# Batch arguments
+# Script batch arguments
 BATCH_ARGSTR = [ARGSTR_SCHEDULER, ARGSTR_TASKS_PER_JOB, ARGSTR_JOBSCRIPT]
 
-# Argument defaults
+# Script argument defaults
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
 
 # Batch settings
 JOB_ABBREV = 'Mask'
 PYTHON_EXE = 'python -u'
 
+
 # Per-script globals
+
 BITMASK_SUFFIX = 'bitmask.tif'.lstrip('_')
 
 
@@ -75,6 +81,8 @@ def parse_args():
         ])
     )
 
+    # Positional arguments
+
     parser.add_argument(
         ARGSTR_SRC,
         help=' '.join([
@@ -84,6 +92,9 @@ def parse_args():
             "which components to mask."
         ])
     )
+
+    # Optional arguments
+
     parser.add_argument(
         ARGSTR_DSTDIR,
         help=' '.join([
@@ -196,6 +207,7 @@ def main():
             if args.get(ARGSTR_SRC_SUFFIX) is not None else None)
     scheduler = args.get(ARGSTR_SCHEDULER)
     jobscript = args.get(ARGSTR_JOBSCRIPT)
+    jobscript_default = os.path.join(SCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
     scratchdir = os.path.abspath(args.get(ARGSTR_SCRATCH))
     dryrun = args.get(ARGSTR_DRYRUN)
 
@@ -215,13 +227,12 @@ def main():
 
     if scheduler is not None:
         if jobscript is None:
-            jobscript = os.path.join(SCRIPT_DIR, 'qsub_mask_{}.sh'.format(scheduler))
+            jobscript = jobscript_default
         jobscript = os.path.abspath(jobscript)
         if not os.path.isfile(jobscript):
             arg_parser.error("{} must be a valid file path, but was '{}'".format(ARGSTR_JOBSCRIPT, jobscript))
-
-    if not os.path.isdir(scratchdir):
-        os.makedirs(scratchdir)
+        if not os.path.isdir(scratchdir):
+            arg_parser.error("{} must be an existing directory path, but was '{}'".format(ARGSTR_SCRATCH, scratchdir))
 
     # Further parse source suffix/maskval argument.
     suffix_maskval_dict = None
@@ -262,12 +273,14 @@ def main():
                     src_suffix = suffix
                     break
         if src_suffix is None:
-            beg, end = 0, len(src_raster)
+            src_raster_dir = os.path.dirname(src_raster)
+            src_raster_fname = os.path.basename(src_raster)
+            beg, end = 0, len(src_raster_fname)
             end = float('inf')
             while end != -1:
-                end = src_raster.rfind('_', beg, end)
-                if os.path.isfile('{}_{}'.format(src_raster[beg:end], BITMASK_SUFFIX)):
-                    src_suffix = src_raster[end:].lstrip('_')
+                end = src_raster_fname.rfind('_', beg, end)
+                if os.path.isfile(os.path.join(src_raster_dir, '{}_{}'.format(src_raster_fname[beg:end], BITMASK_SUFFIX))):
+                    src_suffix = src_raster_fname[end:].lstrip('_')
                     break
         if src_suffix is None:
             arg_parser.error("Path of *_{} component for `{}` raster file "
@@ -328,11 +341,15 @@ def main():
     if num_tasks == 0:
         sys.exit(0)
 
+
     print("-----")
     wait_seconds = 5
     print("Sleeping {} seconds before job submission".format(wait_seconds))
     sleep(wait_seconds)
     print("-----")
+
+
+    # Process each mask.
 
     if scheduler is not None:
 
@@ -341,7 +358,7 @@ def main():
                      batch_handler.write_task_bundles(masks_to_apply, tasks_per_job, scratchdir,
                                                       '{}_{}'.format(JOB_ABBREV, ARGSTR_SRC)))
 
-        jobnum_fmt = '{:0>'+str(len(str(len(src_files))))+'}'
+        jobnum_fmt = batch_handler.get_jobnum_fmtstr(src_files)
 
         args.remove_args(*BATCH_ARGSTR)
         for i, src_file in enumerate(src_files):
