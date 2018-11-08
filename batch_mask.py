@@ -207,7 +207,7 @@ def main():
             if args.get(ARGSTR_SRC_SUFFIX) is not None else None)
     scheduler = args.get(ARGSTR_SCHEDULER)
     jobscript = args.get(ARGSTR_JOBSCRIPT)
-    jobscript_default = os.path.join(SCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
+    jobscript_default = os.path.join(SCRIPT_DIR, 'jobscripts', '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
     scratchdir = os.path.abspath(args.get(ARGSTR_SCRATCH))
     dryrun = args.get(ARGSTR_DRYRUN)
 

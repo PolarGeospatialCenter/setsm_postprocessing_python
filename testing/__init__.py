@@ -4,14 +4,14 @@ from platform import system
 
 # Establish directory for saving and reading of test files (mainly images).
 
-TESTDIR = os.path.join(os.path.expanduser('~'), 'scratch', 'setsm_postprocessing_testFiles')
+# TESTDIR = os.path.join(os.path.expanduser('~'), 'scratch', 'setsm_postprocessing_testFiles')
 
-# SYSTYPE = system()
-# if SYSTYPE == 'Windows':
-#     # TESTDIR = r'D:\setsm_postprocessing_tests\testFiles'
-#     TESTDIR = r'V:\pgc\data\scratch\erik\setsm_postprocessing_tests\testFiles'
-# elif SYSTYPE == 'Linux':
-#     TESTDIR = r'/mnt/pgc/data/scratch/erik/setsm_postprocessing_tests/testFiles'
+SYSTYPE = system()
+if SYSTYPE == 'Windows':
+    # TESTDIR = r'D:\setsm_postprocessing_tests\testFiles'
+    TESTDIR = r'V:\pgc\data\scratch\erik\setsm_postprocessing_tests\testFiles'
+elif SYSTYPE == 'Linux':
+    TESTDIR = r'/mnt/pgc/data/scratch/erik/setsm_postprocessing_tests/testFiles'
 
 if not os.path.isdir(TESTDIR):
     print("Creating 'testFiles' directory: {}".format(TESTDIR))

@@ -1449,8 +1449,12 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     # Assemble cloud mask.
     mask = (dem_data & (mask_radiance | mask_datadensity | mask_stdev))
 
-    # Fill holes in masked clusters.
-    mask_pp = sp_ndimage.morphology.binary_fill_holes(mask)
+    # The following call is commented out to avoid the cloud mask growing
+    # to have an egrigous extent when the current mask makes a large ring
+    # around the scene.
+    # # Fill holes in masked clusters.
+    # mask_pp = sp_ndimage.morphology.binary_fill_holes(mask)
+    mask_pp = mask
 
     # Remove small masked clusters.
     mask_pp = rat.bwareaopen(mask_pp, min_cloud_cluster, in_place=True)

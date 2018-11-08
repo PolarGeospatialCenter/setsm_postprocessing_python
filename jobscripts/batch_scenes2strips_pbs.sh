@@ -12,7 +12,7 @@ echo $PBS_O_HOST
 echo $PBS_NODEFILE
 echo
 
-source activate p27
+source activate my_root
 
 echo
 echo $p1

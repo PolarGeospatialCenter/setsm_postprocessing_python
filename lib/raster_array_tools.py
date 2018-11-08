@@ -32,10 +32,10 @@ else:
     from lib.DecimatePoly import DecimatePoly
 
 _script_dir = os.path.dirname(os.path.realpath(__file__))
-_ext_fid = open(os.path.join(_script_dir, 'outline.c'), 'r')
+_ext_fid = open(os.path.join(_script_dir, 'outline.c'), 'r', encoding='utf-8')
 _outline = _ext_fid.read()
 _ext_fid.close()
-_ext_fid = open(os.path.join(_script_dir, 'outline_every1.c'), 'r')
+_ext_fid = open(os.path.join(_script_dir, 'outline_every1.c'), 'r', encoding='utf-8')
 _outline_every1 = _ext_fid.read()
 _ext_fid.close()
 
@@ -1416,7 +1416,7 @@ def interp2_scipy(X, Y, Z, Xi, Yi, interp, extrapolate=False, oob_val=np.nan,
 
 
 def imresize(array, size, interp='bicubic', dtype_out='input',
-             method='pil', float_resize=True, round_proper=True,
+             method='cv2', float_resize=True, round_proper=True,
              one_dim_axis=1):
     """
     Resize an array.

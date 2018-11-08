@@ -275,7 +275,7 @@ def main():
     save_coreg_step = args.get(ARGSTR_SAVE_COREG_STEP)
     scheduler = args.get(ARGSTR_SCHEDULER)
     jobscript = args.get(ARGSTR_JOBSCRIPT)
-    jobscript_default = os.path.join(SCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
+    jobscript_default = os.path.join(SCRIPT_DIR, 'jobscripts', '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
     dryrun = args.get(ARGSTR_DRYRUN)
     stripid = args.get(ARGSTR_STRIPID)
 
