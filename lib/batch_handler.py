@@ -145,23 +145,25 @@ def read_task_bundle(bundle_file, task_dtype=np.dtype(str), task_delim=' '):
     return np.loadtxt(bundle_file, dtype=task_dtype, delimiter=task_delim)
 
 
-def get_jobnum_fmtstr(processing_list):
-    return '{:0>'+str(len(str(len(processing_list))))+'}'
+def get_jobnum_fmtstr(processing_list, min_digits=3):
+    return '{:0>'+str(max(min_digits, len(str(len(processing_list)))))+'}'
 
 
 def get_jobsubmit_cmd(scheduler, job_script, job_name, *job_script_args):
     cmd = None
 
     if scheduler == SCHED_PBS:
-        cmd = r'qsub "{}" -N {}'.format(job_script, job_name)
+        cmd = 'qsub'
         if job_script_args is not None:
             cmd_scriptargs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(job_script_args)])
             cmd = r'{} -v {}'.format(cmd, cmd_scriptargs)
+        cmd = r'{} -N {} "{}"'.format(cmd, job_name, job_script)
 
     elif scheduler == SCHED_SLURM:
-        cmd = r'sbatch "{}" -J {}'.format(job_script, job_name)
+        cmd = 'sbatch'
         if job_script_args is not None:
             cmd_scriptargs = ' '.join(['--export=p{}="{}"'.format(i+1, a) for i, a in enumerate(job_script_args)])
             cmd = r'{} {}'.format(cmd, cmd_scriptargs)
+        cmd = r'{} -J {} "{}"'.format(cmd, job_name, job_script)
 
     return cmd

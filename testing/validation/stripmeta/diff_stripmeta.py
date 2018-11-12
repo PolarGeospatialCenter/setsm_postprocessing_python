@@ -186,8 +186,8 @@ def main():
 
             diff_trans = scene_trans2_comm - scene_trans1_comm
 
-            redundant1 = ~np.any(scene_trans1_comm, axis=1)
-            redundant2 = ~np.any(scene_trans2_comm, axis=1)
+            redundant1 = ~np.any(scene_trans1_comm, axis=1) | np.all(np.isnan(scene_trans1_comm), axis=1)
+            redundant2 = ~np.any(scene_trans2_comm, axis=1) | np.all(np.isnan(scene_trans2_comm), axis=1)
             redundant_comm = redundant1 & redundant2
             redundant1[redundant_comm] = False
             redundant2[redundant_comm] = False
