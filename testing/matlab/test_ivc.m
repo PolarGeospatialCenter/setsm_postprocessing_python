@@ -43,6 +43,10 @@ global TESTDIR;
 
 fprintf('TESTDIR set from test_getTestDir.m: %s\n', TESTDIR);
 
+if exist(TESTDIR, 'dir') ~= 7
+    mkdir(TESTDIR);
+end
+
 FILE_COMPARE_WAIT  = [TESTDIR,'/','COMPARE_WAIT'];
 FILE_COMPARE_READY = [TESTDIR,'/','COMPARE_READY'];
 
@@ -74,7 +78,7 @@ fprintf(2, ['' ...
         'figclose :: Close all figures.\n' ...
         'quit :: Exit without closing figures.\n' ...
         'close :: Close all figures and exit.\n']);
-    
+
 indexstr = '';
 browseFiles = [];
 browse = [];
@@ -90,21 +94,21 @@ while ~ready
     isIVCcommand = false;
     show_browse_selection = false;
     try
-        
+
         if strcmp(command_args(1), 'figclose')
             isIVCcommand = true;
             close all;
-            
+
             command_args(1) = [];
         end
-        
+
         if strcmp(command_args(1), 'list')
             isIVCcommand = true;
-            
+
             command_args(1) = [];
             show_browse_selection = true;
         end
-        
+
         if strcmp(command_args(1), 'delete')
             isIVCcommand = true;
             if isempty(arg_nums)
@@ -112,15 +116,15 @@ while ~ready
             else
                 to_delete = selection(arg_nums);
             end
-            
+
             for i = 1:length(to_delete)
                 delete([TESTDIR,'/',char(to_delete(i))]);
             end
-            
+
             command_args(1) = 'refresh';
             show_browse_selection = true;
         end
-        
+
         if strcmp(command_args(1), 'refresh')
             isIVCcommand = true;
             if length(command_args) < 2 || ~strcmp(command_args(2), 'browse')
@@ -129,11 +133,11 @@ while ~ready
             end
             testFiles = dir(TESTDIR);
             selection = intersect(selection, {testFiles.name});
-            
+
             command_args(1) = [];
             show_browse_selection = true;
         end
-        
+
         if strcmp(command_args(1), 'browse')
             isIVCcommand = true;
             runnum = [];
@@ -142,7 +146,7 @@ while ~ready
             for i = 2:length(command_args)
                 num = str2double(char(command_args(i)));
                 if ~isnan(num) || strcmp(command_args(i), '[]')
-                    
+
                     if arg == 1
                         if isnan(num)
                             num = test_getLastRunnum();
@@ -152,21 +156,21 @@ while ~ready
                         end
                         runnum = num;
                         arg = arg + 1;
-                        
+
                     elseif arg == 2
                         if isnan(num)
                             num = test_getNextImgnum(runnum, true, false);
                         end
                         imgnum = num;
                         arg = arg + 1;
-                        
+
                     else
                         fprintf("Ignoring excess number arguments to 'browse' command.\n");
                         break;
                     end
                 end
             end
-            
+
             indexstr_run = '';
             indexstr_img = '';
             if ~isempty(runnum)
@@ -175,11 +179,11 @@ while ~ready
                     indexstr_img = sprintf('%03d_', imgnum);
                 end
             end
-            
+
             indexstr = [indexstr_run,indexstr_img];
             browseFiles = dir([TESTDIR,'/',indexstr,'*.tif']);
             browse = setdiff({browseFiles.name}, selection);
-            
+
             command_args(1) = [];
             arg_nums = [];
             show_browse_selection = true;
@@ -200,24 +204,24 @@ while ~ready
                     selection(arg_nums) = [];
                 end
             end
-            
+
             browse = setdiff({browseFiles.name}, selection);
-            
+
             command_args(1) = [];
             arg_nums = [];
             show_browse_selection = true;
         end
-        
+
         if any(strcmp(command_args(1), ["view", "comp", "compare", "auto"]))
             isIVCcommand = true;
             view = [];
             compare = [];
-            
+
             if isempty(selection)
                 errmsg = 'No images are selected for viewing/comparing.';
                 error('CUSTOM MESSAGE');
             else
-            
+
                 if strcmp(command_args(1), 'view')
                     if isempty(arg_nums)
                         view_list = selection;
@@ -226,11 +230,11 @@ while ~ready
                     end
                     view = repmat("", [length(view_list), 2]);
                     view(:,1) = view_list;
-                    
+
                 elseif any(strcmp(command_args(1), ["comp", "compare"]))
                     select_num_a = [];
                     select_num_b = [];
-                    
+
                     if isempty(arg_nums)
                         [~, compare] = test_matchFnames(selection);
                         if isempty(compare)
@@ -257,17 +261,17 @@ while ~ready
                         select_num_a = arg_nums(1);
                         select_num_b = arg_nums(2);
                     end
-                    
+
                     if isempty(compare)
                         compare = repmat("", [1, 2]);
                         compare(1,1) = selection(select_num_a);
                         compare(1,2) = selection(select_num_b);
                     end
-                    
+
                 elseif strcmp(command_args(1), 'auto')
                     [view, compare] = test_matchFnames(selection, true);
                 end
-                
+
                 % Handle options for view/compare/auto.
                 set_image_type = false;
                 image_type = -1;
@@ -325,13 +329,13 @@ while ~ready
                 if image_type ~= -1
                     set_image_type = true;
                 end
-                
+
                 compare_args = vertcat(view, compare);
-                
+
                 compare_total = compare_args.size(1);
                 digits = floor(log10(compare_total)) + 1;
                 num_format = ['%',num2str(digits),'d'];
-                
+
                 fprintf('\n');
                 if compare_total > 0
                     fprintf('[t_arr1, t_arr2, t_diff, t_diff_bool] = \n');
@@ -342,7 +346,7 @@ while ~ready
                     else
                         figtitle = sprintf('(%s - %s)', compare_args(i,2), compare_args(i,1));
                     end
-                    
+
                     if ~set_image_type
                         if (contains(figtitle, '_ras_') || contains(figtitle, 'testRaster_'))
                             image_type = 1;
@@ -350,7 +354,7 @@ while ~ready
                             image_type = 0;
                         end
                     end
-                    
+
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
                     fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i);\n", ...
                         progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
@@ -364,13 +368,13 @@ while ~ready
                 end
                 fprintf("\n");
             end
-            
+
             if set_image_type
                 command_args(2) = [];
             end
             command_args(1) = [];
         end
-        
+
         if any(strcmp(command_args(1), ["quit", "close"]))
             isIVCcommand = true;
             if concurrent && exist(FILE_COMPARE_WAIT, 'file') == 2
@@ -379,15 +383,15 @@ while ~ready
             while exist(FILE_COMPARE_READY, 'file') == 2
                 ;
             end
-            
+
             if strcmp(command_args(1), 'close')
                 close all;
             end
-            
+
             fprintf(2, '------------------------\n\n');
             return;
         end
-        
+
         if ~isIVCcommand
             try
                 eval(command);
@@ -395,7 +399,7 @@ while ~ready
                 fprintf(2, "\n%s\n\n", getReport(ME));
             end
         end
-        
+
     catch ME
         if strcmp(ME.message, 'CUSTOM MESSAGE')
             ;
@@ -410,7 +414,7 @@ while ~ready
             rethrow(ME);
         end
     end
-    
+
     if show_browse_selection
         indexstr_display = '(';
         if ~isempty(runnum)
@@ -462,7 +466,7 @@ while ~ready
         fprintf('\n');
         errmsg = '';
     end
-    
+
     if exist('expected_num', 'var')
         if length(selection) ~= expected_num
             fprintf(2, '%d images are expected for comparison.\n', expected_num);
@@ -476,14 +480,14 @@ while ~ready
             clear expected_num;
         end
     end
-    
+
 %     if show_browse_selection && ~isempty(selection) && ~exist('expected_num', 'var')
 %         fprintf('(Press [ENTER] to start auto view/compare of selected images)\n\n');
 %     end
-    
+
     fprintf(2, 'IVC>> ');
     next_command = input('', 's');
-    
+
     if exist('expected_num', 'var')
         if strcmp(next_command, '')
             next_command = command;
@@ -492,10 +496,10 @@ while ~ready
         end
     end
     command = next_command;
-    
+
 %     if show_browse_selection && ~isempty(selection) && strcmp(command, '')
 %          command = [command, ' auto'];
 %     end
-    
+
     command_args = string(strsplit(strtrim(command), ' '));
 end

@@ -23,7 +23,7 @@ from tifffile import imread, imsave
 
 from batch_scenes2strips import getDemSuffix
 import lib.raster_array_tools as rat
-from testing import TESTDIR, PREFIX_RUNNUM, PROJREF_POLAR_STEREO
+from testing import TESTDIR, PREFIX_RUNNUM
 
 
 warnings.simplefilter('always', UserWarning)
@@ -371,6 +371,10 @@ def getNextImgnum(runnum=getRunnum(), compare=False, concurrent=False):
 def validateTestFileSave(path, allow_existing=False):
     if os.path.basename(path) == path:
         path_full = os.path.join(TESTDIR, path)
+        if not os.path.isdir(TESTDIR):
+            print("Creating 'testFiles' directory: {}".format(TESTDIR))
+            print("Modify `testing` module init file to change directory location");
+            os.makedirs(TESTDIR)
     else:
         path_full = path
 
@@ -554,11 +558,6 @@ def saveRaster(Z, X=None, Y=None, fname_or_file='testRaster_py.tif',
     testFile = validateTestFileSave(fname_or_file, overwrite)
     if testFile is None:
         return
-
-    if proj_ref is None and like_raster is None:
-        warn("No proj_ref argument given to saveRaster()"
-             "\n-> Using default global PROJREF_POLAR_STEREO")
-        proj_ref = PROJREF_POLAR_STEREO
 
     rat.saveArrayAsTiff(Z, testFile,
                         X, Y, proj_ref, geotrans_rot_tup,

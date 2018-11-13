@@ -12,6 +12,11 @@ global TESTDIR;
 path_basename = [path_fname, path_ext];
 if strcmp(path_basename, path)
     path_full = fullfile(TESTDIR, path);
+    if exist(TESTDIR, 'dir') ~= 7
+        fprintf("Creating 'testFiles' directory: %s\n", TESTDIR);
+        fprintf("Modify `testing` module init file to change directory location\n");
+        mkdir(TESTDIR);
+    end
 else
     path_full = path;
 end
