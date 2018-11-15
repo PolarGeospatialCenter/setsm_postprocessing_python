@@ -333,6 +333,16 @@ Fin!
 
 </details>
 
+Now that strip results exist in the `--dst` directory, rerunning the previous command results in the following output:
+```
+(my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
+--dst dir set to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
+Found 3 *dem.tif strip-pair IDs, 0 unfinished
+No unfinished strip DEMs found to process, exiting
+```
+
+Let's say that next we would like to create completely *unfiltered* strips (only doing the bare minimum crop to remove bad data around the edges of each scene). We run the following command:
+
 
 ## batch_mask.py
 Documentation coming soon.

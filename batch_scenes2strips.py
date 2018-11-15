@@ -315,6 +315,7 @@ def main():
         dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
         dstdir = os.path.abspath(dstdir)
         print("{} dir set to: {}".format(ARGSTR_DST, dstdir))
+        args.set(ARGSTR_DST, dstdir)
 
     if metadir is not None:
         if os.path.isdir(metadir):
@@ -346,7 +347,7 @@ def main():
             ARGSTR_NOFILTER_COREG, ARGSTR_NOWATER, ARGSTR_NOCLOUD
         ))
     if nofilter_coreg and metadir is not None:
-        arg_parser.error("{} option cannot be used in conjunction with {} argument".fomat(
+        arg_parser.error("{} option cannot be used in conjunction with {} argument".format(
             ARGSTR_NOFILTER_COREG, ARGSTR_META_TRANS_DIR
         ))
 
