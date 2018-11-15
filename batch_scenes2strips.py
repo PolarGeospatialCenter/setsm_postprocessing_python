@@ -26,6 +26,7 @@ SCRIPT_FILE = os.path.realpath(__file__)
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
+JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 
 # Script argument option strings
 ARGSTR_SRC = 'src'
@@ -38,6 +39,7 @@ ARGSTR_NOWATER = '--nowater'
 ARGSTR_NOCLOUD = '--nocloud'
 ARGSTR_NOFILTER_COREG = '--nofilter-coreg'
 ARGSTR_SAVE_COREG_STEP = '--save-coreg-step'
+ARGSTR_RMSE_CUTOFF = '--rmse-cutoff'
 ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_DRYRUN = '--dryrun'
@@ -66,15 +68,19 @@ ARGCHO_SAVE_COREG_STEP = [
 ]
 
 # Segregation of argument option choices
+MASK_VER_8M = [
+    ARGCHO_MASK_VER_MASKV1,
+    ARGCHO_MASK_VER_REMA2A,
+    ARGCHO_MASK_VER_MASK8M,
+    ARGCHO_MASK_VER_BITMASK
+]
 MASK_VER_2M = [
     ARGCHO_MASK_VER_MASKV1,
     ARGCHO_MASK_VER_MASKV2,
     ARGCHO_MASK_VER_BITMASK
 ]
-MASK_VER_8M = [
-    ARGCHO_MASK_VER_MASKV1,
-    ARGCHO_MASK_VER_REMA2A,
-    ARGCHO_MASK_VER_MASK8M
+MASK_VER_XM = [
+    ARGCHO_MASK_VER_BITMASK
 ]
 
 # Script batch arguments
@@ -99,14 +105,15 @@ class MetaReadError(Exception):
         super(Exception, self).__init__(msg)
 
 
+class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
 def parse_args():
 
     parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawTextHelpFormatter,
+        formatter_class=RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
             "Filters scene dems in a source directory,",
-            "then mosaics them into strips and saves the results.\n",
-            "Batch work is done in units of strip-pair ID, as parsed from scene dem filenames",
+            "then mosaics them into strips and saves the results.",
+            "\nBatch work is done in units of strip-pair IDs, as parsed from scene dem filenames",
             "(see {} argument for how this is parsed).".format(ARGSTR_STRIPID)
         ])
     )
@@ -158,7 +165,8 @@ def parse_args():
             "\n'{}': Same filter as '{}', but distinguish between".format(ARGCHO_MASK_VER_BITMASK, ARGCHO_MASK_VER_MASKV2),
                     "the different filter components by creating a bitmask.",
             "\n'{}': Filter designed specifically for 8m Antarctic DEMs.".format(ARGCHO_MASK_VER_REMA2A),
-            "\n'{}': General-purpose filter for 8m DEMs.".format(ARGCHO_MASK_VER_MASK8M)
+            "\n'{}': General-purpose filter for 8m DEMs.".format(ARGCHO_MASK_VER_MASK8M),
+            "\n"
         ])
     )
 
@@ -168,7 +176,7 @@ def parse_args():
         default=False,
         help=' '.join([
             "Use filter without entropy protection.",
-            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_MASKV1)
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_MASKV1)
         ])
     )
     parser.add_argument(
@@ -177,7 +185,7 @@ def parse_args():
         default=False,
         help=' '.join([
             "Use filter without water masking.",
-            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
         ])
     )
     parser.add_argument(
@@ -186,7 +194,7 @@ def parse_args():
         default=False,
         help=' '.join([
             "Use filter without cloud masking.",
-            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
         ])
     )
     parser.add_argument(
@@ -194,9 +202,9 @@ def parse_args():
         action='store_true',
         default=False,
         help=' '.join([
-            "If {}/{}, turn off filter(s) during".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+            "If {}/{}, turn off the respective filter(s) during".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
             "coregistration step in addition to mosaicking step.",
-            "Can only be used when {}='{}'.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
         ])
     )
     parser.add_argument(
@@ -205,18 +213,29 @@ def parse_args():
         default=ARGCHO_SAVE_COREG_STEP_META,
         help=' '.join([
             "If {}/{}, save output from coregistration step in directory".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
-             "'`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components",
-             "([cloud, water, edge], respectively) applied during the coregistration step.",
-             "By default, all three filter components are applied so this code is 111.",
-             "\nIf '{}', do not save output from coregistration step.".format(ARGCHO_SAVE_COREG_STEP_OFF),
-             "\nIf '{}', save only the *_meta.txt component of output strip segments.".format(ARGCHO_SAVE_COREG_STEP_META),
-                "(useful for subsequent runs with {} argument)".format(ARGSTR_META_TRANS_DIR),
-             "\nIf '{}', save all output from coregistration step, including both".format(ARGCHO_SAVE_COREG_STEP_ALL),
-             "metadata and raster components.",
-             "\nCan only be used when {}='{}', and has no affect if neither".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK),
-             "{} or {} arguments are provided, or either".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
-             "{} or {} arguments are provided since then the".format(ARGSTR_META_TRANS_DIR, ARGSTR_NOFILTER_COREG),
-             "coregistration and mosaicking steps are effectively rolled into one step."
+            "'`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components",
+            "([cloud, water, edge], respectively) applied during the coregistration step.",
+            "By default, all three filter components are applied so this code is 111.",
+            "\nIf '{}', do not save output from coregistration step.".format(ARGCHO_SAVE_COREG_STEP_OFF),
+            "\nIf '{}', save only the *_meta.txt component of output strip segments.".format(ARGCHO_SAVE_COREG_STEP_META),
+            "(useful for subsequent runs with {} argument)".format(ARGSTR_META_TRANS_DIR),
+            "\nIf '{}', save all output from coregistration step, including both".format(ARGCHO_SAVE_COREG_STEP_ALL),
+            "metadata and raster components.",
+            "\nCan only be used when {}={}, and has no affect if neither".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK),
+            "{} nor {} arguments are provided, or either".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+            "{} or {} arguments are provided since then the".format(ARGSTR_META_TRANS_DIR, ARGSTR_NOFILTER_COREG),
+            "coregistration and mosaicking steps are effectively rolled into one step.",
+            "\n"
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_RMSE_CUTOFF,
+        type=float,
+        default=1.0,
+        help=' '.join([
+            "Maximum RMSE from coregistration step tolerated for scene merging.",
+            "A value greater than this causes a new strip segment to be created."
         ])
     )
 
@@ -229,7 +248,7 @@ def parse_args():
         ARGSTR_JOBSCRIPT,
         help=' '.join([
             "Script to run in job submission to scheduler.",
-            "(default scripts are found in {})".format(SCRIPT_DIR)
+            "(default scripts are found in {})".format(JOBSCRIPT_DIR)
         ])
     )
     parser.add_argument(
@@ -273,38 +292,12 @@ def main():
     nocloud = args.get(ARGSTR_NOCLOUD)
     nofilter_coreg = args.get(ARGSTR_NOFILTER_COREG)
     save_coreg_step = args.get(ARGSTR_SAVE_COREG_STEP)
+    rmse_cutoff = args.get(ARGSTR_RMSE_CUTOFF)
     scheduler = args.get(ARGSTR_SCHEDULER)
     jobscript = args.get(ARGSTR_JOBSCRIPT)
-    jobscript_default = os.path.join(SCRIPT_DIR, 'jobscripts', '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
+    jobscript_default = os.path.join(JOBSCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
     dryrun = args.get(ARGSTR_DRYRUN)
     stripid = args.get(ARGSTR_STRIPID)
-
-    res_req_mask_ver = None
-    if res == 2:
-        res_req_mask_ver = MASK_VER_2M
-    elif res == 8:
-        res_req_mask_ver = MASK_VER_8M
-    if res_req_mask_ver is not None and mask_version not in res_req_mask_ver:
-        arg_parser.error("{} must be one of {} for {}-meter `{}`".format(
-            ARGSTR_MASK_VER, res_req_mask_ver, res, ARGSTR_RES
-        ))
-
-    if args.get(ARGSTR_NOENTROPY) and mask_version != ARGCHO_MASK_VER_MASKV1:
-        arg_parser.error("{} option is compatible only with {} option".format(
-            ARGSTR_NOENTROPY, ARGCHO_MASK_VER_MASKV1
-        ))
-    if (nowater or nocloud) and mask_version != ARGCHO_MASK_VER_BITMASK:
-        arg_parser.error("{}/{} option(s) can only be used when {}='{}'".format(
-            ARGSTR_NOWATER, ARGSTR_NOCLOUD, ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK
-        ))
-    if nofilter_coreg and [nowater, nocloud].count(True) == 0:
-        arg_parser.error("{} option must be used in conjunction with {}/{} option(s)".format(
-            ARGSTR_NOFILTER_COREG, ARGSTR_NOWATER, ARGSTR_NOCLOUD
-        ))
-    if nofilter_coreg and metadir is not None:
-        arg_parser.error("{} option cannot be used in conjunction with {} argument".fomat(
-            ARGSTR_NOFILTER_COREG, ARGSTR_META_TRANS_DIR
-        ))
 
     if not os.path.isdir(srcdir):
         arg_parser.error("`{}` must be a directory".format(ARGSTR_SRC))
@@ -328,6 +321,37 @@ def main():
             metadir = os.path.abspath(metadir)
         else:
             arg_parser.error("{} must be an existing directory".format(ARGSTR_META_TRANS_DIR))
+
+    if res == 8:
+        res_req_mask_ver = MASK_VER_8M
+    elif res == 2:
+        res_req_mask_ver = MASK_VER_2M
+    else:
+        res_req_mask_ver = MASK_VER_XM
+    if mask_version not in res_req_mask_ver:
+        arg_parser.error("{} must be one of {} for {}-meter `{}`".format(
+            ARGSTR_MASK_VER, res_req_mask_ver, res, ARGSTR_RES
+        ))
+
+    if args.get(ARGSTR_NOENTROPY) and mask_version != ARGCHO_MASK_VER_MASKV1:
+        arg_parser.error("{} option is compatible only with {} option".format(
+            ARGSTR_NOENTROPY, ARGCHO_MASK_VER_MASKV1
+        ))
+    if (nowater or nocloud) and mask_version != ARGCHO_MASK_VER_BITMASK:
+        arg_parser.error("{}/{} option(s) can only be used when {}='{}'".format(
+            ARGSTR_NOWATER, ARGSTR_NOCLOUD, ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK
+        ))
+    if nofilter_coreg and [nowater, nocloud].count(True) == 0:
+        arg_parser.error("{} option must be used in conjunction with {}/{} option(s)".format(
+            ARGSTR_NOFILTER_COREG, ARGSTR_NOWATER, ARGSTR_NOCLOUD
+        ))
+    if nofilter_coreg and metadir is not None:
+        arg_parser.error("{} option cannot be used in conjunction with {} argument".fomat(
+            ARGSTR_NOFILTER_COREG, ARGSTR_META_TRANS_DIR
+        ))
+
+    if rmse_cutoff <= 0:
+        arg_parser.error("{} must be greater than zero".format(ARGSTR_RMSE_CUTOFF))
 
     if scheduler is not None:
         if jobscript is None:
@@ -398,7 +422,7 @@ def main():
                 print("{} {}_{}m.fin file exists, skipping".format(ARGSTR_STRIPID, stripid, res))
                 continue
             elif dst_dems:
-                print("{} {} (potentially) unfinished output files exist, skipping".format(ARGSTR_STRIPID, stripid))
+                print("{} {} output files exist (potentially unfinished), skipping".format(ARGSTR_STRIPID, stripid))
                 continue
 
             args.set(ARGSTR_STRIPID, stripid)
@@ -455,6 +479,7 @@ def main():
         print("mask name: {}".format(mask_name))
         print("coreg filter options: {}".format(filter_options_coreg))
         print("mask filter options: {}".format(filter_options_mask))
+        print("rmse cutoff: {}".format(rmse_cutoff))
         print("dryrun: {}".format(dryrun))
         print('')
 
@@ -485,7 +510,7 @@ def main():
             print("{} file exists, strip output finished, skipping".format(stripid_finFile))
             sys.exit(0)
         if glob.glob(os.path.join(dstdir, stripid+'*')):
-            print("(Potentially) unfinished strip output exists, skipping")
+            print("strip output exists (potentially unfinished), skipping")
             sys.exit(1)
 
         # Make sure all DEM component files exist. If missing, skip.
@@ -551,7 +576,7 @@ def main():
                 print("Running s2s with coregistration filter options: {}".format(
                     ', '.join(filter_options_coreg) if filter_options_coreg else None))
                 X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
-                    srcdir, remaining_sceneDemFnames, maskSuffix, filter_options_coreg)
+                    srcdir, remaining_sceneDemFnames, maskSuffix, filter_options_coreg, rmse_cutoff)
                 if X is None:
                     all_data_masked = True
 
@@ -575,7 +600,7 @@ def main():
 
                 input_sceneDemFnames = mosaicked_sceneDemFnames
                 X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
-                    srcdir, input_sceneDemFnames, maskSuffix, filter_options_mask,
+                    srcdir, input_sceneDemFnames, maskSuffix, filter_options_mask, rmse_cutoff,
                     trans_guess=trans, rmse_guess=(rmse if use_old_trans else None), hold_guess=True)
                 if X is None:
                     all_data_masked = True
@@ -706,7 +731,7 @@ Strip Footprint Vertices
 X: {}
 Y: {}
 
-Mosaicking Alignment Statistics (meters)
+Mosaicking Alignment Statistics (meters, rmse-cutoff={})
 scene, rmse, dz, dx, dy
 """.format(
     SCRIPT_VERSION_NUM,
@@ -715,6 +740,7 @@ scene, rmse, dz, dx, dy
     proj4,
     ' '.join(np.array_str(fp_vertices[1], max_line_width=float('inf')).strip()[1:-1].split()),
     ' '.join(np.array_str(fp_vertices[0], max_line_width=float('inf')).strip()[1:-1].split()),
+    args.get(ARGSTR_RMSE_CUTOFF)
 )
     )
 

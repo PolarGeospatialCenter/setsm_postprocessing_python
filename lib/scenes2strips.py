@@ -377,9 +377,16 @@ def scenes2strips(demdir, demFiles,
                 print(np.array2string(rmse, precision=4, max_line_width=np.inf, threshold=np.inf))
 
         # Check for segment break.
-        if np.isnan(rmse[0, i]) or rmse[0, i] > max_coreg_rmse:
+        if np.isnan(rmse[0, i]):
             print("Unable to coregister, segment break")
             segment_break = True
+        elif rmse[0, i] > max_coreg_rmse:
+            print("Final RMSE is greater than cutoff value ({} > {}), segment break".format(
+                rmse[0, i], max_coreg_rmse))
+            segment_break = True
+        else:
+            pass
+        if segment_break:
             break
 
         # Interpolation grid

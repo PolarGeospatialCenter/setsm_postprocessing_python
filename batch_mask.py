@@ -25,6 +25,7 @@ SCRIPT_FILE = os.path.realpath(__file__)
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
+JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 
 # Script argument option strings
 ARGSTR_SRC = 'src'
@@ -70,10 +71,11 @@ PYTHON_EXE = 'python -u'
 BITMASK_SUFFIX = 'bitmask.tif'.lstrip('_')
 
 
+class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
 def parse_args():
 
     parser = argparse.ArgumentParser(
-        formatter_class=argparse.RawTextHelpFormatter,
+        formatter_class=RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
             "Selectively apply filter components from the SETSM DEM scene/strip",
             "*_{} component raster to mask out corresponding locations".format(BITMASK_SUFFIX),
@@ -121,14 +123,15 @@ def parse_args():
         default=ARGCHO_DST_NODATA_SAME,
         help=' '.join([
             "Scheme for handling NoData pixel translations from source to output raster datasets.",
-            "If '{}', do not change NoData value or alter values of existing NoData pixels.".format(ARGCHO_DST_NODATA_SAME),
-            "If '{}' and source raster does not already have a NoData value,".format(ARGCHO_DST_NODATA_ADD),
+            "\nIf '{}', do not change NoData value or alter values of existing NoData pixels.".format(ARGCHO_DST_NODATA_SAME),
+            "\nIf '{}' and source raster does not already have a NoData value,".format(ARGCHO_DST_NODATA_ADD),
             "set NoData value to masking value, else function identically to '{}'.".format(ARGCHO_DST_NODATA_SAME),
-            "If '{}', set NoData value to masking value".format(ARGCHO_DST_NODATA_SWITCH),
+            "\nIf '{}', set NoData value to masking value".format(ARGCHO_DST_NODATA_SWITCH),
             "but do not alter values of existing NoData pixels.",
-            "If '{}', set NoData value to masking value and change the value of".format(ARGCHO_DST_NODATA_CONVERT),
+            "\nIf '{}', set NoData value to masking value and change the value of".format(ARGCHO_DST_NODATA_CONVERT),
             "existing NoData pixels to match the masking value.",
-            "If '{}', unset NoData value.".format(ARGCHO_DST_NODATA_UNSET)
+            "\nIf '{}', unset NoData value.".format(ARGCHO_DST_NODATA_UNSET),
+            "\n"
         ])
     )
 
@@ -171,14 +174,14 @@ def parse_args():
         ARGSTR_JOBSCRIPT,
         help=' '.join([
             "Script to run in job submission to scheduler.",
-            "(default scripts are found in {})".format(SCRIPT_DIR)
+            "(default scripts are found in {})".format(JOBSCRIPT_DIR)
         ])
     )
     parser.add_argument(
         ARGSTR_SCRATCH,
         default=ARGDEF_SCRATCH,
         help=' '.join([
-            "Scratch directory to build task bundle text files."
+            "Scratch directory to build task bundle text files.",
             "(default={})".format(ARGDEF_SCRATCH)
         ])
     )
@@ -207,7 +210,7 @@ def main():
             if args.get(ARGSTR_SRC_SUFFIX) is not None else None)
     scheduler = args.get(ARGSTR_SCHEDULER)
     jobscript = args.get(ARGSTR_JOBSCRIPT)
-    jobscript_default = os.path.join(SCRIPT_DIR, 'jobscripts', '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
+    jobscript_default = os.path.join(JOBSCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
     scratchdir = os.path.abspath(args.get(ARGSTR_SCRATCH))
     dryrun = args.get(ARGSTR_DRYRUN)
 
