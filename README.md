@@ -155,9 +155,8 @@ Sleeping 5 seconds before job submission
 ```
 The program found three sets of scenes that it can attempt to merge together to create (segments of) three distinct strips. Since we did not provide the `--scheduler` argument to specify a job scheduler for processing these strips, the program will simply run each printed command in serial from the parent process. Notice how the most meaningful (non-`None`) script arguments are passed from the parent process to each child command, even default script arguments that you did not specify. This should not be a cause for concern because the child process runs the same script as the parent and would pick up the same default script arguments anyways.
 
-Let's try removing the `--dryrun` option and giving it a go:
 <details>
-  <summary>Click to expand!</summary>
+  <summary>Let's try removing the `--dryrun` option and giving it a go:!</summary>
   
 ```
 (my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
@@ -196,7 +195,7 @@ Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01
 Filtering 2 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
 ...
 ```
-You can safely ignore the `RuntimeWarning` messages that appear at the start of the scene filtering process (they are only printed once) and .
+You can safely ignore the `RuntimeWarning` messages that appear at the start of the scene filtering process (they are only printed once). They appear when certain numerical compairson operations involve NaN values in the raster matrices, but currently these boolean operations return an acceptable value of `False`.
 ```
 ...
 Filtering 15 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_dem.tif
@@ -270,7 +269,7 @@ Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_2017
 Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ```
-
+Notice that the first strip segment break occurs due to a final RMSE value from the coregistration step that is greater than the allowed maximum RMSE as specified by the script argument `--rmse-cutoff`.
 ```
 Building segment 2
 Running s2s with coregistration filter options: None
@@ -302,6 +301,7 @@ change  -29.03%                 -0.00%                  -0.01%
 Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ...
 ```
+Another segment break occurs soon after the first, resulting in a total of three strip segments created for the whole overlap area of stereo collections referenced by strip-pair ID WV01_20170717_102001006264A100_1020010066A25800.
 ```
 ...
 Building segment 3
@@ -328,7 +328,7 @@ Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_2017
 Fin!
 2, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --stripid "WV03_20160731_1040010020191100_104001001F543C00" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
 ...
-\```
+```
 
 </details>
 
