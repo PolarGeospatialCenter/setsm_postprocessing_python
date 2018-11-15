@@ -210,7 +210,7 @@ def parse_args():
     parser.add_argument(
         ARGSTR_SAVE_COREG_STEP,
         choices=ARGCHO_SAVE_COREG_STEP,
-        default=ARGCHO_SAVE_COREG_STEP_META,
+        default=ARGCHO_SAVE_COREG_STEP_OFF,
         help=' '.join([
             "If {}/{}, save output from coregistration step in directory".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
             "'`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components",
@@ -349,6 +349,16 @@ def main():
     if nofilter_coreg and metadir is not None:
         arg_parser.error("{} option cannot be used in conjunction with {} argument".format(
             ARGSTR_NOFILTER_COREG, ARGSTR_META_TRANS_DIR
+        ))
+
+    if (    save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF
+        and ((not (nowater or nocloud))
+             or (metadir is not None or nofilter_coreg))):
+        arg_parser.error("Non-'{}' {} option must be used in conjunction with ({}/{}) arguments "
+                         "and cannot be used in conjunction with ({}/{}) arguments".format(
+            ARGCHO_SAVE_COREG_STEP_OFF, ARGSTR_SAVE_COREG_STEP,
+            ARGSTR_NOWATER, ARGSTR_NOCLOUD,
+            ARGSTR_META_TRANS_DIR, ARGSTR_NOFILTER_COREG
         ))
 
     if rmse_cutoff <= 0:

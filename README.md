@@ -148,24 +148,24 @@ Let's say you have a directory containing 2-meter source SETSM scenes that you w
 (my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2 --dryrun
 --dst dir set to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
 Found 3 *dem.tif strip-pair IDs, 3 unfinished
-Sleeping 5 seconds before job submission
-1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --dryrun --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
-2, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --dryrun --stripid "WV03_20160731_1040010020191100_104001001F543C00" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
-3, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --dryrun --stripid "WV03_20161014_10400100231DFD00_104001002363A300" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
+Sleeping 5 seconds before task submission
+1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --dryrun --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
+2, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --dryrun --stripid "WV03_20160731_1040010020191100_104001001F543C00" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
+3, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --dryrun --stripid "WV03_20161014_10400100231DFD00_104001002363A300" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
 ```
 The program found three sets of scenes that it can attempt to merge together to create (segments of) three distinct strips. Since we did not provide the `--scheduler` argument to specify a job scheduler for processing these strips, the program will simply run each printed command in serial from the parent process. Notice how the most meaningful (non-`None`) script arguments are passed from the parent process to each child command, even default script arguments that you did not specify. This should not be a cause for concern because the child process runs the same script as the parent and would pick up the same default script arguments anyways.
 
 Let's try removing the `--dryrun` option and giving it a go:
 <details>
   <summary>Click to view output</summary>
+  <br/>
   
 ```
 (my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
 --dst dir set to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
 Found 3 *dem.tif strip-pair IDs, 3 unfinished
 Sleeping 5 seconds before job submission
-1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
---dst dir set to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
+1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
 
 stripid: WV01_20170717_102001006264A100_1020010066A25800
 res: 2m
@@ -327,7 +327,7 @@ Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_2017
 Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 
 Fin!
-2, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --stripid "WV03_20160731_1040010020191100_104001001F543C00" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
+2, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "meta" --rmse-cutoff 1.0 --stripid "WV03_20160731_1040010020191100_104001001F543C00" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
 ...
 ```
 
@@ -342,7 +342,7 @@ Found 3 *dem.tif strip-pair IDs, 0 unfinished
 No unfinished strip DEMs found to process, exiting
 ```
 
-Let's say that next we would like to create completely *unfiltered* strips (only doing the bare minimum crop to remove bad data around the edges of each scene). We run the following command:
+Let's say that next we would like to create completely *unfiltered* strips (only doing the bare minimum crop to remove bad data around the edges of each scene). Recognize that our previous run has already done the brunt of the work to align the scenes for each strip during the iterative coregistration step. Instead of doing this intensive process over again (which should achieve the same results) we will use the `--meta-trans-dir` argument to pull the translation values from the "Mosaicking Alignment Statistics" section of the *meta.txt* files in the strip results folder of the previous run. We run the following command:
 
 
 ## batch_mask.py
