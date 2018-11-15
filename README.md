@@ -155,8 +155,9 @@ Sleeping 5 seconds before job submission
 ```
 The program found three sets of scenes that it can attempt to merge together to create (segments of) three distinct strips. Since we did not provide the `--scheduler` argument to specify a job scheduler for processing these strips, the program will simply run each printed command in serial from the parent process. Notice how the most meaningful (non-`None`) script arguments are passed from the parent process to each child command, even default script arguments that you did not specify. This should not be a cause for concern because the child process runs the same script as the parent and would pick up the same default script arguments anyways.
 
+Let's try removing the `--dryrun` option and giving it a go:
 <details>
-  <summary>Let's try removing the `--dryrun` option and giving it a go:!</summary>
+  <summary>Click to view output</summary>
   
 ```
 (my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
