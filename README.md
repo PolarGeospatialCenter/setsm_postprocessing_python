@@ -331,7 +331,8 @@ Fin!
 ...
 ```
 
-</details>  
+</details>
+<br/>
 
 Now that strip results exist in the `--dst` directory, rerunning the previous command results in the following output:
 ```
