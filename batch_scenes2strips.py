@@ -405,7 +405,7 @@ def main():
 
 
         wait_seconds = 5
-        print("Sleeping {} seconds before job submission".format(wait_seconds))
+        print("Sleeping {} seconds before task submission".format(wait_seconds))
         sleep(wait_seconds)
 
 
