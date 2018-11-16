@@ -471,13 +471,16 @@ def main():
 
         filter_options_coreg = filter_options_mask if nofilter_coreg else ()
 
-        dstdir_coreg = os.path.join(
-            os.path.dirname(dstdir),
-            '{}_coreg_filt{}'.format(
-                os.path.basename(dstdir),
-                get_mask_bitstring(True,
-                                   not 'nowater' in filter_options_coreg,
-                                   not 'nocloud' in filter_options_coreg)))
+        if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+            dstdir_coreg = os.path.join(
+                os.path.dirname(dstdir),
+                '{}_coreg_filt{}'.format(
+                    os.path.basename(dstdir),
+                    get_mask_bitstring(True,
+                                       not 'nowater' in filter_options_coreg,
+                                       not 'nocloud' in filter_options_coreg)))
+        else:
+            dstdir_coreg = None
 
         # Print arguments for this run.
         print("stripid: {}".format(stripid))
@@ -494,7 +497,7 @@ def main():
         print("dryrun: {}".format(dryrun))
         print('')
 
-        if os.path.isdir(dstdir_coreg) and save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+        if dstdir_coreg is not None and os.path.isdir(dstdir_coreg):
             dstdir_coreg_stripFiles = glob.glob(os.path.join(dstdir_coreg, stripid+'*'))
             if len(dstdir_coreg_stripFiles) > 0:
                 print("Deleting old strip output in dstdir for coreg step")
@@ -503,7 +506,10 @@ def main():
                         os.remove(f)
 
         stripid_finFile = os.path.join(dstdir, '{}_{}m.fin'.format(stripid, res))
-        stripid_finFile_coreg = os.path.join(dstdir_coreg, '{}_{}m.fin'.format(stripid, res))
+        if dstdir_coreg is not None:
+            stripid_finFile_coreg = os.path.join(dstdir_coreg, '{}_{}m.fin'.format(stripid, res))
+        else:
+            stripid_finFile_coreg = None
 
         # Find scene DEMs for this stripid to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
