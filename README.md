@@ -62,7 +62,7 @@ In the context of this repo, a "scene" is what we call the set of result raster 
 ### Notes on batch job submission to scheduler
 (text)
 
-### Commentary on script usage
+### Commentary on script arguments
 
 ```
 usage: batch_scenes2strips.py [-h] [--dst DST]
@@ -77,7 +77,7 @@ usage: batch_scenes2strips.py [-h] [--dst DST]
                               [--stripid STRIPID]
                               src res
 
-Filters scene dems in a source directory, then mosaics them into strips and saves the results. 
+Filters scene DEMs in a source directory, then mosaics them into strips and saves the results. 
 Batch work is done in units of strip-pair IDs, as parsed from scene dem filenames (see --stripid argument for how this is parsed).
 
 positional arguments:
@@ -334,7 +334,7 @@ Fin!
 </details>
 <br/>
 
-Now that strip results exist in the `--dst` directory, rerunning the previous command results in the following output:
+Now that strip results exist in the `--dst` directory, rerunning the previous command should yield no new results. We receive the following output:
 ```
 (my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
 --dst dir set to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
@@ -352,22 +352,30 @@ Sleeping 5 seconds before task submission
 3, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m_filt001" --meta-trans-dir "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m/" --mask-ver "bitmask" --nowater --nocloud --save-coreg-step "off" --rmse-cutoff 1.0 --dryrun --stripid "WV03_20161014_10400100231DFD00_104001002363A300" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
 ```
 
-Let's try removing the `--dryrun` option and giving it a go:
+Remove the `--dryrun` option and let's run this:
 <details>
 <summary>Click to view output</summary>
 <br/>
   
 ```
+
 ```
   
 </details>
 <br/>
+
+*** It is important to note that the scene filtering step was skipped during this second run of the program because once a particular mask version (such as the *bitmask*) raster file is built alongside each scene in the `src` directory those mask files will remain in the directory past any termination of the program.
+
+It should also be noted that the same two sets of filtered and unfiltered strip results could have been created during a single run of the program by utilizing the `--save-coreg-step` argument like so:
+```
+
+```
   
   
 
 
 ## batch_mask.py
-Documentation coming soon.
+Documentation forthcoming.
 
 
 ## diff_strips.py (WIP)

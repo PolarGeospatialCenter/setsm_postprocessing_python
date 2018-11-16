@@ -111,7 +111,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         formatter_class=RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
-            "Filters scene dems in a source directory,",
+            "Filters scene DEMs in a source directory,",
             "then mosaics them into strips and saves the results.",
             "\nBatch work is done in units of strip-pair IDs, as parsed from scene dem filenames",
             "(see {} argument for how this is parsed).".format(ARGSTR_STRIPID)
@@ -802,7 +802,7 @@ def readStripMeta_stats(metaFile):
     metaFile_fp = open(metaFile, 'r')
     try:
         line = metaFile_fp.readline()
-        while not line.startswith('Mosaicking Alignment Statistics (meters)') and line != '':
+        while not line.startswith('Mosaicking Alignment Statistics') and line != '':
             line = metaFile_fp.readline()
         while not line.startswith('scene, rmse, dz, dx, dy') and line != '':
             line = metaFile_fp.readline()
