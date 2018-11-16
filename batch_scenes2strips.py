@@ -433,7 +433,7 @@ def main():
                 print("{} {}_{}m.fin file exists, skipping".format(ARGSTR_STRIPID, stripid, res))
                 continue
             elif dst_dems:
-                print("{} {} output files exist (potentially unfinished), skipping".format(ARGSTR_STRIPID, stripid))
+                print("{} {} output files exist (potentially unfinished since no *.fin file), skipping".format(ARGSTR_STRIPID, stripid))
                 continue
 
             args.set(ARGSTR_STRIPID, stripid)
@@ -583,8 +583,8 @@ def main():
                 strip_demFile_coreg = os.path.join(dstdir_coreg, strip_demFname)
 
             if use_old_trans:
-                strip_metaFile = os.path.join(metadir, strip_demFname.replace(demSuffix, 'meta.txt'))
-                mosaicked_sceneDemFnames, rmse, trans = readStripMeta_stats(strip_metaFile)
+                old_strip_metaFile = os.path.join(metadir, strip_demFname.replace(demSuffix, 'meta.txt'))
+                mosaicked_sceneDemFnames, rmse, trans = readStripMeta_stats(old_strip_metaFile)
                 if not set(mosaicked_sceneDemFnames).issubset(set(remaining_sceneDemFnames)):
                     print("Current source DEMs do not include source DEMs referenced in old strip meta file")
                     use_old_trans = False
