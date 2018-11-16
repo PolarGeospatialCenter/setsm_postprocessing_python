@@ -506,7 +506,7 @@ def main():
                         os.remove(f)
 
         stripid_finFile = os.path.join(dstdir, '{}_{}m.fin'.format(stripid, res))
-        if dstdir_coreg is not None:
+        if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
             stripid_finFile_coreg = os.path.join(dstdir_coreg, '{}_{}m.fin'.format(stripid, res))
         else:
             stripid_finFile_coreg = None
@@ -579,7 +579,8 @@ def main():
 
             strip_demFname = "{}_seg{}_{}m_{}".format(stripid, segnum, res, demSuffix)
             strip_demFile = os.path.join(dstdir, strip_demFname)
-            strip_demFile_coreg = os.path.join(dstdir_coreg, strip_demFname)
+            if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+                strip_demFile_coreg = os.path.join(dstdir_coreg, strip_demFname)
 
             if use_old_trans:
                 strip_metaFile = os.path.join(metadir, strip_demFname.replace(demSuffix, 'meta.txt'))

@@ -164,14 +164,14 @@ Let's try removing the `--dryrun` option and giving it a go:
 (my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
 --dst dir set to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
 Found 3 *dem.tif strip-pair IDs, 3 unfinished
-Sleeping 5 seconds before job submission
+Sleeping 5 seconds before task submission
 1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "off" --rmse-cutoff 1.0 --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
 
 stripid: WV01_20170717_102001006264A100_1020010066A25800
 res: 2m
 srcdir: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m
 dstdir: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
-dstdir for coreg step: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m_coreg_filt111
+dstdir for coreg step: None
 metadir: None
 mask version: bitmask
 mask name: bitmask
