@@ -756,7 +756,7 @@ scene, rmse, dz, dx, dy
     )
 
     for i in range(len(scene_demFnames)):
-        line = "{} {:.2f} {:.4f} {:.4f} {:.4f}\n".format(
+        line = "{} {:.4f} {:.4f} {:.4f} {:.4f}\n".format(
             scene_demFnames[i], rmse[0, i], trans[0, i], trans[1, i], trans[2, i])
         strip_info += line
 

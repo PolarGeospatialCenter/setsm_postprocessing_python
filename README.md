@@ -358,7 +358,32 @@ Remove the `--dryrun` option and let's run this:
 <br/>
   
 ```
+(my_root) ehusby@ortho157:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2 --nowater --nocloud --dst ~/scratch/data/setsm_mada/results3/tif_results/2m_filt001 --meta-trans-dir ~/scratch/data/setsm_mada/results3/strips/2m/
+Found 3 *dem.tif strip-pair IDs, 3 unfinished
+Sleeping 5 seconds before task submission
+1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m_filt001" --meta-trans-dir "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m/" --mask-ver "bitmask" --nowater --nocloud --save-coreg-step "off" --rmse-cutoff 1.0 --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/" 2.0
 
+stripid: WV01_20170717_102001006264A100_1020010066A25800
+res: 2m
+srcdir: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m
+dstdir: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m_filt001
+dstdir for coreg step: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m_filt001_coreg_filt111
+metadir: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
+mask version: bitmask
+mask name: bitmask
+coreg filter options: ()
+mask filter options: ('nowater', 'nocloud')
+rmse cutoff: 1.0
+dryrun: False
+
+Processing strip-pair ID: WV01_20170717_102001006264A100_1020010066A25800, 15 scenes
+
+
+All *_bitmask.tif scene masks have been created in source scene directory
+
+Running scenes2strips
+
+Building segment 1
 ```
   
 </details>

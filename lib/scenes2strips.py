@@ -369,8 +369,8 @@ def scenes2strips(demdir, demFiles,
                 print("`trans`")
                 print(np.array2string(trans, precision=4, max_line_width=np.inf, threshold=np.inf))
         if rmse_guess is not None:
-            if rmse[0, i] != rmse_guess[0, i]:
-                print("`rmse` out of `coregisterdems` does not match `rmse_guess`")
+            if np.round(rmse[0, i], decimals=2) != np.round(rmse_guess[0, i], decimals=2):
+                print("`rmse` out of `coregisterdems` does not match `rmse_guess` when rounded to 2 decimals")
                 print("`rmse_guess`:")
                 print(np.array2string(rmse_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
                 print("`rmse`")
