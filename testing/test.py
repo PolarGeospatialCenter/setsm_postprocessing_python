@@ -352,7 +352,9 @@ def incRunnum(concurrent=False):
     return setRunnum(increment=True, concurrent=concurrent)
 
 
-def getNextImgnum(runnum=getRunnum(), compare=False, concurrent=False):
+def getNextImgnum(runnum=None, compare=False, concurrent=False):
+    if runnum is None:
+        runnum = getRunnum()
     next_imgnum = -1
 
     testFiles = glob(os.path.join(TESTDIR, 'run{:03d}_*'.format(runnum)))

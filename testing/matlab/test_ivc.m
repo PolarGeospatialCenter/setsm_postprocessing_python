@@ -354,10 +354,15 @@ while ~ready
                             image_type = 0;
                         end
                     end
+                    
+                    nodata_val_str = '[]';
+                    if ~isempty(nodata_val)
+                        nodata_val_str = num2str(nodata_val);
+                    end
 
                     progress = sprintf(['(',num_format,'/',num_format,')'], i, compare_total);
-                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %i, %i, %i, %i, %i, %i, %i, %i);\n", ...
-                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
+                    fprintf("Running %s test_compareImages('%s', '%s', '%s', %i, %s, %i, %i, %i, %i, %i, %i, %i);\n", ...
+                        progress, compare_args(i,1), compare_args(i,2), figtitle, image_type, nodata_val_str, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
                     try
                         test_compareImages(compare_args(i,1), compare_args(i,2), figtitle, image_type, nodata_val, mask_nans, display_image, display_histogram, display_casting, display_split, display_difflate, display_small);
                     catch ME

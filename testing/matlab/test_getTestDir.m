@@ -1,4 +1,4 @@
-function [testDir] = test_getTestDir()
+function [testdir] = test_getTestDir()
 
 systype = computer;
 
@@ -11,8 +11,8 @@ end
 testdir = fullfile(homedir, 'scratch', 'setsm_postprocessing_testFiles');
 
 %if contains(systype, 'WIN')
-%%     testDir = 'D:\setsm_postprocessing_tests\testFiles';
-%    testDir = 'V:\pgc\data\scratch\erik\setsm_postprocessing_tests\testFiles';
+%%     testdir = 'D:\setsm_postprocessing_tests\testFiles';
+%    testdir = 'V:\pgc\data\scratch\erik\setsm_postprocessing_tests\testFiles';
 %elseif contains(systype, 'LNX')
-%    testDir = '/mnt/pgc/data/scratch/erik/setsm_postprocessing_tests/testFiles';
+%    testdir = '/mnt/pgc/data/scratch/erik/setsm_postprocessing_tests/testFiles';
 %end

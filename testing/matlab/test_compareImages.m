@@ -35,6 +35,7 @@ end
 
 just_view = true;
 
+arr2 = [];
 diff = [];
 diff_bool = [];
 
