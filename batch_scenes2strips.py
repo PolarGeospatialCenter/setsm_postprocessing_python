@@ -4,6 +4,7 @@
 
 import argparse
 import filecmp
+import functools
 import gc
 import glob
 import os
@@ -18,17 +19,23 @@ import numpy as np
 from lib import batch_handler
 
 
+##############################
+
+## Core globals
+
 SCRIPT_VERSION_NUM = 3.1
 
-
-# Script argument defaults
-SCRIPT_FILE = os.path.realpath(__file__)
+# Paths
+SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
-JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 
-# Script argument option strings
+##############################
+
+## Argument globals
+
+# Argument strings
 ARGSTR_SRC = 'src'
 ARGSTR_RES = 'res'
 ARGSTR_DST = '--dst'
@@ -42,10 +49,11 @@ ARGSTR_SAVE_COREG_STEP = '--save-coreg-step'
 ARGSTR_RMSE_CUTOFF = '--rmse-cutoff'
 ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
+ARGSTR_LOGDIR = '--logdir'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
 
-# Script argument option choices
+# Argument choices
 ARGCHO_MASK_VER_MASKV1 = 'maskv1'
 ARGCHO_MASK_VER_MASKV2 = 'maskv2'
 ARGCHO_MASK_VER_REMA2A = 'rema2a'
@@ -67,7 +75,7 @@ ARGCHO_SAVE_COREG_STEP = [
     ARGCHO_SAVE_COREG_STEP_ALL
 ]
 
-# Segregation of argument option choices
+# Segregation of argument choices
 MASK_VER_8M = [
     ARGCHO_MASK_VER_MASKV1,
     ARGCHO_MASK_VER_REMA2A,
@@ -83,15 +91,21 @@ MASK_VER_XM = [
     ARGCHO_MASK_VER_BITMASK
 ]
 
-# Script batch arguments
-BATCH_ARGSTR = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT]
+# Argument groups
+ARGGRP_DIRS = [ARGSTR_DST, ARGSTR_LOGDIR]
+ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT]
 
-# Batch settings
-JOB_ABBREV = 's2s'
+##############################
+
+## Batch settings
+
+JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 PYTHON_EXE = 'python -u'
+JOB_ABBREV = 's2s'
 
+##############################
 
-# Per-script globals
+## Custom globals
 
 SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
 SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
@@ -99,6 +113,12 @@ SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
 RE_STRIPID_STR = "(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$"
 RE_STRIPID = re.compile(RE_STRIPID_STR)
 
+##############################
+
+
+class InvalidArgumentError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
 
 class MetaReadError(Exception):
     def __init__(self, msg=""):
@@ -106,7 +126,20 @@ class MetaReadError(Exception):
 
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
-def parse_args():
+
+def arg_to_abspath(path, argstr=None, existcheck_fn=None, existcheck_reqval=None):
+    if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
+        if existcheck_fn is os.path.isfile:
+            existtype_str = 'file'
+        elif existcheck_fn is os.path.isdir:
+            existtype_str = 'directory'
+        elif existcheck_fn is os.path.exists:
+            existtype_str = 'file/directory'
+        existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
+        raise InvalidArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
+    return os.path.abspath(path)
+
+def argparser_init():
 
     parser = argparse.ArgumentParser(
         formatter_class=RawTextArgumentDefaultsHelpFormatter,
@@ -122,6 +155,11 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_SRC,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_SRC,
+            existcheck_fn=os.path.isdir,
+            existcheck_reqval=True),
         help=' '.join([
             "Path to source directory containing scene DEMs to process.",
             "If {} is not specified, this path should contain the folder 'tif_results'.".format(ARGSTR_DST)
@@ -137,6 +175,11 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_DST,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_DST,
+            existcheck_fn=os.path.isfile,
+            existcheck_reqval=False),
         help=' '.join([
             "Path to destination directory for output mosaicked strip data.",
             "(default is src.(reverse)replace('tif_results', 'strips'))"
@@ -145,6 +188,11 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_META_TRANS_DIR,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_META_TRANS_DIR,
+            existcheck_fn=os.path.isdir,
+            existcheck_reqval=True),
         help=' '.join([
             "Path to directory of old strip metadata from which translation values",
             "will be parsed to skip scene coregistration step."
@@ -153,6 +201,7 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_MASK_VER,
+        type=str,
         choices=ARGCHO_MASK_VER,
         default=ARGCHO_MASK_VER_BITMASK,
         help=' '.join([
@@ -209,6 +258,7 @@ def parse_args():
     )
     parser.add_argument(
         ARGSTR_SAVE_COREG_STEP,
+        type=str,
         choices=ARGCHO_SAVE_COREG_STEP,
         default=ARGCHO_SAVE_COREG_STEP_OFF,
         help=' '.join([
@@ -232,6 +282,7 @@ def parse_args():
     parser.add_argument(
         ARGSTR_RMSE_CUTOFF,
         type=float,
+        choices=None,
         default=1.0,
         help=' '.join([
             "Maximum RMSE from coregistration step tolerated for scene merging.",
@@ -241,16 +292,41 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_SCHEDULER,
+        type=str,
         choices=batch_handler.SCHED_SUPPORTED,
+        default=None,
         help="Submit tasks to job scheduler."
     )
     parser.add_argument(
         ARGSTR_JOBSCRIPT,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_JOBSCRIPT,
+            existcheck_fn=os.path.isfile,
+            existcheck_reqval=True),
+        default=None,
         help=' '.join([
             "Script to run in job submission to scheduler.",
             "(default scripts are found in {})".format(JOBSCRIPT_DIR)
         ])
     )
+    parser.add_argument(
+        ARGSTR_LOGDIR,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_LOGDIR,
+            existcheck_fn=os.path.isfile,
+            existcheck_reqval=False),
+        default=None,
+        help=' '.join([
+            "Directory to which standard output/error log files will be written for batch job runs.",
+            "\nIf not provided, default scheduler (or jobscript #CONDOPT_) options will be used.",
+            "\n**Note that due to implementation difficulties, this directory will also become the",
+            "working directory for the job process. Since relative path inputs are always changed",
+            "to absolute paths in this script, this should not be an issue."
+        ])
+    )
+
     parser.add_argument(
         ARGSTR_DRYRUN,
         action='store_true',
@@ -276,84 +352,80 @@ def main():
     from lib.scenes2strips import scenes2strips
     from batch_mask import get_mask_bitstring
 
-    # Parse and validate arguments.
+    # Invoke argparse argument parsing.
+    arg_parser = argparser_init()
+    try:
+        args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, SCRIPT_FILE)
+    except InvalidArgumentError as e:
+        arg_parser.error(e)
 
-    arg_parser = parse_args()
-    args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, SCRIPT_FILE)
-    srcdir = os.path.abspath(args.get(ARGSTR_SRC))
+
+    ## Further parse/adjust argument values.
+
     res = args.get(ARGSTR_RES)
     if int(res) == res:
-        res = int(res)
-    dstdir = args.get(ARGSTR_DST)
-    metadir = args.get(ARGSTR_META_TRANS_DIR)
-    mask_version = args.get(ARGSTR_MASK_VER)
-    noentropy = args.get(ARGSTR_NOENTROPY)
-    nowater = args.get(ARGSTR_NOWATER)
-    nocloud = args.get(ARGSTR_NOCLOUD)
-    nofilter_coreg = args.get(ARGSTR_NOFILTER_COREG)
-    save_coreg_step = args.get(ARGSTR_SAVE_COREG_STEP)
-    rmse_cutoff = args.get(ARGSTR_RMSE_CUTOFF)
-    scheduler = args.get(ARGSTR_SCHEDULER)
-    jobscript = args.get(ARGSTR_JOBSCRIPT)
-    jobscript_default = os.path.join(JOBSCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
-    dryrun = args.get(ARGSTR_DRYRUN)
-    stripid = args.get(ARGSTR_STRIPID)
+        args.set(ARGSTR_RES, int(res))
 
-    if not os.path.isdir(srcdir):
-        arg_parser.error("`{}` must be a directory".format(ARGSTR_SRC))
-
-    if dstdir is not None:
-        dstdir = os.path.abspath(dstdir)
-        if os.path.isdir(dstdir) and filecmp.cmp(srcdir, dstdir):
-            arg_parser.error("`{}` dir is the same as {} dir".format(ARGSTR_SRC, ARGSTR_DST))
+    if args.get(ARGSTR_DST) is not None:
+        if filecmp.cmp(args.get(ARGSTR_SRC), args.get(ARGSTR_DST)):
+            arg_parser.error("argument {} directory is the same as "
+                             "argument {} directory".format(ARGSTR_SRC, ARGSTR_DST))
     else:
         # Set default dst dir.
-        split_ind = srcdir.rfind('tif_results')
+        split_ind = args.get(ARGSTR_SRC).rfind('tif_results')
         if split_ind == -1:
-            arg_parser.error("`{}` path does not contain 'tif_results', "
-                             "so default {} cannot be set".format(ARGSTR_SRC, ARGSTR_DST))
-        dstdir = srcdir[:split_ind] + srcdir[split_ind:].replace('tif_results', 'strips')
-        dstdir = os.path.abspath(dstdir)
-        print("{} dir set to: {}".format(ARGSTR_DST, dstdir))
-        args.set(ARGSTR_DST, dstdir)
+            arg_parser.error("argument {} path does not contain 'tif_results', "
+                             "so default argument {} cannot be set".format(ARGSTR_SRC, ARGSTR_DST))
+        args.set(ARGSTR_DST, (  args.get(ARGSTR_SRC)[:split_ind]
+                              + args.get(ARGSTR_SRC)[split_ind:].replace('tif_results', 'strips')))
+        print("argument {} set automatically to: {}".format(ARGSTR_DST, args.get(ARGSTR_DST)))
 
-    if metadir is not None:
-        if os.path.isdir(metadir):
-            metadir = os.path.abspath(metadir)
-        else:
-            arg_parser.error("{} must be an existing directory".format(ARGSTR_META_TRANS_DIR))
+    if args.get(ARGSTR_SCHEDULER) is not None:
+        if args.get(ARGSTR_JOBSCRIPT) is None:
+            jobscript_default = os.path.join(JOBSCRIPT_DIR,
+                                             '{}_{}.sh'.format(SCRIPT_NAME, args.get(ARGSTR_SCHEDULER)))
+            if not os.path.isfile(jobscript_default):
+                arg_parser.error(
+                    "Default jobscript ({}) does not exist, ".format(jobscript_default)
+                    + "please specify one with {} argument".format(ARGSTR_JOBSCRIPT))
+            else:
+                args.set(ARGSTR_JOBSCRIPT, jobscript_default)
 
-    if res == 8:
+
+    ## Validate argument values.
+
+    if args.get(ARGSTR_RES) == 8:
         res_req_mask_ver = MASK_VER_8M
-    elif res == 2:
+    elif args.get(ARGSTR_RES) == 2:
         res_req_mask_ver = MASK_VER_2M
     else:
         res_req_mask_ver = MASK_VER_XM
-    if mask_version not in res_req_mask_ver:
-        arg_parser.error("{} must be one of {} for {}-meter `{}`".format(
-            ARGSTR_MASK_VER, res_req_mask_ver, res, ARGSTR_RES
+    if args.get(ARGSTR_MASK_VER) not in res_req_mask_ver:
+        arg_parser.error("argument {} must be one of {} for {}-meter argument {}".format(
+            ARGSTR_MASK_VER, res_req_mask_ver, args.get(ARGSTR_RES), ARGSTR_RES
         ))
 
-    if args.get(ARGSTR_NOENTROPY) and mask_version != ARGCHO_MASK_VER_MASKV1:
+    if args.get(ARGSTR_NOENTROPY) and args.get(ARGSTR_MASK_VER) != ARGCHO_MASK_VER_MASKV1:
         arg_parser.error("{} option is compatible only with {} option".format(
             ARGSTR_NOENTROPY, ARGCHO_MASK_VER_MASKV1
         ))
-    if (nowater or nocloud) and mask_version != ARGCHO_MASK_VER_BITMASK:
+    if (    (args.get(ARGSTR_NOWATER) or args.get(ARGSTR_NOCLOUD))
+        and args.get(ARGSTR_MASK_VER) != ARGCHO_MASK_VER_BITMASK):
         arg_parser.error("{}/{} option(s) can only be used when {}='{}'".format(
             ARGSTR_NOWATER, ARGSTR_NOCLOUD, ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK
         ))
-    if nofilter_coreg and [nowater, nocloud].count(True) == 0:
+    if args.get(ARGSTR_NOFILTER_COREG) and [args.get(ARGSTR_NOWATER), args.get(ARGSTR_NOCLOUD)].count(True) == 0:
         arg_parser.error("{} option must be used in conjunction with {}/{} option(s)".format(
             ARGSTR_NOFILTER_COREG, ARGSTR_NOWATER, ARGSTR_NOCLOUD
         ))
-    if nofilter_coreg and metadir is not None:
+    if args.get(ARGSTR_NOFILTER_COREG) and args.get(ARGSTR_META_TRANS_DIR) is not None:
         arg_parser.error("{} option cannot be used in conjunction with {} argument".format(
             ARGSTR_NOFILTER_COREG, ARGSTR_META_TRANS_DIR
         ))
 
-    if (    save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF
-        and ((not (nowater or nocloud))
-             or (metadir is not None or nofilter_coreg))):
+    if (    args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF
+        and (   (not (args.get(ARGSTR_NOWATER) or args.get(ARGSTR_NOCLOUD)))
+             or (args.get(ARGSTR_META_TRANS_DIR) is not None or args.get(ARGSTR_NOFILTER_COREG)))):
         arg_parser.error("Non-'{}' {} option must be used in conjunction with ({}/{}) arguments "
                          "and cannot be used in conjunction with ({}/{}) arguments".format(
             ARGCHO_SAVE_COREG_STEP_OFF, ARGSTR_SAVE_COREG_STEP,
@@ -361,31 +433,26 @@ def main():
             ARGSTR_META_TRANS_DIR, ARGSTR_NOFILTER_COREG
         ))
 
-    if rmse_cutoff <= 0:
-        arg_parser.error("{} must be greater than zero".format(ARGSTR_RMSE_CUTOFF))
-
-    if scheduler is not None:
-        if jobscript is None:
-            jobscript = jobscript_default
-        jobscript = os.path.abspath(jobscript)
-        if not os.path.isfile(jobscript):
-            arg_parser.error("{} must be a valid file path, but was '{}'".format(
-                ARGSTR_JOBSCRIPT, jobscript
-            ))
-
-    # Create strip output directory if it doesn't already exist.
-    if not os.path.isdir(dstdir):
-        if not dryrun:
-            os.makedirs(dstdir)
+    if args.get(ARGSTR_RMSE_CUTOFF) <= 0:
+        arg_parser.error("argument {} must be greater than zero".format(ARGSTR_RMSE_CUTOFF))
 
 
-    if stripid is None:
-        # Do batch processing.
+    # Create output directories if they don't already exist.
+    if not args.get(ARGSTR_DRYRUN):
+        for dir_argstr, dir_path in list(zip(ARGGRP_DIRS, args.get(ARGGRP_DIRS))):
+            if dir_path is not None and not os.path.isdir(dir_path):
+                print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
+                os.makedirs(dir_path)
 
+
+    if args.get(ARGSTR_STRIPID) is None:
+        ## Batch processing
 
         # Find all scene DEMs to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_dems = glob.glob(os.path.join(srcdir, '*_{}_{}'.format(str(res)[0], demSuffix)))
+            scene_dems = glob.glob(
+                os.path.join(args.get(ARGSTR_SRC),
+                '*_{}_{}'.format(str(args.get(ARGSTR_RES))[0], demSuffix)))
             if scene_dems:
                 break
         if not scene_dems:
@@ -404,8 +471,9 @@ def main():
         stripids.sort()
 
         # Check for existing strip output.
-        stripids_to_process = [sID for sID in stripids
-                               if not os.path.isfile(os.path.join(dstdir, '{}_{}m.fin'.format(sID, res)))]
+        stripids_to_process = [
+            sID for sID in stripids if not os.path.isfile(
+                os.path.join(args.get(ARGSTR_DST), '{}_{}m.fin'.format(sID, args.get(ARGSTR_RES))))]
         print("Found {} {} strip-pair IDs, {} unfinished".format(
             len(stripids), '*'+demSuffix, len(stripids_to_process)))
         del scene_dems
@@ -414,68 +482,68 @@ def main():
             sys.exit(0)
         stripids_to_process.sort()
 
-
+        # Pause for user review.
         wait_seconds = 5
         print("Sleeping {} seconds before task submission".format(wait_seconds))
         sleep(wait_seconds)
 
-
-        # Process each strip-pair ID.
+        ## Batch process each strip-pair ID.
 
         jobnum_fmt = batch_handler.get_jobnum_fmtstr(stripids)
-        args.remove_args(*BATCH_ARGSTR)
+        args.remove_args(*ARGGRP_BATCH)
         for i, stripid in enumerate(stripids):
 
             # If output does not already exist, add to task list.
-            stripid_finFile = os.path.join(dstdir, '{}_{}m.fin'.format(stripid, res))
-            dst_dems = glob.glob(os.path.join(dstdir, '*{}_seg*_{}m_{}'.format(stripid, res, demSuffix)))
+            stripid_finFile = os.path.join(args.get(ARGSTR_DST), '{}_{}m.fin'.format(stripid, args.get(ARGSTR_RES)))
+            dst_files = glob.glob(os.path.join(args.get(ARGSTR_DST), '{}_seg*_{}m_{}'.format(stripid, args.get(ARGSTR_RES), demSuffix)))
             if os.path.isfile(stripid_finFile):
-                print("{} {}_{}m.fin file exists, skipping".format(ARGSTR_STRIPID, stripid, res))
+                print("{} {} :: ({}m) .fin file exists, skipping".format(ARGSTR_STRIPID, stripid, args.get(ARGSTR_RES)))
                 continue
-            elif dst_dems:
-                print("{} {} output files exist (potentially unfinished since no *.fin file), skipping".format(ARGSTR_STRIPID, stripid))
+            elif dst_files:
+                print("{} {} :: {} ({}m) output files exist ".format(ARGSTR_STRIPID, stripid, len(dst_files), args.get(ARGSTR_RES))
+                      + "(potentially unfinished since no *.fin file), skipping")
                 continue
 
             args.set(ARGSTR_STRIPID, stripid)
             s2s_command = args.get_cmd()
 
-            if scheduler is not None:
+            if args.get(ARGSTR_SCHEDULER) is not None:
                 job_name = JOB_ABBREV+jobnum_fmt.format(i+1)
-                cmd = batch_handler.get_jobsubmit_cmd(scheduler, jobscript, job_name, s2s_command)
+                cmd = args.get_jobsubmit_cmd(args.get(ARGSTR_SCHEDULER), args.get(ARGSTR_JOBSCRIPT), job_name, s2s_command)
             else:
                 cmd = s2s_command
 
             print("{}, {}".format(i+1, cmd))
-            if not dryrun:
+            if not args.get(ARGSTR_DRYRUN):
                 # For most cases, set `shell=True`.
                 # For attaching process to PyCharm debugger,
                 # set `shell=False`.
-                subprocess.call(cmd, shell=True)
+                subprocess.call(cmd, shell=True, cwd=args.get(ARGSTR_LOGDIR))
 
 
     else:
-        # Process a single strip.
+        ## Process a single strip.
         print('')
 
-        # Handle arguments.
+        # Parse arguments in context of strip.
 
-        use_old_trans = True if metadir is not None else False
+        use_old_trans = True if args.get(ARGSTR_META_TRANS_DIR) is not None else False
 
-        mask_name = 'mask' if mask_version == ARGCHO_MASK_VER_MASKV2 else mask_version
+        mask_name = 'mask' if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_MASKV2 else args.get(ARGSTR_MASK_VER)
 
         filter_options_mask = ()
-        if nowater:
+        if args.get(ARGSTR_NOWATER):
             filter_options_mask += ('nowater',)
-        if nocloud:
+        if args.get(ARGSTR_NOCLOUD):
             filter_options_mask += ('nocloud',)
 
-        filter_options_coreg = filter_options_mask if nofilter_coreg else ()
+        filter_options_coreg = filter_options_mask if args.get(ARGSTR_NOFILTER_COREG) else ()
 
-        if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+        if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
             dstdir_coreg = os.path.join(
-                os.path.dirname(dstdir),
+                os.path.dirname(args.get(ARGSTR_DST)),
                 '{}_coreg_filt{}'.format(
-                    os.path.basename(dstdir),
+                    os.path.basename(args.get(ARGSTR_DST)),
                     get_mask_bitstring(True,
                                        not 'nowater' in filter_options_coreg,
                                        not 'nocloud' in filter_options_coreg)))
@@ -483,40 +551,42 @@ def main():
             dstdir_coreg = None
 
         # Print arguments for this run.
-        print("stripid: {}".format(stripid))
-        print("res: {}m".format(res))
-        print("srcdir: {}".format(srcdir))
-        print("dstdir: {}".format(dstdir))
+        print("stripid: {}".format(args.get(ARGSTR_STRIPID)))
+        print("res: {}m".format(args.get(ARGSTR_RES)))
+        print("srcdir: {}".format(args.get(ARGSTR_SRC)))
+        print("dstdir: {}".format(args.get(ARGSTR_DST)))
         print("dstdir for coreg step: {}".format(dstdir_coreg))
-        print("metadir: {}".format(metadir))
-        print("mask version: {}".format(mask_version))
+        print("metadir: {}".format(args.get(ARGSTR_META_TRANS_DIR)))
+        print("mask version: {}".format(args.get(ARGSTR_MASK_VER)))
         print("mask name: {}".format(mask_name))
         print("coreg filter options: {}".format(filter_options_coreg))
         print("mask filter options: {}".format(filter_options_mask))
-        print("rmse cutoff: {}".format(rmse_cutoff))
-        print("dryrun: {}".format(dryrun))
+        print("rmse cutoff: {}".format(args.get(ARGSTR_RMSE_CUTOFF)))
+        print("dryrun: {}".format(args.get(ARGSTR_DRYRUN)))
         print('')
 
         if dstdir_coreg is not None and os.path.isdir(dstdir_coreg):
-            dstdir_coreg_stripFiles = glob.glob(os.path.join(dstdir_coreg, stripid+'*'))
+            dstdir_coreg_stripFiles = glob.glob(os.path.join(dstdir_coreg, args.get(ARGSTR_STRIPID)+'*'))
             if len(dstdir_coreg_stripFiles) > 0:
                 print("Deleting old strip output in dstdir for coreg step")
-                if not dryrun:
+                if not args.get(ARGSTR_DRYRUN):
                     for f in dstdir_coreg_stripFiles:
                         os.remove(f)
 
-        stripid_finFile = os.path.join(dstdir, '{}_{}m.fin'.format(stripid, res))
-        if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
-            stripid_finFile_coreg = os.path.join(dstdir_coreg, '{}_{}m.fin'.format(stripid, res))
+        stripid_finFname = '{}_{}m.fin'.format(args.get(ARGSTR_STRIPID), args.get(ARGSTR_RES))
+        stripid_finFile = os.path.join(args.get(ARGSTR_DST), stripid_finFname)
+        if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
+            stripid_finFile_coreg = os.path.join(dstdir_coreg, stripid_finFname)
         else:
             stripid_finFile_coreg = None
 
         # Find scene DEMs for this stripid to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_demFiles = glob.glob(os.path.join(srcdir, '{}*_{}_{}'.format(stripid, str(res)[0], demSuffix)))
+            scene_demFiles = glob.glob(os.path.join(
+                args.get(ARGSTR_SRC), '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], demSuffix)))
             if scene_demFiles:
                 break
-        print("Processing strip-pair ID: {}, {} scenes".format(stripid, len(scene_demFiles)))
+        print("Processing strip-pair ID: {}, {} scenes".format(args.get(ARGSTR_STRIPID), len(scene_demFiles)))
         if not scene_demFiles:
             print("No scene DEMs found to process, skipping")
             sys.exit(1)
@@ -526,7 +596,7 @@ def main():
         if os.path.isfile(stripid_finFile):
             print("{} file exists, strip output finished, skipping".format(stripid_finFile))
             sys.exit(0)
-        if glob.glob(os.path.join(dstdir, stripid+'*')):
+        if glob.glob(os.path.join(args.get(ARGSTR_DST), args.get(ARGSTR_STRIPID)+'*')):
             print("strip output exists (potentially unfinished), skipping")
             sys.exit(1)
 
@@ -554,17 +624,17 @@ def main():
         for demFile in filter_list:
             i += 1
             print("Filtering {} of {}: {}".format(i, filter_total, demFile))
-            if not dryrun:
-                generateMasks(demFile, mask_name, noentropy=noentropy,
+            if not args.get(ARGSTR_DRYRUN):
+                generateMasks(demFile, mask_name, noentropy=args.get(ARGSTR_NOENTROPY),
                               save_component_masks=MASK_BIT, debug_component_masks=DEBUG_NONE,
                               nbit_masks=False)
 
         print('')
-        print("All *_{}.tif scene masks have been created in source scene directory".format(mask_name))
+        print("All {}.tif scene masks have been created in source scene directory".format(mask_name))
         print('')
 
         print("Running scenes2strips")
-        if dryrun:
+        if args.get(ARGSTR_DRYRUN):
             sys.exit(0)
         print('')
 
@@ -577,13 +647,14 @@ def main():
 
             print("Building segment {}".format(segnum))
 
-            strip_demFname = "{}_seg{}_{}m_{}".format(stripid, segnum, res, demSuffix)
-            strip_demFile = os.path.join(dstdir, strip_demFname)
-            if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+            strip_demFname = "{}_seg{}_{}m_{}".format(args.get(ARGSTR_STRIPID), segnum, args.get(ARGSTR_RES), demSuffix)
+            strip_demFile = os.path.join(args.get(ARGSTR_DST), strip_demFname)
+            if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
                 strip_demFile_coreg = os.path.join(dstdir_coreg, strip_demFname)
 
             if use_old_trans:
-                old_strip_metaFile = os.path.join(metadir, strip_demFname.replace(demSuffix, 'meta.txt'))
+                old_strip_metaFile = os.path.join(args.get(ARGSTR_META_TRANS_DIR),
+                                                  strip_demFname.replace(demSuffix, 'meta.txt'))
                 mosaicked_sceneDemFnames, rmse, trans = readStripMeta_stats(old_strip_metaFile)
                 if not set(mosaicked_sceneDemFnames).issubset(set(remaining_sceneDemFnames)):
                     print("Current source DEMs do not include source DEMs referenced in old strip meta file")
@@ -594,7 +665,8 @@ def main():
                 print("Running s2s with coregistration filter options: {}".format(
                     ', '.join(filter_options_coreg) if filter_options_coreg else None))
                 X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
-                    srcdir, remaining_sceneDemFnames, maskSuffix, filter_options_coreg, rmse_cutoff)
+                    args.get(ARGSTR_SRC), remaining_sceneDemFnames,
+                    maskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF))
                 if X is None:
                     all_data_masked = True
 
@@ -603,14 +675,14 @@ def main():
                     ', '.join(filter_options_mask) if filter_options_mask else None))
 
                 if 'X' in vars():
-                    if save_coreg_step != ARGCHO_SAVE_COREG_STEP_OFF:
+                    if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
                         if not os.path.isdir(dstdir_coreg):
                             os.makedirs(dstdir_coreg)
-                        if save_coreg_step in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
+                        if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
                             saveStripMeta(strip_demFile_coreg, demSuffix,
                                           X, Y, Z, trans, rmse, spat_ref,
-                                          srcdir, mosaicked_sceneDemFnames, args)
-                        if save_coreg_step == ARGCHO_SAVE_COREG_STEP_ALL:
+                                          args.get(ARGSTR_SRC), mosaicked_sceneDemFnames, args)
+                        if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                             saveStripRasters(strip_demFile_coreg, demSuffix, maskSuffix,
                                              X, Y, Z, M, O, MD, spat_ref)
                     del X, Y, Z, M, O, MD
@@ -618,7 +690,8 @@ def main():
 
                 input_sceneDemFnames = mosaicked_sceneDemFnames
                 X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
-                    srcdir, input_sceneDemFnames, maskSuffix, filter_options_mask, rmse_cutoff,
+                    args.get(ARGSTR_SRC), input_sceneDemFnames,
+                    maskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
                     trans_guess=trans, rmse_guess=(rmse if use_old_trans else None), hold_guess=True)
                 if X is None:
                     all_data_masked = True
@@ -632,25 +705,27 @@ def main():
             if all_data_masked:
                 continue
 
-            print("DEM: {}".format(strip_demFile))
+            print("Writing output strip segment with DEM: {}".format(strip_demFile))
 
             saveStripMeta(strip_demFile, demSuffix,
                           X, Y, Z, trans, rmse, spat_ref,
-                          srcdir, mosaicked_sceneDemFnames, args)
+                          args.get(ARGSTR_SRC), mosaicked_sceneDemFnames, args)
             saveStripRasters(strip_demFile, demSuffix, maskSuffix,
                              X, Y, Z, M, O, MD, spat_ref)
             del X, Y, Z, M, O, MD
 
             segnum += 1
 
+        print('')
+        print("Completed processing for this strip-pair ID")
+
         with open(stripid_finFile, 'w'):
             pass
-        if save_coreg_step == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
+        if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
             with open(stripid_finFile_coreg, 'w'):
                 pass
 
-        print('')
-        print("Fin!")
+        print(".fin finished indicator file created: {}".format(stripid_finFile))
 
 
 def saveStripRasters(strip_demFile, demSuffix, maskSuffix,

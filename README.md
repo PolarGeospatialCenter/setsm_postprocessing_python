@@ -73,8 +73,8 @@ usage: batch_scenes2strips.py [-h] [--dst DST]
                               [--save-coreg-step {off,meta,all}]
                               [--rmse-cutoff RMSE_CUTOFF]
                               [--scheduler {pbs,slurm}]
-                              [--jobscript JOBSCRIPT] [--dryrun]
-                              [--stripid STRIPID]
+                              [--jobscript JOBSCRIPT] [--logdir LOGDIR]
+                              [--dryrun] [--stripid STRIPID]
                               src res
 
 Filters scene DEMs in a source directory, then mosaics them into strips and saves the results. 
@@ -113,10 +113,13 @@ optional arguments:
   --scheduler {pbs,slurm}
                         Submit tasks to job scheduler. (default: None)
   --jobscript JOBSCRIPT
-                        Script to run in job submission to scheduler. (default scripts are found in [REPO-ROOT-DIR]/jobscripts) (default: None)
+                        Script to run in job submission to scheduler. (default scripts are found in /mnt/pgc/data/scratch/erik/repos/setsm_postprocessing_python/jobscripts) (default: None)
+  --logdir LOGDIR       Directory to which standard output/error log files will be written for batch job runs. 
+                        If not provided, default scheduler (or jobscript #CONDOPT_) options will be used. 
+                        **Note that due to implementation difficulties, this directory will also become the working directory for the job process. Since relative path inputs are always changed to absolute paths in this script, this should not be an issue. (default: None)
   --dryrun              Print actions without executing. (default: False)
   --stripid STRIPID     Run filtering and mosaicking for a single strip with strip-pair ID as parsed from scene DEM filenames using the following regex: '(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$' (default: None)
-```
+  ```
 
 * `src` :: In the OSU-PGC processing scheme, this is a path to a `*/tif_results/8m` or `*/tif_results/2m` folder for 8-meter or 2-meter DEMs, respectively. For 50-centimeter processing, it doesn't matter if the name of the lowest folder is "50cm" or "0.5m" or whatever.
 * `res` :: NUMERIC INPUT; This value must be provided in METERS! The input resolution value is used to (1) make sure that the selected scenes in the `src` source directory are indicated by their filenames to be of the same resolution, (2) check if strip results already exist in the `--dst` destination directory *and skip processing the strip if any results already exist*, (3) make sure the selected `--mask-ver` filter scheme works with the resolution, and (4) is the resolution included in the filenames of the output strip results files. For more information on how condition (1) is enforced (as )
@@ -130,6 +133,7 @@ optional arguments:
 * `--rmse-cutoff` :: After the iterative coregistration step is complete, the final RMSE value for the coregistration is reported. If that RMSE value is greater than the value specified by this argument, the scene that failed to register to the strip will become the start of a new strip segment.
 * `--scheduler` :: Currently only the PBS and SLURM job schedulers are supported. If you provide this argument, note that if you do not specify a particular PBS/SLURM jobscript to run with the `--jobscript` argument a default jobscript will be selected from the 'jobscripts' folder in the repo root directory that corresponds to this script and the indicated scheduler type.
 * `--jobscript` :: REQUIREMENTS: The jobscript MUST (1) be readable by the provided `--scheduler` job scheduler type, (2) load the Python environment that includes all required packages as specified above under "Python package dependencies" before it (3) executes the main command that runs the script for a single `--stripid` by means of substituting the entire command into the jobscript through the environment variable `$p1`.
+* `--logdir` :: If this argument is not provided and you are using the default jobscripts from this repo, the default output log file directory for SLURM is the directory where the command to run the script was submitted, while for PBS it is the `$HOME` directory of the user who submitted the command.
 * `--dryrun` :: Useful for testing which strips will be built where, without actually starting the process of building them.
 * `--stripid` :: During normal batch usage of this script, you only specify the `src` source directory of all scenes that you aim to turn into multiple strips. This argument is then typically used only internally by the batch execution logic to specify which single strip each instance of the scenes2strips program will work on. If you have a ton of scenes (that can be made into multiple strips) in the `src` directory and wish to only create/recreate a specific strip, you can specify that strip using the OSU-PGC strip-pair ID naming convention described above under "Step 1: Source scene selection by "strip-pair ID"".
 
@@ -196,7 +200,7 @@ Saving Geotiff /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170
 Filtering 2 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
 ...
 ```
-You can safely ignore the `RuntimeWarning` messages that appear at the start of the scene filtering process (they are only printed once). They appear when certain numerical compairson operations involve NaN values in the raster matrices, but currently these boolean operations return an acceptable value of `False`.
+You can safely ignore the `RuntimeWarning` messages that appear at the start of the scene filtering process (they are only printed once). They appear when certain numerical comparison operations involve NaN values in the raster matrices, but currently these boolean operations return an acceptable value of `False`.
 ```
 ...
 Filtering 15 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_dem.tif

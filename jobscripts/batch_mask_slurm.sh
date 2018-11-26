@@ -1,20 +1,46 @@
 #!/bin/bash
 
-# number of nodes
-#SBATCH -N 1
+#SBATCH --time=40:00:00  # walltime limit (HH:MM:SS)
+#SBATCH --nodes=1  # number of nodes
+#SBATCH --cpus-per-task=6  # processor core(s) per task
 
-# number of cpus per task
-#SBATCH -c 6
+#SBATCH -o %x.o%j  # stdout (+stderr) file name
 
-# job log path
-#SBATCH -o slurm.%N.%j.out
-#SBATCH -e slurm.%N.%j.err
-
-# init gdal tools
-source activate my_root
-
+echo ________________________________________
 echo
-echo $p1
+echo SLURM Job Log
+echo Start time: `date`
+echo
+echo Submitted by user: $USER
+echo SLURM account used: $SLURM_ACCOUNT
+echo
+echo Cluster name: $SLURM_CLUSTER_NAME
+echo
+echo Node name: $SLURMD_NODENAME
+echo CPUs on node: $SLURM_CPUS_ON_NODE
+echo
+echo Job name: $SLURM_JOB_NAME
+echo Job ID: $SLURM_JOBID
+echo
+echo Time limit: $SBATCH_TIMELIMIT
+echo CPUs per task: $SLURM_CPUS_PER_TASK
+echo
+echo Task command: $p1
+echo
+echo Hostname of submission: $SLURM_SUBMIT_HOST
+echo Working directory: $SLURM_SUBMIT_DIR
+echo
+echo Changing to working directory
+
+cd $SLURM_SUBMIT_DIR
+
+echo Loading environment
+
+# Modify this to load your own environment
+source activate my_root  # load Python environment
+
+echo Running task
+echo ________________________________________
 echo
 
 time $p1

@@ -4,6 +4,7 @@
 
 from __future__ import division
 import argparse
+import functools
 import glob
 import os
 import subprocess
@@ -17,17 +18,23 @@ from lib import batch_handler
 import lib.raster_array_tools as rat
 
 
+##############################
+
+## Core globals
+
 SCRIPT_VERSION_NUM = 1.0
 
-
-# Script paths
+# Paths
 SCRIPT_FILE = os.path.realpath(__file__)
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
-JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 
-# Script argument option strings
+##############################
+
+## Argument globals
+
+# Argument strings
 ARGSTR_SRC = 'src'
 ARGSTR_DSTDIR = '--dstdir'
 ARGSTR_SRC_SUFFIX = '--src-suffix'
@@ -39,9 +46,10 @@ ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_TASKS_PER_JOB = '--tasks-per-job'
 ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_SCRATCH = '--scratch'
+ARGSTR_LOGDIR = '--logdir'
 ARGSTR_DRYRUN = '--dryrun'
 
-# Script argument option choices
+# Argument choices
 ARGCHO_DST_NODATA_SAME = 'same'
 ARGCHO_DST_NODATA_ADD = 'add'
 ARGCHO_DST_NODATA_SWITCH = 'switch'
@@ -55,24 +63,50 @@ ARGCHO_DST_NODATA = [
     ARGCHO_DST_NODATA_UNSET
 ]
 
-# Script batch arguments
-BATCH_ARGSTR = [ARGSTR_SCHEDULER, ARGSTR_TASKS_PER_JOB, ARGSTR_JOBSCRIPT]
-
-# Script argument defaults
+# Argument defaults
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
 
-# Batch settings
-JOB_ABBREV = 'Mask'
+# Argument groups
+ARGGRP_DIRS = [ARGSTR_DSTDIR, ARGSTR_LOGDIR, ARGSTR_SCRATCH]
+ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB]
+
+##############################
+
+## Batch settings
+
+JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 PYTHON_EXE = 'python -u'
+JOB_ABBREV = 'Mask'
 
+##############################
 
-# Per-script globals
+## Custom globals
 
 BITMASK_SUFFIX = 'bitmask.tif'.lstrip('_')
 
+##############################
+
+
+class InvalidArgumentError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
-def parse_args():
+
+def arg_to_abspath(path, argstr=None, existcheck_fn=None, existcheck_reqval=None):
+    if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
+        if existcheck_fn is os.path.isfile:
+            existtype_str = 'file'
+        elif existcheck_fn is os.path.isdir:
+            existtype_str = 'directory'
+        elif existcheck_fn is os.path.exists:
+            existtype_str = 'file/directory'
+        existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
+        raise InvalidArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
+    return os.path.abspath(path)
+
+def argparser_init():
 
     parser = argparse.ArgumentParser(
         formatter_class=RawTextArgumentDefaultsHelpFormatter,
@@ -87,6 +121,11 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_SRC,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_SRC,
+            existcheck_fn=os.path.exists,
+            existcheck_reqval=True),
         help=' '.join([
             "Path to source DEM directory or raster file.",
             "Accepts a task bundle text file listing paths to *_{}".format(BITMASK_SUFFIX),
@@ -99,6 +138,11 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_DSTDIR,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_DSTDIR,
+            existcheck_fn=os.path.isfile,
+            existcheck_reqval=False),
         help=' '.join([
             "Path to destination directory for output masked raster(s)",
             "(default is directory of `{}`).".format(ARGSTR_SRC)
@@ -106,19 +150,23 @@ def parse_args():
     )
     parser.add_argument(
         ARGSTR_SRC_SUFFIX,
+        type=str,
+        default=None,
         help=' '.join([
             "Mask raster images with a file suffix(es) matching this string.",
             "An optional numeric string may be provided following the suffix string,",
             "delimited with a comma, to specify the 'masking value' to set",
             "masked pixels in the output raster.",
-            "If the numeric string component is not provided, the NoData value",
-            "of the source raster will be taken as the masking value -- if the",
-            "source raster does not have a set NoData value, masking of that",
-            "raster will be skipped."
+            "\nIf the numeric string component is not provided, the NoData value",
+            "of the source raster will be taken as the masking value.",
+            "\nIf the source raster does not have a set NoData value, masking of that",
+            "raster will be skipped.",
+            "\n"
         ])
     )
     parser.add_argument(
         ARGSTR_DST_NODATA,
+        type=str,
         choices=ARGCHO_DST_NODATA,
         default=ARGCHO_DST_NODATA_SAME,
         help=' '.join([
@@ -159,12 +207,16 @@ def parse_args():
 
     parser.add_argument(
         ARGSTR_SCHEDULER,
+        type=str,
         choices=batch_handler.SCHED_SUPPORTED,
+        default=None,
         help="Submit tasks to job scheduler."
     )
     parser.add_argument(
         ARGSTR_TASKS_PER_JOB,
         type=int,
+        choices=None,
+        default=None,
         help=' '.join([
             "Number of tasks to bundle into a single job.",
             "(requires {} option)".format(ARGSTR_SCHEDULER)
@@ -172,6 +224,12 @@ def parse_args():
     )
     parser.add_argument(
         ARGSTR_JOBSCRIPT,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_JOBSCRIPT,
+            existcheck_fn=os.path.isfile,
+            existcheck_reqval=True),
+        default=None,
         help=' '.join([
             "Script to run in job submission to scheduler.",
             "(default scripts are found in {})".format(JOBSCRIPT_DIR)
@@ -179,10 +237,28 @@ def parse_args():
     )
     parser.add_argument(
         ARGSTR_SCRATCH,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_SCRATCH,
+            existcheck_fn=os.path.isfile,
+            existcheck_reqval=False),
         default=ARGDEF_SCRATCH,
+        help="Scratch directory to build task bundle text files."
+    )
+    parser.add_argument(
+        ARGSTR_LOGDIR,
+        type=functools.partial(
+            arg_to_abspath,
+            argstr=ARGSTR_LOGDIR,
+            existcheck_fn=os.path.isfile,
+            existcheck_reqval=False),
+        default=None,
         help=' '.join([
-            "Scratch directory to build task bundle text files.",
-            "(default={})".format(ARGDEF_SCRATCH)
+            "Directory to which standard output/error log files will be written for batch job runs.",
+            "\nIf not provided, default scheduler (or jobscript #CONDOPT_) options will be used.",
+            "\n**Note that due to implementation difficulties, this directory will also become the",
+            "working directory for the job process. Since relative path inputs are always changed",
+            "to absolute paths in this script, this should not be an issue."
         ])
     )
 
@@ -198,48 +274,21 @@ def parse_args():
 
 def main():
 
-    # Parse and validate arguments.
+    # Invoke argparse argument parsing.
+    arg_parser = argparser_init()
+    try:
+        args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, SCRIPT_FILE)
+    except InvalidArgumentError as e:
+        arg_parser.error(e)
 
-    arg_parser = parse_args()
-    args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, sys.argv[0])
-    src = os.path.abspath(args.get(ARGSTR_SRC))
-    dstdir = args.get(ARGSTR_DSTDIR)
-    src_suffixToptmaskval = (
-        [[ss.strip() for ss in s.strip().lstrip('_').split(',')]
-                     for s  in args.get(ARGSTR_SRC_SUFFIX).split('|')]
-            if args.get(ARGSTR_SRC_SUFFIX) is not None else None)
-    scheduler = args.get(ARGSTR_SCHEDULER)
-    jobscript = args.get(ARGSTR_JOBSCRIPT)
-    jobscript_default = os.path.join(JOBSCRIPT_DIR, '{}_{}.sh'.format(SCRIPT_NAME, scheduler))
-    scratchdir = os.path.abspath(args.get(ARGSTR_SCRATCH))
-    dryrun = args.get(ARGSTR_DRYRUN)
 
-    if not (os.path.isdir(src) or os.path.isfile(src)):
-        arg_parser.error("`{}` must be a path to either a directory or a file, "
-                         "but was '{}'".format(ARGSTR_SRC, src))
+    ## Further parse/adjust argument values.
 
-    if dstdir is None:
-        dstdir = src if os.path.isdir(src) else os.path.dirname(src)
-        print("{} automatically set to '{}'".format(ARGSTR_DSTDIR, dstdir))
-    elif not os.path.isdir(dstdir):
-        os.makedirs(dstdir)
-    dstdir = os.path.abspath(dstdir)
+    src = args.get(ARGSTR_SRC)
 
-    if args.get(ARGSTR_TASKS_PER_JOB) is not None and not args.get(ARGSTR_SCHEDULER):
-        arg_parser.error("{} option requires {} option".format(ARGSTR_TASKS_PER_JOB, ARGSTR_SCHEDULER))
-
-    if scheduler is not None:
-        if jobscript is None:
-            jobscript = jobscript_default
-        jobscript = os.path.abspath(jobscript)
-        if not os.path.isfile(jobscript):
-            arg_parser.error("{} must be a valid file path, but was '{}'".format(ARGSTR_JOBSCRIPT, jobscript))
-        if not os.path.isdir(scratchdir):
-            arg_parser.error("{} must be an existing directory path, but was '{}'".format(ARGSTR_SCRATCH, scratchdir))
-
-    # Further parse source suffix/maskval argument.
-    suffix_maskval_dict = None
-    if src_suffixToptmaskval is not None:
+    if args.get(ARGSTR_SRC_SUFFIX) is not None:
+        src_suffixToptmaskval = [[ss.strip() for ss in s.strip().lstrip('_').split(',')]
+                                             for s  in args.get(ARGSTR_SRC_SUFFIX).split('|')]
         suffix_maskval_dict = {}
         for suffixToptmaskval in src_suffixToptmaskval:
             suffix = suffixToptmaskval[0]
@@ -249,9 +298,31 @@ def main():
                     maskval_num = float(maskval)
                     maskval = maskval_num
                 except ValueError:
-                    arg_parser.error("{} argument masking value '{}' "
-                                     "is invalid".format(ARGSTR_SRC_SUFFIX, maskval))
+                    arg_parser.error("argument {} masking value '{}' is invalid".format(ARGSTR_SRC_SUFFIX, maskval))
             suffix_maskval_dict[suffix] = maskval
+    else:
+        suffix_maskval_dict = None
+
+    if args.get(ARGSTR_DSTDIR) is None:
+        args.set(ARGSTR_DSTDIR, src if os.path.isdir(src) else os.path.dirname(src))
+        print("argument {} set automatically to: {}".format(ARGSTR_DSTDIR, args.get(ARGSTR_DSTDIR)))
+
+    if args.get(ARGSTR_SCHEDULER) is not None:
+        if args.get(ARGSTR_JOBSCRIPT) is None:
+            jobscript_default = os.path.join(JOBSCRIPT_DIR,
+                                             '{}_{}.sh'.format(SCRIPT_NAME, args.get(ARGSTR_SCHEDULER)))
+            if not os.path.isfile(jobscript_default):
+                arg_parser.error(
+                    "Default jobscript ({}) does not exist, ".format(jobscript_default)
+                    + "please specify one with {} argument".format(ARGSTR_JOBSCRIPT))
+            else:
+                args.set(ARGSTR_JOBSCRIPT, jobscript_default)
+
+
+    ## Validate argument values.
+
+    if args.get(ARGSTR_TASKS_PER_JOB) is not None and not args.get(ARGSTR_SCHEDULER):
+        arg_parser.error("{} option requires {} option".format(ARGSTR_TASKS_PER_JOB, ARGSTR_SCHEDULER))
 
 
     # Gather list of masks to apply to a (range of) source raster suffix(es).
@@ -286,34 +357,34 @@ def main():
                     src_suffix = src_raster_fname[end:].lstrip('_')
                     break
         if src_suffix is None:
-            arg_parser.error("Path of *_{} component for `{}` raster file "
+            arg_parser.error("Path of {} component for argument {} raster file "
                              "could not be determined".format(BITMASK_SUFFIX, ARGSTR_SRC))
         if suffix_maskval_dict is None:
             suffix_maskval_dict = {src_suffix: None}
 
         src_bitmask = src_raster.replace(src_suffix, BITMASK_SUFFIX)
         if not os.path.isfile(src_bitmask):
-            arg_parser.error("*_{} mask component for `{}` raster file does not exist: {}".format(
+            arg_parser.error("{} mask component for argument {} raster file does not exist: {}".format(
                              BITMASK_SUFFIX, ARGSTR_SRC, src_bitmask))
         src_bitmasks = [src_bitmask]
 
     elif os.path.isfile(src) and src.endswith('.txt'):
         bundle_file = src
         if suffix_maskval_dict is None:
-            arg_parser.error("{} option must be provided when `{}` is a task bundle text file".format(
+            arg_parser.error("{} option must be provided when argument {} is a task bundle text file".format(
                              ARGSTR_SRC_SUFFIX, ARGSTR_SRC))
         src_bitmasks = batch_handler.read_task_bundle(bundle_file)
 
     elif os.path.isdir(src):
         srcdir = src
         if suffix_maskval_dict is None:
-            arg_parser.error("{} option must be provided when `{}` is a directory".format(
+            arg_parser.error("{} option must be provided when argument {} is a directory".format(
                              ARGSTR_SRC_SUFFIX, ARGSTR_SRC))
         src_bitmasks = glob.glob(os.path.join(srcdir, '*_{}'.format(BITMASK_SUFFIX)))
         src_bitmasks.sort()
 
     if src_bitmasks is None:
-        arg_parser.error("`{}` must be a path to either a directory or a file, "
+        arg_parser.error("argument {} must be a path to either a directory or a file, "
                          "but was '{}'".format(ARGSTR_SRC, src))
 
     print("-----")
@@ -331,7 +402,7 @@ def main():
     for maskFile in src_bitmasks:
         for rasterSuffix in src_suffixes:
             src_rasterFile = maskFile.replace(BITMASK_SUFFIX, rasterSuffix)
-            dst_rasterFile = get_dstFile(dstdir, maskFile, rasterSuffix, masking_bitstring)
+            dst_rasterFile = get_dstFile(args.get(ARGSTR_DSTDIR), maskFile, rasterSuffix, masking_bitstring)
             if os.path.isfile(src_rasterFile) and not os.path.isfile(dst_rasterFile):
                 masks_to_apply.append(maskFile)
                 break
@@ -344,43 +415,53 @@ def main():
     if num_tasks == 0:
         sys.exit(0)
 
+    # Create output directories if they don't already exist.
+    if not args.get(ARGSTR_DRYRUN):
+        for dir_argstr, dir_path in list(zip(ARGGRP_DIRS, args.get(ARGGRP_DIRS))):
+            if dir_path is not None and not os.path.isdir(dir_path):
+                print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
+                os.makedirs(dir_path)
 
+    # Pause for user review.
     print("-----")
     wait_seconds = 5
     print("Sleeping {} seconds before task submission".format(wait_seconds))
     sleep(wait_seconds)
     print("-----")
 
+    ## Process masks.
 
-    # Process each mask.
-
-    if scheduler is not None:
+    if args.get(ARGSTR_SCHEDULER) is not None:
+        # Process masks in batch.
 
         tasks_per_job = args.get(ARGSTR_TASKS_PER_JOB)
         src_files = (masks_to_apply if tasks_per_job is None else
-                     batch_handler.write_task_bundles(masks_to_apply, tasks_per_job, scratchdir,
+                     batch_handler.write_task_bundles(masks_to_apply, tasks_per_job,
+                                                      args.get(ARGSTR_SCRATCH),
                                                       '{}_{}'.format(JOB_ABBREV, ARGSTR_SRC)))
 
         jobnum_fmt = batch_handler.get_jobnum_fmtstr(src_files)
 
-        args.remove_args(*BATCH_ARGSTR)
+        args.remove_args(*ARGGRP_BATCH)
         for i, src_file in enumerate(src_files):
             args.set(ARGSTR_SRC, src_file)
 
             job_cmd = args.get_cmd()
             job_name = JOB_ABBREV+jobnum_fmt.format(i+1)
 
-            cmd = batch_handler.get_jobsubmit_cmd(scheduler, jobscript, job_name, job_cmd)
-            if dryrun:
+            cmd = args.get_jobsubmit_cmd(args.get(ARGSTR_SCHEDULER), args.get(ARGSTR_JOBSCRIPT), job_name, job_cmd)
+            if args.get(ARGSTR_DRYRUN):
                 print(cmd)
             else:
-                subprocess.call(cmd, shell=True)
+                subprocess.call(cmd, shell=True, cwd=args.get(ARGSTR_LOGDIR))
 
     else:
+        # Process masks in serial.
+
         for i, maskFile in enumerate(masks_to_apply):
             print("Mask ({}/{}): {}".format(i+1, num_tasks, maskFile))
-            if not dryrun:
-                mask_rasters(dstdir, maskFile, suffix_maskval_dict, args)
+            if not args.get(ARGSTR_DRYRUN):
+                mask_rasters(args.get(ARGSTR_DSTDIR), maskFile, suffix_maskval_dict, args)
 
 
 def get_mask_bitstring(edge, water, cloud):

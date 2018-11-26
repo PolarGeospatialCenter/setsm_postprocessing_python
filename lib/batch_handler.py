@@ -129,6 +129,95 @@ class ArgumentPasser:
     def get_cmd(self):
         return self.cmd
 
+    def get_jobsubmit_cmd(self, scheduler, jobscript, jobname, *jobscript_subs):
+        if not os.path.isfile(jobscript):
+            raise InvalidArgumentError('`jobscript` file does not exist: {}'.format(jobscript))
+
+        cmd = None
+        jobscript_optkey = None
+
+        if scheduler == SCHED_PBS:
+            cmd = 'qsub'
+            jobscript_optkey = '#PBS'
+            if jobscript_subs is not None:
+                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs)])
+                cmd = r'{} -v {}'.format(cmd, cmd_subs)
+            cmd = r'{} -N {}'.format(cmd, jobname)
+
+        elif scheduler == SCHED_SLURM:
+            cmd = 'sbatch'
+            jobscript_optkey = '#SBATCH'
+            if jobscript_subs is not None:
+                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs)])
+                cmd = r'{} --export={}'.format(cmd, cmd_subs)
+            cmd = r'{} -J {}'.format(cmd, jobname)
+
+        if jobscript_optkey is not None:
+            jobscript_condoptkey = jobscript_optkey.replace('#', '#CONDOPT_')
+
+            jobscript_condopts = []
+            with open(jobscript) as job_script_fp:
+                for i, line in enumerate(job_script_fp.readlines()):
+                    line_num = i + 1
+                    if line.lstrip().startswith(jobscript_condoptkey):
+
+                        cond_ifval = None
+                        cond_cond = None
+                        cond_elseval = None
+
+                        cond_remain = line.replace(jobscript_condoptkey, '').strip()
+                        cond_parts = [s.strip() for s in cond_remain.split(' ELSE ')]
+                        if len(cond_parts) == 2:
+                            cond_remain, cond_elseval = cond_parts
+                        cond_parts = [s.strip() for s in cond_remain.split(' IF ')]
+                        if len(cond_parts) == 2:
+                            cond_ifval, cond_cond = cond_parts
+
+                        try:
+                            condopt_add = None
+
+                            if cond_ifval is not None and cond_cond is not None:
+                                if self.jobscript_condopt_eval(cond_cond, eval):
+                                    condopt_add = self.jobscript_condopt_eval(cond_ifval, str)
+                                elif cond_elseval is not None:
+                                    condopt_add = self.jobscript_condopt_eval(cond_elseval, str)
+                            elif cond_elseval is not None:
+                                raise SyntaxError
+                            else:
+                                condopt_add = self.jobscript_condopt_eval(cond_remain, str)
+
+                            if condopt_add is not None:
+                                jobscript_condopts.append(condopt_add)
+
+                        except SyntaxError:
+                            raise InvalidArgumentError(' '.join([
+                                "Invalid syntax in jobscript conditional option:",
+                                "\n  File '{}', line {}: '{}'".format(jobscript, line_num, line.rstrip()),
+                                "\nProper conditional option syntax is as follows:",
+                                "'{} <options> [IF <conditional> [ELSE <options>]]'".format(jobscript_condoptkey)
+                            ]))
+
+            if jobscript_condopts:
+                cmd = r'{} {}'.format(cmd, ' '.join(jobscript_condopts))
+
+        cmd = r'{} "{}"'.format(cmd, jobscript)
+
+        return cmd
+
+    def jobscript_condopt_eval(self, condopt_expr, out_type):
+        if out_type not in (str, eval):
+            raise InvalidArgumentError("`out_type` must be either str or eval")
+        vars_dict = self.vars_dict
+        for varstr in sorted(vars_dict.keys(), key=len, reverse=True):
+            possible_substr = {'%'+s for s in [varstr, self.varstr2argstr[varstr], self.varstr2argstr[varstr].lstrip('-')]}
+            possible_substr = possible_substr.union({s.lower() for s in possible_substr}, {s.upper() for s in possible_substr})
+            for substr in possible_substr:
+                if substr in condopt_expr:
+                    replstr = str(vars_dict[varstr]) if out_type is str else "vars_dict['{}']".format(varstr)
+                    condopt_expr = condopt_expr.replace(substr, replstr)
+                    break
+        return out_type(condopt_expr)
+
 
 def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s', task_delim=' '):
     bundle_prefix = os.path.join(dstdir, '{}_{}'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
@@ -147,23 +236,3 @@ def read_task_bundle(bundle_file, task_dtype=np.dtype(str), task_delim=' '):
 
 def get_jobnum_fmtstr(processing_list, min_digits=3):
     return '{:0>'+str(max(min_digits, len(str(len(processing_list)))))+'}'
-
-
-def get_jobsubmit_cmd(scheduler, job_script, job_name, *job_script_args):
-    cmd = None
-
-    if scheduler == SCHED_PBS:
-        cmd = 'qsub'
-        if job_script_args is not None:
-            cmd_scriptargs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(job_script_args)])
-            cmd = r'{} -v {}'.format(cmd, cmd_scriptargs)
-        cmd = r'{} -N {} "{}"'.format(cmd, job_name, job_script)
-
-    elif scheduler == SCHED_SLURM:
-        cmd = 'sbatch'
-        if job_script_args is not None:
-            cmd_scriptargs = ' '.join(['--export=p{}="{}"'.format(i+1, a) for i, a in enumerate(job_script_args)])
-            cmd = r'{} {}'.format(cmd, cmd_scriptargs)
-        cmd = r'{} -J {} "{}"'.format(cmd, job_name, job_script)
-
-    return cmd
