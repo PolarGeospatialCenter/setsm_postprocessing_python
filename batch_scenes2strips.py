@@ -366,12 +366,12 @@ def main():
     if int(res) == res:
         args.set(ARGSTR_RES, int(res))
 
-    if (    args.get(ARGSTR_DST) is not None
-        and (   args.get(ARGSTR_SRC) == args.get(ARGSTR_DST)
-             or (    os.path.isdir(args.get(ARGSTR_DST))
-                 and filecmp.cmp(args.get(ARGSTR_SRC), args.get(ARGSTR_DST))))):
-        arg_parser.error("argument {} directory is the same as "
-                         "argument {} directory".format(ARGSTR_SRC, ARGSTR_DST))
+    if args.get(ARGSTR_DST) is not None:
+        if (   args.get(ARGSTR_SRC) == args.get(ARGSTR_DST)
+            or (    os.path.isdir(args.get(ARGSTR_DST))
+                and filecmp.cmp(args.get(ARGSTR_SRC), args.get(ARGSTR_DST)))):
+            arg_parser.error("argument {} directory is the same as "
+                             "argument {} directory".format(ARGSTR_SRC, ARGSTR_DST))
     else:
         # Set default dst dir.
         split_ind = args.get(ARGSTR_SRC).rfind('tif_results')
