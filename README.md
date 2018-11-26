@@ -165,16 +165,17 @@ Let's try removing the `--dryrun` option and giving it a go:
 <br/>
   
 ```
-(my_root) ehusby@pgc:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_results/tif_results/2m/ 2
---dst dir set to: /home/ehusby/scratch/data/setsm_results/strips/2m
+(my_root) ehusby@ortho101:/att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
+argument --dst set automatically to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
+Creating argument --dst directory: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
 Found 3 *dem.tif strip-pair IDs, 3 unfinished
 Sleeping 5 seconds before task submission
-1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_results/strips/2m" --mask-ver "bitmask" --save-coreg-step "off" --rmse-cutoff 1.0 --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_results/tif_results/2m/" 2.0
+1, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "off" --rmse-cutoff 1.0 --stripid "WV01_20170717_102001006264A100_1020010066A25800" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m" 2
 
 stripid: WV01_20170717_102001006264A100_1020010066A25800
 res: 2m
-srcdir: /home/ehusby/scratch/data/setsm_results/tif_results/2m
-dstdir: /home/ehusby/scratch/data/setsm_results/strips/2m
+srcdir: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m
+dstdir: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
 dstdir for coreg step: None
 metadir: None
 mask version: bitmask
@@ -186,7 +187,7 @@ dryrun: False
 
 Processing strip-pair ID: WV01_20170717_102001006264A100_1020010066A25800, 15 scenes
 
-Filtering 1 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_dem.tif
+Filtering 1 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_dem.tif
 rescaled to: 0 to 2047.0
 radiance value range: 7.00 to 331.54
 /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/lib/filter_scene.py:1163: RuntimeWarning: invalid value encountered in greater
@@ -196,29 +197,29 @@ radiance value range: 7.00 to 331.54
 20/80 percentile elevation difference: 986.9, sigma-z threshold: 50.0
 /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/lib/filter_scene.py:1447: RuntimeWarning: invalid value encountered in greater
   mask_stdev = (dem_data & (stdev_elev_array > stdev_thresh))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
-Filtering 2 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Filtering 2 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
 ...
 ```
 You can safely ignore the `RuntimeWarning` messages that appear at the start of the scene filtering process (they are only printed once). They appear when certain numerical comparison operations involve NaN values in the raster matrices, but currently these boolean operations return an acceptable value of `False`.
 ```
 ...
-Filtering 15 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_dem.tif
+Filtering 15 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_dem.tif
 rescaled to: 0 to 2047.0
 radiance value range: -3.92 to 337.13
 20/80 percentile elevation difference: 386.5, sigma-z threshold: 50.0
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 
-All *_bitmask.tif scene masks have been created in source scene directory
+All bitmask.tif scene masks have been created in source scene directory
 
 Running scenes2strips
 
 Building segment 1
 Running s2s with coregistration filter options: None
 Ordering 15 scenes
-Scene 1 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_dem.tif
+Scene 1 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_dem.tif
 Ortho had wv_correct applied, rescaling values to range [0, 2047.0]
-Scene 2 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P007_2_dem.tif
+Scene 2 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P007_2_dem.tif
 Ortho had wv_correct applied, rescaling values to range [0, 2047.0]
 Planimetric Correction Iteration 0
 Offset (z,x,y): 0.000, 0.000, 0.000
@@ -234,13 +235,13 @@ RMSE = 0.5183195659664994
 RMSE step in this iteration (-0.00020) is above threshold (-0.001), stopping and returning values of prior iteration
 Final offset (z,x,y): -0.084, -0.050, -0.020
 Final RMSE = 0.518523311804853
-Scene 3 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P007_501591395050_01_P007_2_dem.tif
+Scene 3 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P007_501591395050_01_P007_2_dem.tif
 ...
 ```
 
 ```
 ...
-Scene 14 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
+Scene 14 of 15: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
 Ortho had wv_correct applied, rescaling values to range [0, 2047.0]
 Planimetric Correction Iteration 0
 Offset (z,x,y): 0.000, 0.000, 0.000
@@ -258,30 +259,30 @@ RMSE step in this iteration (-0.00060) is above threshold (-0.001), stopping and
 Final offset (z,x,y): -0.552, -0.273, -0.278
 Final RMSE = 1.0733802282249287
 Final RMSE is greater than cutoff value (1.0733802282249287 > 1.0), segment break
-DEM: /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif
+Writing output strip segment with DEM: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif
                 # of verts              perimeter               area
 in              54                      122283.38                       543235306.50
 out             40                      122283.36                       543231644.50
 -----------------------------------------------------
 change  -25.93%                 -0.00%                  -0.00%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:462: UserWarning: NumPy array data type (bool) does not have equivalent GDAL data type and is not supported, but can be safely promoted to uint8
   "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:669: UserWarning: Input array NumPy data type (uint16) differs from output NumPy data type (int16)
   "NumPy data type ({})".format(dtype_in, dtype_out(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ```
 Notice that the first strip segment break occurs due to a final RMSE value from the coregistration step that is greater than the allowed maximum RMSE as specified by the script argument `--rmse-cutoff`.
 ```
 Building segment 2
 Running s2s with coregistration filter options: None
 Ordering 2 scenes
-Scene 1 of 2: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_dem.tif
+Scene 1 of 2: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_dem.tif
 Ortho had wv_correct applied, rescaling values to range [0, 2047.0]
-Scene 2 of 2: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
+Scene 2 of 2: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
 Ortho had wv_correct applied, rescaling values to range [0, 2047.0]
 Planimetric Correction Iteration 0
 Offset (z,x,y): 0.000, 0.000, 0.000
@@ -296,14 +297,14 @@ RMSE step in this iteration (-0.00028) is above threshold (-0.001), stopping and
 Final offset (z,x,y): -0.193, -0.051, 0.018
 Final RMSE = 1.2663068445114265
 Final RMSE is greater than cutoff value (1.2663068445114265 > 1.0), segment break
-DEM: /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif
+Writing output strip segment with DEM: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif
                 # of verts              perimeter               area
 in              62                      34723.49                        80326893.00
 out             44                      34723.44                        80320557.00
 -----------------------------------------------------
 change  -29.03%                 -0.00%                  -0.01%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ...
 ```
 Another segment break occurs soon after the first, resulting in a total of three strip segments created for the whole overlap area of stereo collections referenced by strip-pair ID WV01_20170717_102001006264A100_1020010066A25800.
@@ -312,26 +313,28 @@ Another segment break occurs soon after the first, resulting in a total of three
 Building segment 3
 Running s2s with coregistration filter options: None
 Ordering 1 scenes
-Scene 1 of 1: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
+Scene 1 of 1: /home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
 Ortho had wv_correct applied, rescaling values to range [0, 2047.0]
-DEM: /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif
+Writing output strip segment with DEM: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif
                 # of verts              perimeter               area
 in              25                      26046.56                        25047709.00
 out             19                      26046.54                        25045397.00
 -----------------------------------------------------
 change  -24.00%                 -0.00%                  -0.01%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:462: UserWarning: NumPy array data type (bool) does not have equivalent GDAL data type and is not supported, but can be safely promoted to uint8
   "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:669: UserWarning: Input array NumPy data type (uint16) differs from output NumPy data type (int16)
   "NumPy data type ({})".format(dtype_in, dtype_out(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 
-Fin!
-2, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_results/strips/2m" --mask-ver "bitmask" --save-coreg-step "off" --rmse-cutoff 1.0 --stripid "WV03_20160731_1040010020191100_104001001F543C00" "/home/ehusby/scratch/data/setsm_results/tif_results/2m/" 2.0
+Completed processing for this strip-pair ID
+.fin finished indicator file created: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_2m.fin
+
+2, python -u /att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python/batch_scenes2strips.py --dst "/home/ehusby/scratch/data/setsm_mada/results3/strips/2m" --mask-ver "bitmask" --save-coreg-step "off" --rmse-cutoff 1.0 --stripid "WV03_20160731_1040010020191100_104001001F543C00" "/home/ehusby/scratch/data/setsm_mada/results3/tif_results/2m" 2
 ...
 ```
 
@@ -340,8 +343,8 @@ Fin!
 
 Now that strip results exist in the `--dst` directory, rerunning the previous command should yield no new results. We receive the following output:
 ```
-(my_root) ehusby@pgc:~/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_results/tif_results/2m/ 2
---dst dir set to: /home/ehusby/scratch/data/setsm_results/strips/2m
+(my_root) ehusby@ortho101:/att/gpfsfs/hic101/ppl/ehusby/scratch/repos/setsm_postprocessing_python$ python batch_scenes2strips.py ~/scratch/data/setsm_mada/results3/tif_results/2m/ 2
+argument --dst set automatically to: /home/ehusby/scratch/data/setsm_mada/results3/strips/2m
 Found 3 *dem.tif strip-pair IDs, 0 unfinished
 No unfinished strip DEMs found to process, exiting
 ```

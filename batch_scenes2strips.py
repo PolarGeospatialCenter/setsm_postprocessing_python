@@ -92,7 +92,7 @@ MASK_VER_XM = [
 ]
 
 # Argument groups
-ARGGRP_DIRS = [ARGSTR_DST, ARGSTR_LOGDIR]
+ARGGRP_OUTDIR = [ARGSTR_DST, ARGSTR_LOGDIR]
 ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT]
 
 ##############################
@@ -366,10 +366,12 @@ def main():
     if int(res) == res:
         args.set(ARGSTR_RES, int(res))
 
-    if args.get(ARGSTR_DST) is not None:
-        if filecmp.cmp(args.get(ARGSTR_SRC), args.get(ARGSTR_DST)):
-            arg_parser.error("argument {} directory is the same as "
-                             "argument {} directory".format(ARGSTR_SRC, ARGSTR_DST))
+    if (    args.get(ARGSTR_DST) is not None
+        and (   args.get(ARGSTR_SRC) == args.get(ARGSTR_DST)
+             or (    os.path.isdir(args.get(ARGSTR_DST))
+                 and filecmp.cmp(args.get(ARGSTR_SRC), args.get(ARGSTR_DST))))):
+        arg_parser.error("argument {} directory is the same as "
+                         "argument {} directory".format(ARGSTR_SRC, ARGSTR_DST))
     else:
         # Set default dst dir.
         split_ind = args.get(ARGSTR_SRC).rfind('tif_results')
@@ -439,7 +441,7 @@ def main():
 
     # Create output directories if they don't already exist.
     if not args.get(ARGSTR_DRYRUN):
-        for dir_argstr, dir_path in list(zip(ARGGRP_DIRS, list(args.get(*ARGGRP_DIRS)))):
+        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, list(args.get(*ARGGRP_OUTDIR)))):
             if dir_path is not None and not os.path.isdir(dir_path):
                 print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
                 os.makedirs(dir_path)
@@ -630,7 +632,7 @@ def main():
                               nbit_masks=False)
 
         print('')
-        print("All {}.tif scene masks have been created in source scene directory".format(mask_name))
+        print("All *_{}.tif scene masks have been created in source scene directory".format(mask_name))
         print('')
 
         print("Running scenes2strips")

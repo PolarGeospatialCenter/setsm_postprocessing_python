@@ -67,7 +67,7 @@ ARGCHO_DST_NODATA = [
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
 
 # Argument groups
-ARGGRP_DIRS = [ARGSTR_DSTDIR, ARGSTR_LOGDIR, ARGSTR_SCRATCH]
+ARGGRP_OUTDIR = [ARGSTR_DSTDIR, ARGSTR_LOGDIR, ARGSTR_SCRATCH]
 ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB]
 
 ##############################
@@ -417,7 +417,7 @@ def main():
 
     # Create output directories if they don't already exist.
     if not args.get(ARGSTR_DRYRUN):
-        for dir_argstr, dir_path in list(zip(ARGGRP_DIRS, list(args.get(*ARGGRP_DIRS)))):
+        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, list(args.get(*ARGGRP_OUTDIR)))):
             if dir_path is not None and not os.path.isdir(dir_path):
                 print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
                 os.makedirs(dir_path)
