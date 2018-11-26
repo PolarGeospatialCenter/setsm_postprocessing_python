@@ -127,7 +127,7 @@ class MetaReadError(Exception):
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
 
-def arg_to_abspath(path, argstr=None, existcheck_fn=None, existcheck_reqval=None):
+def arg_to_abspath(path, argstr=None, abspath_fn=os.path.abspath, existcheck_fn=None, existcheck_reqval=None):
     if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
         if existcheck_fn is os.path.isfile:
             existtype_str = 'file'
@@ -137,7 +137,7 @@ def arg_to_abspath(path, argstr=None, existcheck_fn=None, existcheck_reqval=None
             existtype_str = 'file/directory'
         existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
         raise InvalidArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
-    return os.path.abspath(path)
+    return abspath_fn(path)
 
 def argparser_init():
 
@@ -439,7 +439,7 @@ def main():
 
     # Create output directories if they don't already exist.
     if not args.get(ARGSTR_DRYRUN):
-        for dir_argstr, dir_path in list(zip(ARGGRP_DIRS, args.get(ARGGRP_DIRS))):
+        for dir_argstr, dir_path in list(zip(ARGGRP_DIRS, list(args.get(*ARGGRP_DIRS)))):
             if dir_path is not None and not os.path.isdir(dir_path):
                 print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
                 os.makedirs(dir_path)
