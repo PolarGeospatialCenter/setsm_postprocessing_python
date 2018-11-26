@@ -726,6 +726,7 @@ def main():
                 pass
 
         print(".fin finished indicator file created: {}".format(stripid_finFile))
+        print('')
 
 
 def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
