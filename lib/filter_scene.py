@@ -66,6 +66,14 @@ if debug_component_masks != DEBUG_NONE:
 ITHRESH_QUICK_SAVED = False
 
 
+HOSTNAME = os.getenv('HOSTNAME').lower()
+RUNNING_AT_PGC = True if True in [s in HOSTNAME for s in ['rookery', 'nunatak']] else False
+RE_SCENE_DEM_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9A-F]{16})_([0-9A-F]{16})_(.*?\-)?(.*?)_(P[0-9]{3})_(.*?\-)?(.*?)_(P[0-9]{3})_.*$"
+RE_SCENE_DEM_FNAME_PARTS = re.compile(RE_SCENE_DEM_FNAME_PARTS_STR)
+RE_SOURCE_IMAGE_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})_([0-9A-F]{16})_.*?\-([A-Z0-9]{4})[\-_]{1}(.*?\-)?(.*?)_(P[0-9]{3})\..*$"
+RE_SOURCE_IMAGE_FNAME_PARTS = re.compile(RE_SOURCE_IMAGE_FNAME_PARTS_STR)
+
+
 class InvalidArgumentError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
@@ -75,6 +83,10 @@ class RasterDimensionError(Exception):
         super(Exception, self).__init__(msg)
 
 class MaskComponentError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+class MetadataError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
@@ -498,12 +510,17 @@ def mask_v2(demFile=None, mask_version='mask',
     orthoFile = demFile.replace(demSuffix, 'ortho.tif')
 
     meta = readSceneMeta(metaFile)
-    satID              = meta['image_1_satID']
-    wv_correct_flag    = meta['image_1_wv_correct']
-    effbw              = meta['image_1_effbw']
-    abscalfact         = meta['image_1_abscalfact']
-    mean_sun_elevation = meta['image_1_mean_sun_elevation']
-    maxDN = meta['image_1_max'] if wv_correct_flag else None
+    try:
+        satID              = meta['image_1_satID']
+        wv_correct_flag    = meta['image_1_wv_correct']
+        effbw              = meta['image_1_effbw']
+        abscalfact         = meta['image_1_abscalfact']
+        mean_sun_elevation = meta['image_1_mean_sun_elevation']
+        maxDN = meta['image_1_max'] if wv_correct_flag else None
+    except KeyError as e:
+        print(e)
+        raise MetadataError("Scene metadata file ({}) is missing critical information for filtering step; "
+                         "cannot proceed".format(metaFile))
 
     # Extract raster data.
     dem_array, image_shape, image_gt = rat.extractRasterData(demFile, 'array', 'shape', 'geo_trans')
@@ -1015,8 +1032,11 @@ def getLowEntropyMask(orthoFile, entropy_thresh=0.2,
         warn("no meta file found, assuming no wv_correct applied")
     else:
         meta = readSceneMeta(metaFile)
-        wvcFlag = meta['image_1_wv_correct']
-        if wvcFlag:
+        try:
+            wvcFlag = meta['image_1_wv_correct']
+        except KeyError:
+            raise MetadataError("Scene metadata file ({}) is missing key information; cannot proceed".format(metaFile))
+        if wvcFlag == 1:
             print("wv_correct applied")
         else:
             print("wv_correct not applied")
@@ -1610,7 +1630,7 @@ def clean_mask(mask, remove_pix=1000, fill_pix=10000, in_place=False):
     return ~rat.bwareaopen(~cleaned_mask, fill_pix, in_place=True)
 
 
-def readSceneMeta(metaFile):
+def readSceneMeta(metaFile, trying_repaired_version=False):
     # TODO: Write my own docstring.
     """
     Source file: readSceneMeta.m
@@ -1648,7 +1668,17 @@ def readSceneMeta(metaFile):
     metaFile_fp.close()
 
     # Get satID and check for cross track naming convention.
-    satID = os.path.basename(meta['image_1'])[0:4].upper()
+    try:
+        satID = os.path.basename(meta['image_1'])[0:4].upper()
+    except KeyError as e:
+        print(e)
+        warn("Scene metadata file ({}) is missing key information".format(metaFile))
+        if RUNNING_AT_PGC and not trying_repaired_version:
+            metaFile_repaired = pgc_find_repaired_metafile(metaFile)
+            if metaFile_repaired is not None:
+                return readSceneMeta(metaFile_repaired, trying_repaired_version=True)
+        raise MetadataError("Scene metadata file ({}) is missing key information; cannot proceed".format(metaFile))
+
     satID_abbrev = satID[0:2]
     if   satID_abbrev == 'W1':
         satID = 'WV01'
@@ -1666,7 +1696,177 @@ def readSceneMeta(metaFile):
         satID = 'IK01'
     meta['image_1_satID'] = satID
 
+    if RUNNING_AT_PGC:
+        meta = pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_version)
+
     return meta
+
+
+def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_version):
+    # Some metadata fields and their values that are needed by the filtering functions
+    # may be missing from scene meta.txt files that were produced by (hopefully) older versions of SETSM.
+    # If this program is running on PGC's servers, we'll attempt to grab the missing values for this run
+    # by either finding an already-repaired version of the metadata file in its proper place
+    # or by reading straight from the XML metadata file stored alongside the source panchromatic images.
+    # Note: Incomplete scene meta.txt files are not changed during this process.
+
+    field_wvc1_name = 'image_1_wv_correct'
+    field_max1_name = 'image_1_max'
+
+    meta_fieldname_xmltag_dict = {
+        'image_1_effbw': 'EFFECTIVEBANDWIDTH',
+        'image_1_abscalfact': 'ABSCALFACTOR',
+        'image_1_mean_sun_elevation': 'MEANSUNEL',
+    }
+
+    if field_wvc1_name not in meta:
+        meta[field_wvc1_name] = 1 if satID in ('WV01', 'WV02') else 0
+    elif satID in ('WV01', 'WV02') and meta[field_wvc1_name] != 1:
+        raise MetadataError("Scene metadata file ({}); Image 1 has satID {} but meta says"
+                            "{}={}, should be =1?".format(metaFile, satID, field_wvc1_name, meta[field_wvc1_name]))
+
+    if meta[field_wvc1_name] == 1:
+        meta_fieldname_xmltag_dict[field_max1_name] = None
+
+    meta_complete = True
+    for field_name in meta_fieldname_xmltag_dict:
+        if field_name not in meta:
+            meta_complete = False
+            break
+
+    if meta_complete:
+        return meta
+
+    warn("Scene metadata file ({}) is missing key information".format(metaFile))
+
+    if not trying_repaired_version:
+        meta_repaired = None
+        metaFile_repaired = pgc_find_repaired_metafile(metaFile)
+        if metaFile_repaired is not None:
+            print("Reading repaired scene metadata file: {}".format(metaFile_repaired))
+            try:
+                meta_repaired = readSceneMeta(metaFile_repaired, trying_repaired_version=True)
+            except MetadataError as e:
+                print(e)
+        if meta_repaired is not None:
+            meta_complete = True
+            for field_name in meta_fieldname_xmltag_dict:
+                if field_name not in meta_repaired:
+                    meta_complete = False
+                    break
+            if meta_complete:
+                return meta_repaired
+        if metaFile_repaired is not None:
+            print("Reverting to original incomplete metadata file")
+
+    import glob
+    image_1_metafile = None
+    for pathconstruct_method in [2]:
+        if pathconstruct_method == 1:
+            try_source = 'scene DEM metadata filename'
+            try_path = metaFile
+        elif pathconstruct_method == 2:
+            try_source = '"Image 1" field in scene metadata'
+            try:
+                try_path = meta['image_1']
+            except KeyError:
+                continue
+
+        image_1_metafile = pgc_find_source_image_metafile(
+            try_path, satID=(satID if pathconstruct_method == 1 else None), source=try_source)
+
+        if image_1_metafile is not None:
+            break
+
+    if image_1_metafile is None:
+        # Give up trying to find original source image.
+        return meta
+
+    if meta[field_wvc1_name] == 1 and field_max1_name not in meta:
+        # TODO: Look for existing stats file or calculate stats.
+        pass
+
+    print("Reading source image metadata file: {}".format(image_1_metafile))
+    with open(image_1_metafile, 'r') as image_1_metafile_fp:
+        image_1_metatxt = image_1_metafile_fp.read()
+
+    for field_name in meta_fieldname_xmltag_dict:
+
+        xmltag = meta_fieldname_xmltag_dict[field_name]
+        if xmltag is None:
+            continue
+
+        print("Looking up info for missing field: {}".format(field_name))
+
+        match = re.search('<{}>(.*?)</{}>'.format(xmltag, xmltag), image_1_metatxt)
+        if match is None:
+            # Give up trying to find a value for this missing metadata field.
+            print("XML tag not found: {} ; skipping".format(xmltag))
+            continue
+        if len(match.groups()) > 1:
+            # XML tag format is not as expected to have multiple tag occurrences.
+            print("Multiple occurrences of XML tag: {} ; skipping".format(xmltag))
+            continue
+        field_value = match.groups()[0]
+        try:
+            field_value = float(field_value)
+        except ValueError:
+            pass
+
+        print("Success! {}={}".format(field_name, field_value))
+        meta[field_name] = field_value
+
+    for field_name in meta_fieldname_xmltag_dict:
+        if field_name not in meta:
+            print("Could not fill in missing metadata field: {}".format(field_name))
+
+    return meta
+
+
+def pgc_find_repaired_metafile(metaFile):
+    scenedir = os.path.dirname(metaFile)
+    metaFname = os.path.basename(metaFile)
+    res_folder = os.path.basename(scenedir)
+    metaFile_repaired = os.path.join(scenedir, '../../meta/{}/{}'.format(res_folder, metaFname))
+    if os.path.isfile(metaFile_repaired):
+        return metaFile_repaired
+    else:
+        print("Repaired metadata file does not exist: {}".format(metaFile_repaired))
+        return None
+
+
+def pgc_find_source_image_metafile(fname_path, satID=None, source='provided path'):
+    import glob
+
+    re_parser = RE_SCENE_DEM_FNAME_PARTS if satID is not None else RE_SOURCE_IMAGE_FNAME_PARTS
+
+    match = re.match(re_parser, os.path.basename(fname_path))
+    if match is None:
+        print("Regex failed to parse necessary bits from {}: {}".format(source, fname_path))
+        return None
+
+    prodcode1 = None
+    if re_parser is RE_SCENE_DEM_FNAME_PARTS:
+        satID_cross, year, month, day, catID1, catID2, prodcodeex1, ordnum1, partnum1, prodcodeex2, ordnum2, partnum2 = match.groups()
+    elif re_parser is RE_SOURCE_IMAGE_FNAME_PARTS:
+        satID_real, year, month, day, time, catID1, prodcode1, prodcodeex1, ordnum1, partnum1 = match.groups()
+        satID = satID_real
+
+    source_metafile_pattern = '/mnt/pgc/data/sat/orig/{}/1B/{}/{}_*/{}_{}_{}_{}/{}_{}{}{}*_{}_*{}_{}.xml'.format(
+        satID,
+        year,
+        month,
+        satID, catID1, 'P1BS' if prodcode1 is None else prodcode1, ordnum1,
+        satID, year, month, day, catID1, ordnum1, partnum1
+    )
+    match = glob.glob(source_metafile_pattern)
+    if match is None:
+        print("Failed to locate original source image with pattern: {}".format(source_metafile_pattern))
+        return None
+    else:
+        source_metafile = match[0]
+
+    return source_metafile
 
 
 def rescaleDN(ortho_array, dnmax):

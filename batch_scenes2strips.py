@@ -3,6 +3,7 @@
 
 
 import argparse
+import copy
 import filecmp
 import functools
 import gc
@@ -40,6 +41,7 @@ ARGSTR_SRC = 'src'
 ARGSTR_RES = 'res'
 ARGSTR_DST = '--dst'
 ARGSTR_META_TRANS_DIR = '--meta-trans-dir'
+ARGSTR_HILLSHADE = '--hillshade'
 ARGSTR_MASK_VER = '--mask-ver'
 ARGSTR_NOENTROPY = '--noentropy'
 ARGSTR_NOWATER = '--nowater'
@@ -127,7 +129,9 @@ class MetaReadError(Exception):
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
 
-def arg_to_abspath(path, argstr=None, abspath_fn=os.path.abspath, existcheck_fn=None, existcheck_reqval=None):
+def argtype_path_handler(path, argstr,
+                         abspath_fn=os.path.abspath,
+                         existcheck_fn=None, existcheck_reqval=None):
     if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
         if existcheck_fn is os.path.isfile:
             existtype_str = 'file'
@@ -137,7 +141,9 @@ def arg_to_abspath(path, argstr=None, abspath_fn=os.path.abspath, existcheck_fn=
             existtype_str = 'file/directory'
         existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
         raise InvalidArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
-    return abspath_fn(path)
+    return abspath_fn(path) if abspath_fn is not None else path
+
+ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
 
 def argparser_init():
 
@@ -155,8 +161,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_SRC,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_SRC,
             existcheck_fn=os.path.isdir,
             existcheck_reqval=True),
@@ -175,8 +180,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_DST,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_DST,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -188,14 +192,23 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_META_TRANS_DIR,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_META_TRANS_DIR,
             existcheck_fn=os.path.isdir,
             existcheck_reqval=True),
         help=' '.join([
             "Path to directory of old strip metadata from which translation values",
             "will be parsed to skip scene coregistration step."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_HILLSHADE,
+        action='store_true',
+        default=False,
+        help=' '.join([
+            "Build 10m hillshade *_dem_browse.tif browse images of all output DEM strip segments",
+            "after they are created inside {} directory.".format(ARGSTR_HILLSHADE)
         ])
     )
 
@@ -299,8 +312,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_JOBSCRIPT,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_JOBSCRIPT,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=True),
@@ -312,8 +324,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_LOGDIR,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_LOGDIR,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -447,38 +458,63 @@ def main():
                 os.makedirs(dir_path)
 
 
-    if args.get(ARGSTR_STRIPID) is None:
+    if args.get(ARGSTR_STRIPID) is None or os.path.isfile(args.get(ARGSTR_STRIPID)):
         ## Batch processing
 
-        # Find all scene DEMs to be merged into strips.
-        for demSuffix in SUFFIX_PRIORITY_DEM:
-            scene_dems = glob.glob(
-                os.path.join(args.get(ARGSTR_SRC),
-                '*_{}_{}'.format(str(args.get(ARGSTR_RES))[0], demSuffix)))
-            if scene_dems:
-                break
-        if not scene_dems:
-            print("No scene DEMs found to process, exiting")
-            sys.exit(1)
-        scene_dems.sort()
+        # Gather strip-pair IDs to process.
 
-        # Find all unique strip IDs.
-        try:
-            stripids = list(set([re.match(RE_STRIPID, os.path.basename(s)).group(1) for s in scene_dems]))
-        except AttributeError:
-            print("There are source scene DEMs for which a strip ID cannot be parsed. "
-                  "Please fix source raster filenames so that a strip ID can be parsed "
-                  "using the following regular expression: '{}'".format(RE_STRIPID_STR))
-            raise
-        stripids.sort()
+        if args.get(ARGSTR_STRIPID) is None:
+
+            # Find all scene DEMs to be merged into strips.
+            for demSuffix in SUFFIX_PRIORITY_DEM:
+                scene_dems = glob.glob(
+                    os.path.join(args.get(ARGSTR_SRC),
+                    '*_{}_{}'.format(str(args.get(ARGSTR_RES))[0], demSuffix)))
+                if scene_dems:
+                    break
+            if not scene_dems:
+                print("No scene DEMs found to process, exiting")
+                sys.exit(1)
+
+            # Find all unique strip IDs.
+            try:
+                stripids = {re.match(RE_STRIPID, os.path.basename(s)).group(1) for s in scene_dems}
+            except AttributeError:
+                print("There are source scene DEMs for which a strip ID cannot be parsed. "
+                      "Please fix source raster filenames so that a strip ID can be parsed "
+                      "using the following regular expression: '{}'".format(RE_STRIPID_STR))
+                raise
+            del scene_dems
+
+        else:
+
+            # Assume file is a list of strip-pair IDs, one per line.
+            stripids = set(batch_handler.read_task_bundle(args.get(ARGSTR_STRIPID)))
+
+            # Check that source scenes exist for each strip-pair ID, else exclude and notify user.
+            stripids_to_process = [
+                sID for sID in stripids if glob.glob(os.path.join(
+                    args.get(ARGSTR_SRC), '{}*_{}_*'.format(sID, str(args.get(ARGSTR_RES))[0])))]
+
+            stripids_missing = stripids.difference(set(stripids_to_process))
+            if stripids_missing:
+                print('')
+                print("Missing scene data for {} of the listed strip-pair IDs:".format(len(stripids_missing)))
+                for stripid in sorted(list(stripids_missing)):
+                    print(stripid)
+                print('')
+
+            stripids = stripids_to_process
+            demSuffix = None
+
+        stripids = sorted(list(stripids))
 
         # Check for existing strip output.
         stripids_to_process = [
             sID for sID in stripids if not os.path.isfile(
                 os.path.join(args.get(ARGSTR_DST), '{}_{}m.fin'.format(sID, args.get(ARGSTR_RES))))]
-        print("Found {} {} strip-pair IDs, {} unfinished".format(
-            len(stripids), '*'+demSuffix, len(stripids_to_process)))
-        del scene_dems
+        print("Found {}{} strip-pair IDs, {} unfinished".format(
+            len(stripids), ' *'+demSuffix if demSuffix is not None else '', len(stripids_to_process)))
         if len(stripids_to_process) == 0:
             print("No unfinished strip DEMs found to process, exiting")
             sys.exit(0)
@@ -492,35 +528,46 @@ def main():
         ## Batch process each strip-pair ID.
 
         jobnum_fmt = batch_handler.get_jobnum_fmtstr(stripids)
-        args.remove_args(*ARGGRP_BATCH)
+
+        args_batch = args
+        args_single = copy.deepcopy(args)
+        args_single.remove_args(*ARGGRP_BATCH)
+
         for i, stripid in enumerate(stripids):
 
             # If output does not already exist, add to task list.
-            stripid_finFile = os.path.join(args.get(ARGSTR_DST), '{}_{}m.fin'.format(stripid, args.get(ARGSTR_RES)))
-            dst_files = glob.glob(os.path.join(args.get(ARGSTR_DST), '{}_seg*_{}m_{}'.format(stripid, args.get(ARGSTR_RES), demSuffix)))
+            stripid_finFile = os.path.join(
+                args_batch.get(ARGSTR_DST), '{}_{}m.fin'.format(stripid, args_batch.get(ARGSTR_RES)))
+            dst_files = glob.glob(os.path.join(
+                args_batch.get(ARGSTR_DST), '{}_seg*_{}m_{}'.format(stripid, args_batch.get(ARGSTR_RES), demSuffix)))
+
             if os.path.isfile(stripid_finFile):
-                print("{} {} :: ({}m) .fin file exists, skipping".format(ARGSTR_STRIPID, stripid, args.get(ARGSTR_RES)))
+                print("{}, {} {} :: ({}m) .fin file exists, skipping".format(
+                    i+1, ARGSTR_STRIPID, stripid, args_batch.get(ARGSTR_RES)))
                 continue
             elif dst_files:
-                print("{} {} :: {} ({}m) output files exist ".format(ARGSTR_STRIPID, stripid, len(dst_files), args.get(ARGSTR_RES))
+                print("{}, {} {} :: {} ({}m) output files exist ".format(
+                    i+1, ARGSTR_STRIPID, stripid, len(dst_files), args_batch.get(ARGSTR_RES))
                       + "(potentially unfinished since no *.fin file), skipping")
                 continue
 
-            args.set(ARGSTR_STRIPID, stripid)
-            s2s_command = args.get_cmd()
+            args_single.set(ARGSTR_STRIPID, stripid)
+            cmd_single = args_single.get_cmd()
 
-            if args.get(ARGSTR_SCHEDULER) is not None:
+            if args_batch.get(ARGSTR_SCHEDULER) is not None:
                 job_name = JOB_ABBREV+jobnum_fmt.format(i+1)
-                cmd = args.get_jobsubmit_cmd(args.get(ARGSTR_SCHEDULER), args.get(ARGSTR_JOBSCRIPT), job_name, s2s_command)
+                cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
+                                                    args_batch.get(ARGSTR_JOBSCRIPT),
+                                                    job_name, cmd_single)
             else:
-                cmd = s2s_command
+                cmd = cmd_single
 
             print("{}, {}".format(i+1, cmd))
-            if not args.get(ARGSTR_DRYRUN):
+            if not args_batch.get(ARGSTR_DRYRUN):
                 # For most cases, set `shell=True`.
                 # For attaching process to PyCharm debugger,
                 # set `shell=False`.
-                subprocess.call(cmd, shell=True, cwd=args.get(ARGSTR_LOGDIR))
+                subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
 
 
     else:
@@ -567,21 +614,6 @@ def main():
         print("dryrun: {}".format(args.get(ARGSTR_DRYRUN)))
         print('')
 
-        if dstdir_coreg is not None and os.path.isdir(dstdir_coreg):
-            dstdir_coreg_stripFiles = glob.glob(os.path.join(dstdir_coreg, args.get(ARGSTR_STRIPID)+'*'))
-            if len(dstdir_coreg_stripFiles) > 0:
-                print("Deleting old strip output in dstdir for coreg step")
-                if not args.get(ARGSTR_DRYRUN):
-                    for f in dstdir_coreg_stripFiles:
-                        os.remove(f)
-
-        stripid_finFname = '{}_{}m.fin'.format(args.get(ARGSTR_STRIPID), args.get(ARGSTR_RES))
-        stripid_finFile = os.path.join(args.get(ARGSTR_DST), stripid_finFname)
-        if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
-            stripid_finFile_coreg = os.path.join(dstdir_coreg, stripid_finFname)
-        else:
-            stripid_finFile_coreg = None
-
         # Find scene DEMs for this stripid to be merged into strips.
         for demSuffix in SUFFIX_PRIORITY_DEM:
             scene_demFiles = glob.glob(os.path.join(
@@ -593,6 +625,13 @@ def main():
             print("No scene DEMs found to process, skipping")
             sys.exit(1)
         scene_demFiles.sort()
+
+        stripid_finFname = '{}_{}m.fin'.format(args.get(ARGSTR_STRIPID), args.get(ARGSTR_RES))
+        stripid_finFile = os.path.join(args.get(ARGSTR_DST), stripid_finFname)
+        if dstdir_coreg is not None:
+            stripid_finFile_coreg = os.path.join(dstdir_coreg, stripid_finFname)
+        else:
+            stripid_finFile_coreg = None
 
         # Existence check. If output already exists, skip.
         if os.path.isfile(stripid_finFile):
@@ -616,6 +655,15 @@ def main():
                 missingflag = True
         if missingflag:
             sys.exit(1)
+
+        # Clean up old strip results in the coreg folder, if they exist.
+        if dstdir_coreg is not None and os.path.isdir(dstdir_coreg):
+            dstdir_coreg_stripFiles = glob.glob(os.path.join(dstdir_coreg, args.get(ARGSTR_STRIPID)+'*'))
+            if len(dstdir_coreg_stripFiles) > 0:
+                print("Deleting old strip output in dstdir for coreg step")
+                if not args.get(ARGSTR_DRYRUN):
+                    for f in dstdir_coreg_stripFiles:
+                        os.remove(f)
 
         print('')
 
@@ -651,7 +699,7 @@ def main():
 
             strip_demFname = "{}_seg{}_{}m_{}".format(args.get(ARGSTR_STRIPID), segnum, args.get(ARGSTR_RES), demSuffix)
             strip_demFile = os.path.join(args.get(ARGSTR_DST), strip_demFname)
-            if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
+            if dstdir_coreg is not None:
                 strip_demFile_coreg = os.path.join(dstdir_coreg, strip_demFname)
 
             if use_old_trans:
@@ -677,7 +725,7 @@ def main():
                     ', '.join(filter_options_mask) if filter_options_mask else None))
 
                 if 'X' in vars():
-                    if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
+                    if dstdir_coreg is not None:
                         if not os.path.isdir(dstdir_coreg):
                             os.makedirs(dstdir_coreg)
                         if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
@@ -687,6 +735,8 @@ def main():
                         if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                             saveStripRasters(strip_demFile_coreg, demSuffix, maskSuffix,
                                              X, Y, Z, M, O, MD, spat_ref)
+                        if args.get(ARGSTR_HILLSHADE):
+                            saveStripBrowse(strip_demFile_coreg, demSuffix)
                     del X, Y, Z, M, O, MD
                     gc.collect()
 
@@ -714,6 +764,8 @@ def main():
                           args.get(ARGSTR_SRC), mosaicked_sceneDemFnames, args)
             saveStripRasters(strip_demFile, demSuffix, maskSuffix,
                              X, Y, Z, M, O, MD, spat_ref)
+            if args.get(ARGSTR_HILLSHADE):
+                saveStripBrowse(strip_demFile, demSuffix)
             del X, Y, Z, M, O, MD
 
             segnum += 1
@@ -729,6 +781,22 @@ def main():
 
         print(".fin finished indicator file created: {}".format(stripid_finFile))
         print('')
+
+
+def saveStripMeta(strip_demFile, demSuffix,
+                  X, Y, Z, trans, rmse, spat_ref,
+                  scenedir, scene_demFnames, args):
+    from lib.raster_array_tools import getFPvertices
+
+    strip_metaFile = strip_demFile.replace(demSuffix, 'meta.txt')
+
+    fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
+    del Z, X, Y
+    proj4 = spat_ref.ExportToProj4()
+    time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
+
+    writeStripMeta(strip_metaFile, scenedir, scene_demFnames,
+                   trans, rmse, proj4, fp_vertices, time, args)
 
 
 def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
@@ -749,20 +817,24 @@ def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
     del MD
 
 
-def saveStripMeta(strip_demFile, demSuffix,
-                  X, Y, Z, trans, rmse, spat_ref,
-                  scenedir, scene_demFnames, args):
-    from lib.raster_array_tools import getFPvertices
+def saveStripBrowse(strip_demFile, demSuffix):
 
-    strip_metaFile = strip_demFile.replace(demSuffix, 'meta.txt')
+    strip_demFile_10m    = strip_demFile.replace(demSuffix, 'dem_10m.tif')
+    strip_demFile_browse = strip_demFile.replace(demSuffix, 'dem_browse.tif')
 
-    fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
-    del Z, X, Y
-    proj4 = spat_ref.ExportToProj4()
-    time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
+    commands = []
+    commands.append(
+        ('gdal_translate "{0}" "{1}" -q -tr {2} {2} -r bilinear -a_nodata -9999 '
+         '-co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(strip_demFile, strip_demFile_10m, 10))
+    )
+    commands.append(
+        ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff '
+         '-co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(strip_demFile_10m, strip_demFile_browse))
+    )
 
-    writeStripMeta(strip_metaFile, scenedir, scene_demFnames,
-                   trans, rmse, proj4, fp_vertices, time, args)
+    for cmd in commands:
+        print(cmd)
+        subprocess.call(cmd, shell=True)
 
 
 def getDemSuffix(demFile):

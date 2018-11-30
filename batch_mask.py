@@ -4,6 +4,7 @@
 
 from __future__ import division
 import argparse
+import copy
 import functools
 import glob
 import os
@@ -94,7 +95,9 @@ class InvalidArgumentError(Exception):
 
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
 
-def arg_to_abspath(path, argstr=None, abspath_fn=os.path.abspath, existcheck_fn=None, existcheck_reqval=None):
+def argtype_path_handler(path, argstr,
+                         abspath_fn=os.path.abspath,
+                         existcheck_fn=None, existcheck_reqval=None):
     if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
         if existcheck_fn is os.path.isfile:
             existtype_str = 'file'
@@ -104,7 +107,9 @@ def arg_to_abspath(path, argstr=None, abspath_fn=os.path.abspath, existcheck_fn=
             existtype_str = 'file/directory'
         existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
         raise InvalidArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
-    return abspath_fn(path)
+    return abspath_fn(path) if abspath_fn is not None else path
+
+ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
 
 def argparser_init():
 
@@ -121,8 +126,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_SRC,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_SRC,
             existcheck_fn=os.path.exists,
             existcheck_reqval=True),
@@ -138,8 +142,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_DSTDIR,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_DSTDIR,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -224,8 +227,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_JOBSCRIPT,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_JOBSCRIPT,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=True),
@@ -237,8 +239,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_SCRATCH,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_SCRATCH,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -247,8 +248,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_LOGDIR,
-        type=functools.partial(
-            arg_to_abspath,
+        type=ARGTYPE_PATH(
             argstr=ARGSTR_LOGDIR,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -442,18 +442,23 @@ def main():
 
         jobnum_fmt = batch_handler.get_jobnum_fmtstr(src_files)
 
-        args.remove_args(*ARGGRP_BATCH)
+        args_batch = args
+        args_single = copy.deepcopy(args)
+        args_single.remove_args(*ARGGRP_BATCH)
+
         for i, src_file in enumerate(src_files):
-            args.set(ARGSTR_SRC, src_file)
+            args_single.set(ARGSTR_SRC, src_file)
 
-            job_cmd = args.get_cmd()
             job_name = JOB_ABBREV+jobnum_fmt.format(i+1)
+            cmd_single = args_single.get_cmd()
 
-            cmd = args.get_jobsubmit_cmd(args.get(ARGSTR_SCHEDULER), args.get(ARGSTR_JOBSCRIPT), job_name, job_cmd)
-            if args.get(ARGSTR_DRYRUN):
+            cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
+                                                args_batch.get(ARGSTR_JOBSCRIPT),
+                                                job_name, cmd_single)
+            if args_batch.get(ARGSTR_DRYRUN):
                 print(cmd)
             else:
-                subprocess.call(cmd, shell=True, cwd=args.get(ARGSTR_LOGDIR))
+                subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
 
     else:
         # Process masks in serial.

@@ -32,12 +32,20 @@ else:
     from lib.DecimatePoly import DecimatePoly
 
 _script_dir = os.path.dirname(os.path.realpath(__file__))
-_ext_fid = open(os.path.join(_script_dir, 'outline.c'), 'r', encoding='utf-8')
-_outline = _ext_fid.read()
-_ext_fid.close()
-_ext_fid = open(os.path.join(_script_dir, 'outline_every1.c'), 'r', encoding='utf-8')
-_outline_every1 = _ext_fid.read()
-_ext_fid.close()
+if sys.version_info[0] < 3:
+    _ext_fid = open(os.path.join(_script_dir, 'outline.c'), 'r')
+    _outline = _ext_fid.read()
+    _ext_fid.close()
+    _ext_fid = open(os.path.join(_script_dir, 'outline_every1.c'), 'r')
+    _outline_every1 = _ext_fid.read()
+    _ext_fid.close()
+else:
+    _ext_fid = open(os.path.join(_script_dir, 'outline.c'), 'r', encoding='utf-8')
+    _outline = _ext_fid.read()
+    _ext_fid.close()
+    _ext_fid = open(os.path.join(_script_dir, 'outline_every1.c'), 'r', encoding='utf-8')
+    _outline_every1 = _ext_fid.read()
+    _ext_fid.close()
 
 
 gdal.UseExceptions()
