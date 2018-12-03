@@ -35,7 +35,7 @@ cd $PBS_O_WORKDIR
 echo Loading environment
 
 # Modify this to load your own environment
-source activate p27  # load Python environment
+source activate my_root  # load Python environment
 
 echo Running task
 echo ________________________________________________________
