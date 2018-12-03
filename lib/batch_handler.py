@@ -275,7 +275,7 @@ def exec_cmd(cmd):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (so, se) = p.communicate()
     rc = p.wait()
-    print("RETURN CODE: "+str(rc))
-    print("STDOUT: "+so)
-    print("STDERR: "+se)
+    print("RETURN CODE: {}".format(rc))
+    print("STDOUT: {}".format(so))
+    print("STDERR: {}".format(se))
     return rc
