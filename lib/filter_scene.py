@@ -592,6 +592,7 @@ def mask_v2(demFile=None, mask_version='mask',
     mask = handle_component_masks(MASKCOMP_EDGE_NAME+'_slopemask', mask, component_masks,
                                   (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask = getEdgeMask(~mask)
+    edge_mask = mask
     mask = handle_component_masks(MASKCOMP_EDGE_NAME, mask, component_masks,
                                   save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask_out = mask
@@ -599,12 +600,14 @@ def mask_v2(demFile=None, mask_version='mask',
     # Mask water.
     mask = getWaterMask(ortho_array, data_density_map, mean_sun_elevation,
                         debug_component_masks=debug_component_masks)
+    water_mask, _ = mask
+    water_mask[edge_mask] = False
     mask = handle_component_masks(MASKCOMP_WATER_NAME, mask, component_masks,
                                   save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask_out = (mask_out | mask)
 
     # Filter clouds.
-    mask = getCloudMask(dem_array, ortho_array, data_density_map,
+    mask = getCloudMask(dem_array, ortho_array, data_density_map, edge_mask=edge_mask,
                         debug_component_masks=debug_component_masks)
     mask = handle_component_masks(MASKCOMP_CLOUD_NAME, mask, component_masks,
                                   save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
@@ -1326,7 +1329,7 @@ def getWaterMask(ortho_array, data_density_map,
     return mask_pp, component_masks
 
 
-def getCloudMask(dem_array, ortho_array, data_density_map,
+def getCloudMask(dem_array, ortho_array, data_density_map, edge_mask=None,
                  ortho_thresh=70,
                  data_density_thresh_hirad=0.9, data_density_thresh_lorad=0.6,
                  min_nocloud_cluster=10000, min_cloud_cluster=1000,
@@ -1355,14 +1358,16 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
                 and `data_density_map`
         The DEM of the scene.
     ortho_array : ndarray, 2D, same shape as `dem_array`
-                  and `data_density_map`
         The orthorectified panchromatic image of the scene.
-    data_density_map : ndarray of float, 2D, same shape as
-                       `dem_array` and `ortho_array`
+    data_density_map : ndarray of float, 2D, same shape as `dem_array`
         Data density map for the scene, where the value of
         each node describes the fraction of surrounding
         pixels in the input image that were match points
         in the photogrammetric process.
+    edge_mask : None or ndarray, 2D, same shape as `dem_array`
+        Boolean mask of bad edges for the scene.
+        If provided, cloud mask is clipped to the inside extent
+        of the edge mask between erosion and dilation steps.
     ortho_thresh : positive int, units of `ortho_array`
         Radiance filter threshold.
     data_density_thresh_hirad : `data_density_thresh_lorad` <= float <= 1
@@ -1490,6 +1495,8 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
     mask_pp = (mask_pp & mask_smooth)
 
     # Dilate nodata.
+    if edge_mask is not None:
+        mask_pp[edge_mask] = False
     mask_pp = rat.imdilate(mask_pp, dilate_cloud)
 
     # Remove small clusters of unfiltered data.
