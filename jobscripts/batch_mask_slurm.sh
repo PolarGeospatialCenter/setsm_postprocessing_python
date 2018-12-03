@@ -6,6 +6,9 @@
 
 #SBATCH -o %x.o%j  # stdout (+stderr) file name
 
+#CONDOPT_SBATCH --mail-type=FAIL,END IF %EMAIL
+#CONDOPT_SBATCH --mail-user=%EMAIL IF type(%EMAIL) is str
+
 echo ________________________________________
 echo
 echo SLURM Job Log

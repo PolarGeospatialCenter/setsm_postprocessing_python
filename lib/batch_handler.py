@@ -7,6 +7,7 @@ import argparse
 import math
 import numpy as np
 import os
+import subprocess
 from datetime import datetime
 from glob import glob
 
@@ -26,22 +27,26 @@ class InvalidArgumentError(Exception):
 
 class ArgumentPasser:
 
-    def __init__(self, parser, executable_path, script_path):
+    def __init__(self, parser, executable_path, script_path, sys_argv):
         self.parser = parser
         self.exe = executable_path
         self.script = script_path
-        self.vars = parser.parse_args()
+        self.sys_argv = list(sys_argv)
+        self.script_run_cmd = ' '.join(self.sys_argv)
+        self.vars = self.parser.parse_args()
         self.vars_dict = vars(self.vars)
         self.argstr2varstr = self._make_argstr2varstr_dict()
         self.varstr2argstr = self._make_varstr2argstr_dict()
-        self.varstr2acttype = self._make_varstr2acttype_dict()
+        self.varstr2action = self._make_varstr2action_dict()
         self.argstr_pos = self._find_pos_args()
+        self.provided_opt_args = self._find_provided_opt_args()
+        self._fix_bool_plus_args()
         self.cmd_optarg_base = None
         self.cmd = None
         self._update_cmd_base()
 
     def __deepcopy__(self, memodict={}):
-        return ArgumentPasser(self.parser, self.exe, self.script)
+        return ArgumentPasser(self.parser, self.exe, self.script, self.sys_argv)
 
     def get(self, *argstrs):
         if len(argstrs) < 1:
@@ -64,16 +69,13 @@ class ArgumentPasser:
         else:
             self._update_cmd_base()
 
-    def remove_args(self, *argstrs):
+    def unset_args(self, *argstrs):
         for argstr in argstrs:
             self.vars_dict[self.argstr2varstr[argstr]] = None
         if set(argstrs).issubset(set(self.argstr_pos)):
             self._update_cmd()
         else:
             self._update_cmd_base()
-
-    def _find_pos_args(self):
-        return [act.dest.replace('_', '-') for act in self.parser._actions if len(act.option_strings) == 0]
 
     def _make_argstr2varstr_dict(self):
         argstr2varstr = {}
@@ -94,8 +96,26 @@ class ArgumentPasser:
                 varstr2argstr[act.dest] = sorted(act.option_strings)[0]
         return varstr2argstr
 
-    def _make_varstr2acttype_dict(self):
-        return {act.dest: type(act) for act in self.parser._actions}
+    def _make_varstr2action_dict(self):
+        return {act.dest: act for act in self.parser._actions}
+
+    def _find_pos_args(self):
+        return [act.dest.replace('_', '-') for act in self.parser._actions if len(act.option_strings) == 0]
+
+    def _find_provided_opt_args(self):
+        provided_opt_args = []
+        for token in self.sys_argv:
+            potential_argstr = token.split('=')[0]
+            if potential_argstr in self.argstr2varstr:
+                provided_opt_args.append(self.varstr2argstr[self.argstr2varstr[potential_argstr]])
+        return provided_opt_args
+
+    def _fix_bool_plus_args(self):
+        for varstr in self.vars_dict:
+            argstr = self.varstr2argstr[varstr]
+            action = self.varstr2action[varstr]
+            if 'function argtype_bool_plus' in str(action.type) and self.get(argstr) is None:
+                self.set(argstr, (argstr in self.provided_opt_args))
 
     def _argval2str(self, item):
         return '"{}"'.format(item) if type(item) is str else '{}'.format(item)
@@ -106,9 +126,13 @@ class ArgumentPasser:
             argstr = self.varstr2argstr[varstr]
             if argstr not in self.argstr_pos and val is not None:
                 if isinstance(val, bool):
-                    acttype = self.varstr2acttype[varstr]
-                    if (   (acttype is argparse._StoreTrueAction and val is True)
-                        or (acttype is argparse._StoreFalseAction and val is False)):
+                    action = self.varstr2action[varstr]
+                    acttype = type(action)
+                    if acttype is argparse._StoreAction:
+                        if 'function argtype_bool_plus' in str(action.type) and val is True:
+                            arg_list.append(argstr)
+                    elif (   (acttype is argparse._StoreTrueAction and val is True)
+                          or (acttype is argparse._StoreFalseAction and val is False)):
                         arg_list.append(argstr)
                 elif isinstance(val, list) or isinstance(val, tuple):
                     arg_list.append('{} {}'.format(argstr, ' '.join([self._argval2str(item) for item in val])))
@@ -127,7 +151,7 @@ class ArgumentPasser:
                     posarg_list.append(' '.join([self._argval2str(item) for item in val]))
                 else:
                     posarg_list.append(self._argval2str(val))
-        self.cmd = '{} {} {} {}'.format(self.exe, self.script, self.cmd_optarg_base, " ".join(posarg_list))
+        self.cmd = '{} {} {} {}'.format(self.exe, self.script, " ".join(posarg_list), self.cmd_optarg_base)
 
     def get_cmd(self):
         return self.cmd
@@ -222,6 +246,12 @@ class ArgumentPasser:
         return out_type(condopt_expr)
 
 
+def argtype_bool_plus(value, parse_fn=None):
+    if parse_fn is not None:
+        return parse_fn(value)
+    return value
+
+
 def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s', task_delim=' '):
     bundle_prefix = os.path.join(dstdir, '{}_{}'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
     jobnum_total = int(math.ceil(len(task_list) / float(tasks_per_bundle)))
@@ -239,3 +269,13 @@ def read_task_bundle(bundle_file, args_dtype=np.dtype(str), args_delim=' '):
 
 def get_jobnum_fmtstr(processing_list, min_digits=3):
     return '{:0>'+str(max(min_digits, len(str(len(processing_list)))))+'}'
+
+
+def exec_cmd(cmd):
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (so, se) = p.communicate()
+    rc = p.wait()
+    print("RETURN CODE: "+rc)
+    print("STDOUT: "+so)
+    print("STDERR: "+se)
+    return rc

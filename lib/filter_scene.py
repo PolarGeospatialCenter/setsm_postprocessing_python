@@ -66,8 +66,12 @@ if debug_component_masks != DEBUG_NONE:
 ITHRESH_QUICK_SAVED = False
 
 
-HOSTNAME = os.getenv('HOSTNAME').lower()
-RUNNING_AT_PGC = True if True in [s in HOSTNAME for s in ['rookery', 'nunatak']] else False
+HOSTNAME = os.getenv('HOSTNAME')
+if HOSTNAME is not None:
+    HOSTNAME = HOSTNAME.lower()
+    RUNNING_AT_PGC = True if True in [s in HOSTNAME for s in ['rookery', 'nunatak']] else False
+else:
+    RUNNING_AT_PGC = False
 RE_SCENE_DEM_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9A-F]{16})_([0-9A-F]{16})_(.*?\-)?(.*?)_(P[0-9]{3})_(.*?\-)?(.*?)_(P[0-9]{3})_.*$"
 RE_SCENE_DEM_FNAME_PARTS = re.compile(RE_SCENE_DEM_FNAME_PARTS_STR)
 RE_SOURCE_IMAGE_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})_([0-9A-F]{16})_.*?\-([A-Z0-9]{4})[\-_]{1}(.*?\-)?(.*?)_(P[0-9]{3})\..*$"

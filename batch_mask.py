@@ -44,10 +44,11 @@ ARGSTR_EDGE = '--edge'
 ARGSTR_WATER = '--water'
 ARGSTR_CLOUD = '--cloud'
 ARGSTR_SCHEDULER = '--scheduler'
-ARGSTR_TASKS_PER_JOB = '--tasks-per-job'
 ARGSTR_JOBSCRIPT = '--jobscript'
+ARGSTR_TASKS_PER_JOB = '--tasks-per-job'
 ARGSTR_SCRATCH = '--scratch'
 ARGSTR_LOGDIR = '--logdir'
+ARGSTR_EMAIL = '--email'
 ARGSTR_DRYRUN = '--dryrun'
 
 # Argument choices
@@ -69,7 +70,7 @@ ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles'
 
 # Argument groups
 ARGGRP_OUTDIR = [ARGSTR_DSTDIR, ARGSTR_LOGDIR, ARGSTR_SCRATCH]
-ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB]
+ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR_EMAIL]
 
 ##############################
 
@@ -189,7 +190,6 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_EDGE, '-e',
         action='store_true',
-        default=False,
         help=' '.join([
             "Apply edge filter. Not necessary when masking strip DEMs,",
             "as it is already applied in the mosaicking step of scenes2strips."
@@ -198,13 +198,11 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_WATER, '-w',
         action='store_true',
-        default=False,
         help="Apply water filter."
     )
     parser.add_argument(
         ARGSTR_CLOUD, '-c',
         action='store_true',
-        default=False,
         help="Apply cloud filter."
     )
 
@@ -216,16 +214,6 @@ def argparser_init():
         help="Submit tasks to job scheduler."
     )
     parser.add_argument(
-        ARGSTR_TASKS_PER_JOB,
-        type=int,
-        choices=None,
-        default=None,
-        help=' '.join([
-            "Number of tasks to bundle into a single job.",
-            "(requires {} option)".format(ARGSTR_SCHEDULER)
-        ])
-    )
-    parser.add_argument(
         ARGSTR_JOBSCRIPT,
         type=ARGTYPE_PATH(
             argstr=ARGSTR_JOBSCRIPT,
@@ -235,6 +223,16 @@ def argparser_init():
         help=' '.join([
             "Script to run in job submission to scheduler.",
             "(default scripts are found in {})".format(JOBSCRIPT_DIR)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_TASKS_PER_JOB,
+        type=int,
+        choices=None,
+        default=None,
+        help=' '.join([
+            "Number of tasks to bundle into a single job.",
+            "(requires {} option)".format(ARGSTR_SCHEDULER)
         ])
     )
     parser.add_argument(
@@ -261,11 +259,15 @@ def argparser_init():
             "to absolute paths in this script, this should not be an issue."
         ])
     )
+    parser.add_argument(
+        ARGSTR_EMAIL,
+        action='store_true',
+        help="Send email to user upon END or ABORT of the LAST job of batch submitted to scheduler."
+    )
 
     parser.add_argument(
         ARGSTR_DRYRUN,
         action='store_true',
-        default=False,
         help="Print actions without executing."
     )
 
@@ -441,20 +443,28 @@ def main():
                                                       '{}_{}'.format(JOB_ABBREV, ARGSTR_SRC)))
 
         jobnum_fmt = batch_handler.get_jobnum_fmtstr(src_files)
+        last_job_email = args.get(ARGSTR_EMAIL)
 
         args_batch = args
         args_single = copy.deepcopy(args)
-        args_single.remove_args(*ARGGRP_BATCH)
+        args_single.unset_args(*ARGGRP_BATCH)
 
-        for i, src_file in enumerate(src_files):
-            args_single.set(ARGSTR_SRC, src_file)
+        job_num = 0
+        num_jobs = len(src_files)
+        for srcfp in src_files:
+            job_num += 1
 
-            job_name = JOB_ABBREV+jobnum_fmt.format(i+1)
+            args_single.set(ARGSTR_SRC, srcfp)
             cmd_single = args_single.get_cmd()
 
+            if last_job_email and job_num == num_jobs:
+                args_single.set(ARGSTR_EMAIL, True)
+
+            job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
             cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
                                                 args_batch.get(ARGSTR_JOBSCRIPT),
                                                 job_name, cmd_single)
+
             if args_batch.get(ARGSTR_DRYRUN):
                 print(cmd)
             else:

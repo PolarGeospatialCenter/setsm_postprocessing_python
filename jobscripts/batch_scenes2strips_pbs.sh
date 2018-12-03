@@ -1,12 +1,12 @@
 #!/bin/bash
 
 #PBS -l walltime=40:00:00,nodes=1:ppn=6
-#PBS -m n
+
 #PBS -j oe
-
 #PBS -o $PBS_JOBNAME.o$PBS_JOBID
-
 #CONDOPT_PBS -k oe IF %LOGDIR is None
+
+#CONDOPT_PBS -m ae IF %EMAIL ELSE -m n
 
 echo ________________________________________________________
 echo
@@ -35,7 +35,7 @@ cd $PBS_O_WORKDIR
 echo Loading environment
 
 # Modify this to load your own environment
-source activate my_root  # load Python environment
+source activate p27  # load Python environment
 
 echo Running task
 echo ________________________________________________________

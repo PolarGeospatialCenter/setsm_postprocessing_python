@@ -67,6 +67,7 @@ In the context of this repo, a "scene" is what we call the set of result raster 
 ```
 usage: batch_scenes2strips.py [-h] [--dst DST]
                               [--meta-trans-dir META_TRANS_DIR]
+                              [--hillshade-off]
                               [--mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}]
                               [--noentropy] [--nowater] [--nocloud]
                               [--nofilter-coreg]
@@ -74,7 +75,7 @@ usage: batch_scenes2strips.py [-h] [--dst DST]
                               [--rmse-cutoff RMSE_CUTOFF]
                               [--scheduler {pbs,slurm}]
                               [--jobscript JOBSCRIPT] [--logdir LOGDIR]
-                              [--dryrun] [--stripid STRIPID]
+                              [--email [EMAIL]] [--dryrun] [--stripid STRIPID]
                               src res
 
 Filters scene DEMs in a source directory, then mosaics them into strips and saves the results. 
@@ -89,6 +90,7 @@ optional arguments:
   --dst DST             Path to destination directory for output mosaicked strip data. (default is src.(reverse)replace('tif_results', 'strips')) (default: None)
   --meta-trans-dir META_TRANS_DIR
                         Path to directory of old strip metadata from which translation values will be parsed to skip scene coregistration step. (default: None)
+  --hillshade-off       TURN OFF building of 10m hillshade *_dem_browse.tif browse images of all output DEM strip segments after they are created inside --dst directory. (default: False)
   --mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}
                         Filtering scheme to use when generating mask raster images, to classify bad data in scene DEMs. 
                         'maskv1': Two-component (edge, data density) filter to create separate edgemask and datamask files for each scene. 
@@ -117,6 +119,7 @@ optional arguments:
   --logdir LOGDIR       Directory to which standard output/error log files will be written for batch job runs. 
                         If not provided, default scheduler (or jobscript #CONDOPT_) options will be used. 
                         **Note that due to implementation difficulties, this directory will also become the working directory for the job process. Since relative path inputs are always changed to absolute paths in this script, this should not be an issue. (default: None)
+  --email [EMAIL]       Send email to user upon end or abort of the LAST SUBMITTED task. (default: None)
   --dryrun              Print actions without executing. (default: False)
   --stripid STRIPID     Run filtering and mosaicking for a single strip with strip-pair ID as parsed from scene DEM filenames using the following regex: '(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$' (default: None)
   ```
@@ -125,6 +128,7 @@ optional arguments:
 * `res` :: NUMERIC INPUT; This value must be provided in METERS! The input resolution value is used to (1) make sure that the selected scenes in the `src` source directory are indicated by their filenames to be of the same resolution, (2) check if strip results already exist in the `--dst` destination directory *and skip processing the strip if any results already exist*, (3) make sure the selected `--mask-ver` filter scheme works with the resolution, and (4) is the resolution included in the filenames of the output strip results files. For more information on how condition (1) is enforced (as )
 * `--dst` :: In the OSU-PGC processing scheme, this will be a path to a `*/strips/8m` or `*/strips/2m` folder where the `*` is the same path as given in the commentary for `src`. If this argument isn't provided an attempt is made to determine this path by default (as specified in the `--help` text), so if you're following the OSU-PGC processing scheme you don't ever need to provide this argument. However, if you think you will be creating both filtered and unfiltered versions of strips (through the `--nowater`/`--nocloud` arguments), I recommend making this path `*/strips/2m_filtXXX` where \[`XXX`\] is the bit-code corresponding to filter components (\[cloud, water, edge\], respectively) applied during the final mosaicking step of the scenes2strips process. The bit-code for completely filtered strips is thus `111` while for completely "unfiltered" strips (both `--nowater` and `--nocloud` provided) it is `001`.
 * `--meta-trans-dir` :: This option is useful if either (1) you need to reprocess/recreate strips for some reason and you trust that the coregistration of the scenes in the earlier processing is still sound or (2) you were running scenes2strips with `--save-coreg-step` set to either `meta` or `all` when a crash/abort caused processing to end prematurely and you want to skip redoing the processing of the coregistration step. If provided, the program will attempt to read the translation values for scenes from old strip segment *meta.txt* files in the provided directory and use these values for assembling strips in lieu of running the coregistration step. If it happens that the scenes2strips process decides to break the new strip into segments differently than it broke for the old strip results in the `--meta-trans-dir` directory, the program will fall back to running as if the argument was never provided *for only that particular strip*.
+* `--hillshade-off` :: By default, 10-meter resolution hillshades are automatically generated for every output strip segment DEM with the filename suffix *dem_browse.tif*. This is done by calling the *gdal_translate* and *gdaldem hillshade* programs, so these must be callable from the current shell environment. *gdal_translate* creates a 10-meter downsampled version of the DEM (with filename suffix *dem_10m.tif*) as a temporary file that is fed to *gdaldem hillshade*. By supplying this argument to `batch_scenes2strips.py`, you may turn off this additional processing step.
 * `--mask-ver` :: Improvements to the scenes2strips filtering step are currently focusing solely on the *bitmask* version that creates the *bitmask.tif* scene/strip mask component raster. Only change this option from its default value (`bitmask`) if for some reason you're interested in seeing what the old masks look like.
 * `--noentropy` :: As noted in the `--help` text, this argument can only be provided along with `--mask-ver=maskv1`. You probably won't ever use it.
 * `--nowater`/`--nocloud` :: These arguments allow for producing unfiltered strip results, which is what really differentiates this version of the scenes2strips process from the earlier MATLAB version. See subsection "Step 2: Scene filtering and creation of the *bitmask.tif* scene component" above for more information.
@@ -133,7 +137,8 @@ optional arguments:
 * `--rmse-cutoff` :: After the iterative coregistration step is complete, the final RMSE value for the coregistration is reported. If that RMSE value is greater than the value specified by this argument, the scene that failed to register to the strip will become the start of a new strip segment.
 * `--scheduler` :: Currently only the PBS and SLURM job schedulers are supported. If you provide this argument, note that if you do not specify a particular PBS/SLURM jobscript to run with the `--jobscript` argument a default jobscript will be selected from the 'jobscripts' folder in the repo root directory that corresponds to this script and the indicated scheduler type.
 * `--jobscript` :: REQUIREMENTS: The jobscript MUST (1) be readable by the provided `--scheduler` job scheduler type, (2) load the Python environment that includes all required packages as specified above under "Python package dependencies" before it (3) executes the main command that runs the script for a single `--stripid` by means of substituting the entire command into the jobscript through the environment variable `$p1`.
-* `--logdir` :: If this argument is not provided and you are using the default jobscripts from this repo, the default output log file directory for SLURM is the directory where the command to run the script was submitted, while for PBS it is the `$HOME` directory of the user who submitted the command.
+* `--logdir` :: If this argument is NOT provided and you are using the default jobscripts from this repo, the default output log file directory for SLURM is the directory where the command to run the script was submitted, while for PBS it is the `$HOME` directory of the user who submitted the command.
+* `--email` :: If this option is provided (with or without an email address) and you are using the default jobscripts from this repo, an email will be sent to the email address tied to your user account upon end or abort of ONLY the job that was submitted last in the batch (to avoid spamming you with emails). This relies on the the mail option provided by the selected job scheduler, which is not supported on every system. If an email address is also provided with this option, an additional email will be sent upon end or error of the last submitted task/job using `email.mime.text.MIMEText` with `smtplib` from the Python Standard Library. 
 * `--dryrun` :: Useful for testing which strips will be built where, without actually starting the process of building them.
 * `--stripid` :: During normal batch usage of this script, you only specify the `src` source directory of all scenes that you aim to turn into multiple strips. This argument is then typically used only internally by the batch execution logic to specify which single strip each instance of the scenes2strips program will work on. If you have a ton of scenes (that can be made into multiple strips) in the `src` directory and wish to only create/recreate a specific strip, you can specify that strip using the OSU-PGC strip-pair ID naming convention described above under "Step 1: Source scene selection by "strip-pair ID"".
 
