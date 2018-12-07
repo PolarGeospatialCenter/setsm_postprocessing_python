@@ -1,7 +1,7 @@
 # setsm_postprocessing_python
-Methods for filtering and mosaicking DEMs produced by [SETSM](https://github.com/setsmdeveloper/SETSM "SETSM on GitHub").
+Methods for filtering and merging DEMs produced by [SETSM](https://github.com/setsmdeveloper/SETSM "SETSM on GitHub").
 
-The methodology for both filtering and mosaicking is largely ported from [MATLAB code written by Ian Howat](https://github.com/ihowat/setsm_postprocessing "setsm_postprocessing on GitHub"), glaciologist and professor of Earth Sciences at The Ohio State University.
+The methodology for both filtering and merging (sometimes referred to as "mosaicking") is largely ported from [MATLAB code written by Ian Howat](https://github.com/ihowat/setsm_postprocessing "setsm_postprocessing on GitHub"), glaciologist and professor of Earth Sciences at The Ohio State University.
 
 
 ## Python Requirements
@@ -41,26 +41,95 @@ If any of the imports raise an error with a mysterious message, you may want to 
 ## batch_scenes2strips.py
 Located in the root folder of the repo, this is the main post-processing script.
 
+```
+usage: batch_scenes2strips.py [-h] [--dst DST]
+                              [--meta-trans-dir META_TRANS_DIR]
+                              [--hillshade-off]
+                              [--mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}]
+                              [--noentropy] [--nowater] [--nocloud]
+                              [--nofilter-coreg]
+                              [--save-coreg-step {off,meta,all}]
+                              [--rmse-cutoff RMSE_CUTOFF]
+                              [--scheduler {pbs,slurm}]
+                              [--jobscript JOBSCRIPT] [--logdir LOGDIR]
+                              [--email [EMAIL]] [--dryrun] [--stripid STRIPID]
+                              src res
+```
+
+**Note:** Run `python batch_scenes2strips.py --help` to print all script options with basic descriptions of their usage.
+
 ### Turning scenes into strips
-In the context of this repo, a "scene" is what we call the set of result raster images and a metadata text file that are produced by SETSM when run on a pair of overlapping chunks of stereo DigitalGlobe satellite images. Each scene is composed of rasters with filenames ending with *dem.tif*/*dem_smooth.tif*, *matchtag.tif*/*matchtag_mt.tif*, and *ortho.tif* and an auxilary metadata text file ending with *meta.txt*. Since DigitalGlobe customers often don't receive a single collect as a whole long, gigantic image but instead can receive slightly-overlapping image chunks that together make up the whole collect, there is often a large number of combinations for overlapping stereo images to process between a pair of stereo collects. After these overlapping stereo image "scenes" (some call these "subscenes" since the word "scene" is often attributed to the whole satellite collect) have been processed with SETSM, they should be stitched together to create the best possible representation of the entire area of overlap between the stereo collects -- the "strip" -- whence they came. That is what this script aims to do, in batch.
+
+In the context of this repo, a "scene" is what we call the set of result raster images and a metadata text file that are produced by SETSM when run on a pair of overlapping chunks of stereo DigitalGlobe satellite images. Each scene is composed of rasters with the filename suffixes *dem.tif*/*dem_smooth.tif*, *matchtag.tif*/*matchtag_mt.tif*, and *ortho.tif*, plus an auxiliary metadata text file ending with *meta.txt*. Since DigitalGlobe customers often don't receive a single collect as a whole long, gigantic image but instead can receive slightly-overlapping image chunks that together make up the whole collect, there is often a large number of combinations for overlapping stereo images to process between a pair of stereo collects (in DigitalGlobe terms, a pair of "catalog IDs"). After these overlapping stereo image "scenes" (some call these "subscenes" since the word "scene" is often attributed to the whole satellite collect) have been processed with SETSM, they should be stitched together to create the best possible representation of the entire area of overlap between the stereo collects -- the "strip" -- whence they came. That is what this script aims to do, in batch.
+
 
 ### Step 1: Source scene selection by "strip-pair ID"
-(text)
+
+In the OSU-PGC processing scheme, SETSM results have filenames like "WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_dem.tif", where this filename contains pieces of information from the (DigitalGlobe) source images. The beginning of this filename, "WV01_20170717_102001006264A100_1020010066A25800", contains the catalog IDs of the two stereo image collects from which two overlapping chunks were processed with SETSM to generate this scene DEM. (The other half of the filename contains the order numbers of the two collects and identifies which chunks -- otherwise known as the "part", indicated by "P001" for both collects in this example -- were processed in particular.) This filename prefix, which I refer to as the "strip-pair ID", is common to all scene DEMs generated from those two stereo collects and thus it is the base unit of batch processing with scenes2strips. When batch_scenes2strips.py is run on a source directory `src` with specified resolution `res`,  all unique strip-pair IDs are identified from the contents of that source folder (non-recursively) and each strip-pair ID that has scenes of the indicated resolution is sent off to the core scenes2strips program where its group of scene DEMs will be filtered and merged together into strip DEMs.
+
 
 ### Step 2: Scene filtering and creation of the *bitmask.tif* scene component
-(text)
+
+SETSM DEMs often contain "blunders" -- areas of bad data that result from the presence of occlusions (most often clouds), areas of limited bit-depth (dark spots like water and shadow), or differences between the input stereo images (could be from choppy water or fast-moving clouds). Automated filtering of the scene DEMs should be performed so that (1) blunders may be masked out before the scenes are coregistered and (2) blunders may be masked out of the resulting strip DEMs. This is where we often see bad data in DEM scenes:
+
+* Around the edges of the scene, there will almost always be a thin border (with more or less straight internal edges) of bad data with a steep slope up or down from the edges of the scene to the region of good data. This border of bad data must be removed before merging.
+* The dark and glossy nature of water, combined with random reflection effects from waves that change randomly between collects, causes areas of water cover in a scene DEM to contain random bad data.
+* Cloud cover (such as opaque "popcorn" clouds) can cause bad data to show up in otherwise good DEMs. SETSM has been shown to create decent DEMs when looking through fog and other semi-transparent cloud cover, but they usually have a blanket of error shown as an artificial rough appearance. It should also be noted that it is possible for cloud cover to change between stereo collects, though usually the small time difference of ~2 minutes is too small of a window for effects of cloud movement to be apparent.
+* Areas in shadow are generally too dark (too low bit-depth) for SETSM to perform well in its pattern-matching. The inside of shadow-covered areas may show up in the DEM with artificial (erroneous) roughness similar to fog-covered areas, and the edges of shadow-covered areas will often show up as a apparent discontinuities (jumps) in the DEM.
+
+To attempt to identify bad data, a filtering method that is based on thresholding of the scene DEM, matchtag, and ortho image (in the OSU-PGC processing scheme, the ortho is always the "left" or first input image to the SETSM program) as follows:
+
+1. A "match point density" map is calculated from the matchtag raster. The calculation uses a square kernel of ones (as are all kernels henceforth) with side length (henceforth "size") that scales with the resolution of the input scene rasters as `int(math.floor(21*2/image_res))`.
+2. All scene rasters (including the map calculated in (1)) are downsampled with bicubic interpolation to 8-meter resolution (or upsampled... but let's assume your scenes have resolution <= 8-meter).
+3. Various calculations and thresholds are used on the downsampled rasters to derive a three-component bitmask identifying areas of bad data over EDGE, WATER, and CLOUD:
+
+    * The EDGE mask is derived from a concave hull applied to the inverse of a filter for steep slopes in the DEM. Slope grade is calculated using `numpy.gradient`, averaged using the same kernel from (1), thresholded where pixels with mean slope greater than 1 are classified as high slopes, then high slopes are dilated by a kernel of size 8 to complete the high-slope filter. (The concave hull algorithm was created by me out of sheer desperation to obtain a Python function equivalent to MATLAB's `boundary` function. My algorithm uses what should be the side length compliment of a more traditional circular alpha shape to eat out the edges of the Delaunay Triangulation of the data points.) Since the high-slope filter picks up the bad edges of the scene DEM, we inverse this mask and find the concave hull the data we want to retain. The concave hull uses an alpha shape with size that is halfway between a (large) size that would barely leave the convex hull intact and a (small) size that would barely keep the hull from splitting into two pieces.
+    * The WATER mask uses the panchromatic scene ortho image from SETSM to classify areas as water with the following logic: (low radiance AND match point density < 98%) OR low entropy in radiance. Radiance values are calculated directly from the digital numbers in the original ortho image by using the following conversion: ```L = GAIN * DN * (ABSCALFACTOR / EFFECTIVEBANDWIDTH) + OFFSET``` where `L` is radiance value, `DN` is the ortho image value, `GAIN` and `OFFSET` are obtained from a lookup table by satellite sensor, and `ABSCALFACTOR` and `EFFECTIVEBANDWIDTH` are read from the scene metadata file. Entropy is defined as `-sum(p.*log2(p))`, where `p` contains the normalized histogram counts of the filter window in `skimage.filters.rank.entropy`, given a kernel of size 5. A smoothed version of the radiance differential is fed to the entropy filter by taking the difference between a maximum filter and minimum filter with a kernel size of 5. Pixels with calculated entropy < 0.2 are then classified as low entropy. The low-entropy filter is post-processed to remove clusters with total # of pixels < 500, then dilated by a kernel of size 7. The low-radiance filter classifies as low radiance values < (5 if `MEANSUNEL < 30` else 20), and is also post-processed to remove clusters with total # of pixels < 500. After the logical combination of these filters, the final water mask is post-processed to remove small clusters and fill voids with total # of pixels < 500.
+    * The CLOUD mask uses the scene DEM and ortho image to classify areas as cloud with the following logic: (radiance > 70 AND match point density < 90%) OR match point density < 60% OR high relative standard deviation in elevation. Standard deviation of elevation is calculated by use of moving average filters with a kernel of size 21. The threshold value for classification of high standard devation is adaptive; if the difference between the 80th and 20th percentile elevation values in the unfiltered scene DEM is <= (40, 50, 75, 100, inf) the threshold value is (10.5, 15, 19, 27, 50), respectively, matching on the first true result of <=. After the logical combination of these filters, the final cloud mask is post-processed to remove small clusters with total # of pixels < 1000. It is then eroded and dilated by kernels of size 31 and 21, respectively, to "remove thin borders caused by cliffs/ridges" (comment from original MATLAB code) before it is dilated again by a kernel of size 61. Finally, voids ("good data" in this context) with total # of pixels < 10,000 are filled.
+
+4. All three masks are resampled with nearest interpolation to the original resolution of the scene rasters.
+5. If the `--mask-ver=maskv2` script argument is provided, all three mask components are combined with logical OR to create a flat binary mask. If instead `--mask-ver=bitmask` (the default option), the three mask components are instead combined by essentially converting the (EDGE, WATER, CLOUD) mask values from binary True/False to integer (1, 2, 4)/0 and combining into a single bitmask using `numpy.bitwise_or`.
+6. The output mask (with either *mask.tif* or *bitmask.tif* suffix if provided `--mask-ver` is either `maskv2` or `bitmask`) is saved in the same folder as its corresponding scene rasters whence it was derived.
+
+When it comes time to load the mask into the scene merging part of the program (in either the coregistration or mosaicking steps) a final post-processing step of the flattened mask (with particular toggling of water and cloud filters for the current run of the program) is to fill voids ("good data" in this context) with total # of pixels < `500 * (8 / image_res)**2`.
+
+***Important!***  Scene `*(bit)mask.tif` files are always created during the filtering step of the program and are stored alongside the scene files in the `src` scene directory, so make sure you have write permission for `src`.  These masks are also mosaicked together so that strip `*(bit)mask.tif` files are created and stored in the `dst` directory alongside strip results.
+
 
 ### Step 3: Scene ordering and coregistration
-(text)
 
-### Step 3/4: Mosaicking of scenes into strip segment(s)
-(text)
+Due to reliance on satellite sensor RPC models to determine the geolocation of the stereo images that are provided as input to SETSM, [the geolocation of the output scene DEMs has an absolute accuracy of approximately 4 meters in the horizontal and vertical planes](https://www.pgc.umn.edu/guides/arcticdem/introduction-to-arcticdem/ "Introduction to ArcticDEM: Weaknesses") (which is on the order of -- if not greater than -- the resolution of the DEMs themselves). Additionally, [SETSM applies an RPC bias removal that](https://mjremotesensing.wordpress.com/setsm/ "What is SETSM: RPC errors") is likely to disrupt any internal consistency in geolocation of scenes within the same strip. This means that in order to merge the scene DEMs into a strip, a coregistration procedure must be be employed to align the *overlapping* scenes before they can be stitched together. The particular method used in the scenes2strips program is an iterative coregistration procedure from the academic paper ["Co-registration and bias corrections of satellite elevation data sets for quantifying glacier thickness change" by C. Nuth and A. Kaab, 2011](https://www.the-cryosphere.net/5/271/2011/tc-5-271-2011.pdf "Online PDF of the paper"). The COREGISTRATION STEP of the program goes roughly as follows:
+
+1. Scenes are queued using the geolocation information they came with out of SETSM (described above). Assuming all scenes are in the same projected coordinate system, they are ordered from grid south to north or from west to east -- whichever direction corresponds to the longest side of the rectangular extent of the scenes -- under the condition that the scene with the largest area of overlap to the cumulative rectangular extent of all scenes added up to that point* is picked (meaning that the ordering will only be from grid south to north or from west to east in a general sense).
+2. Scene raster data is read in as NumPy arrays and is immediately masked (always with the edge filter and by default with the water and cloud filters, but the latter may be side-stepped by passing the `--nofilter-coreg` script option in conjunction with one or both of the `--nowater`/`--nocloud` options). If all DEM pixels have been masked, this scene is skipped and the next scene is loaded.
+3. Scenes are loaded into the program sequentially in the order that was determined in step (1) and, granted that there is enough area of overlap with the scene(s) that were loaded in prior*, the area of overlap between the new scene and the existing strip is isolated. If the new scene does not have enough new data to add to the strip, it is skipped. Otherwise, if the overlapping sections of both layers have areas of at least 90% match point density*, the areas of overlap are fed to the coregistration routine designed by Nuth and Kaab as mentioned above.
+4. In the coregistration routine, a difference of DEM values in the area of overlap between the new scene and the existing strip is calculated for pixels that are marked as match points in both layers. An RMSE value is then calculated for this difference map and is reported. Alignment correction of the two layers is done by calculating DEM slope in the x and y directions for the difference points and placing these values in the coefficient matrix of a least squares equation with the difference values as the dependent variable. Solving this least squares equation yields a new set of x, y, and z offset values (also known as "translation"/"trans" values from interpretation as a translation vector) for shifting the new scene into better alignment with the strip. This shift is applied through a 2D grid linear interpolation of the overlap area for the new scene and the two layers are differenced again. This process is repeated in an iterative fashion until change in RMSE between two consecutive iterations is > -0.001, at which point the RMSE and offset values for the penultimate iteration are returned.
+5. If the RMSE value is not greater than the script argument value `--rmse-cutoff` (with default value of 1.0)*, the offset vector is subtracted from the entirety of the new scene through 2D grid interpolation and the aligned output rasters are combined with the strip rasters. For the DEM and ortho image rasters, a feathering approach with weighting that scales linearly over the area of overlap is used to seamlessly blend the two pieces together. For the matchtag and mask rasters, a bitwise OR combination is used.
+6. Once all scenes that can be added to the strip (segment) have been added*, the output strip rasters are written to the `--dst` destination directory.
+7. If for any of the general reasons indicated by (*) a scene cannot be added to a strip, a "segment break" is enacted and strip-building halts while what has been built of the current strip rasters, which now make up one of multiple strip *segments*, are written to disk as in step (6) (with the exception of a segment break detected in the queueing process in step (1), where processing simply begins with a partial queue). All scenes that were either skipped or successfully added to the saved strip are then removed from the processing queue and the strip-building process begins again at step (1) with the reduced queue and an incremented strip segment number. *In the worst case, there can be N number of output strip segments for N number of input scenes matching the same strip-pair ID.*
+
+
+### Step 3/4: Merging of scenes into strip segment(s)
+If you've read everything up to this point, (1) you are awesome and (2) you should be a bit confused by the title of this "Step 3/4" because you would expect the strip-building process to be complete after completion of the sub-steps outlined in "Step 3: Scene ordering and coregistration". The problem is this: What if you want the same strip coregistration and merging process applied as in Step 3, but without the masking out of "bad data" (which *may not* be bad in actuality) in the output strip rasters?
+
+It turns out the easiest way to modify the scenes2strips routine to support the creation of "unfiltered" strips was to barely change it at all and simply run the routine twice: the first pass (the "coregistration step") gets the scene ordering and corresponding offset values from coregistration, then a second pass (the "mosaicking step") applies the same scene ordering and offset correction to scenes with different filtering options applied (specified by script options `--nowater` and/or `--nocloud`). (A modification that would allow for creating unfiltered strips in a single pass would either require significantly more memory or smarter memory management.) With the script argument `--save-coreg-step` you may choose to save the results of the first pass in full (by specifying `--save-coreg-step=all`) or only the metadata text files (with `--save-coreg-step=meta`).
+
+If you have already created *filtered* strips during an earlier run of the program and would like to use the same ordering and offset values to create unfiltered strips, you can do so by providing the `--meta-trans-dir` script argument. This will allow the program to skip the coregistration step and go straight to the mosaicking step. Beware that if the program runs into any unplanned segment breaks for a particular strip during a run with this argument, all remaining segments for that strip will be run through both the coregistration and mosaicking steps.
+
+While it is not recommended, it is possible to turn off filtering during the coregistration step and essentially roll both the coregistration and mosaicking steps into one by providing the `--nofilter-coreg` option. See the "Commentary on script arguments" section below for more details on usage of this option.
+
+**Note:** If you are unsure if you will want filtered and/or unfiltered strips, it is computationally cheaper to create unfiltered strips first. If you are not tight on disk space and can spare generating the two sets of strips in a single run, use the `--save-coreg-step=all` option. Otherwise, you can use the `batch_mask.py` script included in the root directory of the repo (alongside `batch_scenes2strips.py`) to apply the water and/or cloud filter(s) saved in the *bitmask.tif* raster files to mask out the corresponding pixels in the strip (or scene) result rasters and quickly generate a new set of filtered results that way.
+
 
 ### Completion of strip processing and creation of the *.fin* file
-(text)
+It is possible for all data to be masked out in every scene for a particular strip, resulting in no output strip rasters being created. It is also possible for the writing of output strip files to fail due to program interruption/termination. Because the possibility of these cases occurring during batch runs of the scenes2strips program on potentially thousands of strips (which we do at PGC) is very much nonzero, a short and sweet *{strip-pair ID}.fin* file with no contents at all is created in the strip destination directory at the end of processing each strip-pair ID. The purpose of this file's existence is simply to let the user know with confidence that processing of the indicated strip-pair ID ran to completion.
+
 
 ### Notes on batch job submission to scheduler
-(text)
+Use the `--scheduler` script argument to submit to your system's job scheduler the processing of all strip-pair IDs found in the source directory, each as a separate job. Currently, only the PBS and SLURM job schedulers are supported. You may BYOJS(job script) using the `--jobscript` argument, but certain conditions apply that are stated in the "Commentary on script arguments" section below. Otherwise, a default jobscript will be selected from the 'jobscripts' folder in the repo root directory that corresponds to this script and the indicated scheduler type.
+
+**Note:** Provide the `--email` option to have an email sent to you when the last submitted job in the batch either completes or errors out. Just providing `--email` invokes the scheduler's internal mail option for the submitted job, but you can also specify an email address to send an additional email to the provided address using Python standard libraries to send the email (with an error trace in the email’s body if something went wrong). You don’t need to be running the batch with a job scheduler for the latter email to attempt to send.
+
 
 ### Commentary on script arguments
 
@@ -135,7 +204,7 @@ optional arguments:
 * `--nofilter-coreg` :: By default, all filters (edge, water, and cloud) are applied during the coregistration step with the assumption that the filters remove only bad data and lead to a better coregistration. If the filters are instead removing more good data than bad data, a better coregistration may be achieved by providing this argument to turn off the offending filters during the coregistration step. (Note that the edge filter must be applied in both the coregistration and mosaicking steps because it is known that DEMs produced by SETSM have a border of bad data around their edges that needs to be cropped off before merging.)
 * `--save-coreg-step` :: When the scenes2strips process is split into separate coregistration and mosaicking steps due to providing `--nowater`/`--nocloud`, this option allows for caching the results of the coregistration step. Set this option to `all` if you want the full unfiltered version of strip output in addition to a filtered version. Set it to `meta` if you want to make sure to have a backup of the translation values for `--meta-trans-dir` in case of a crash. Also note that the strip segment *meta.txt* files saved with this option will have different values for the the RMSE component of the "Mosaicking Alignment Statistics" than the output strip meta files saved in the `--dst` directory because the RMSE statistic is properly recalculated for the unfiltered version of the strip during the mosaicking step. For conditions on when this argument applies, see the `--help` text.
 * `--rmse-cutoff` :: After the iterative coregistration step is complete, the final RMSE value for the coregistration is reported. If that RMSE value is greater than the value specified by this argument, the scene that failed to register to the strip will become the start of a new strip segment.
-* `--scheduler` :: Currently only the PBS and SLURM job schedulers are supported. If you provide this argument, note that if you do not specify a particular PBS/SLURM jobscript to run with the `--jobscript` argument a default jobscript will be selected from the 'jobscripts' folder in the repo root directory that corresponds to this script and the indicated scheduler type.
+* `--scheduler` :: Currently, only the PBS and SLURM job schedulers are supported. If you provide this argument, note that if you do not specify a particular PBS/SLURM jobscript to run with the `--jobscript` argument a default jobscript will be selected from the 'jobscripts' folder in the repo root directory that corresponds to this script and the indicated scheduler type.
 * `--jobscript` :: REQUIREMENTS: The jobscript MUST (1) be readable by the provided `--scheduler` job scheduler type, (2) load the Python environment that includes all required packages as specified above under "Python package dependencies" before it (3) executes the main command that runs the script for a single `--stripid` by means of substituting the entire command into the jobscript through the environment variable `$p1`.
 * `--logdir` :: If this argument is NOT provided and you are using the default jobscripts from this repo, the default output log file directory for SLURM is the directory where the command to run the script was submitted, while for PBS it is the `$HOME` directory of the user who submitted the command.
 * `--email` :: If this option is provided (with or without an email address) and you are using the default jobscripts from this repo, an email will be sent to the email address tied to your user account upon end or abort of ONLY the job that was submitted last in the batch (to avoid spamming you with emails). This relies on the the mail option provided by the selected job scheduler, which is not supported on every system. If an email address is also provided with this option, an additional email will be sent upon end or error of the last submitted task/job using `email.mime.text.MIMEText` with `smtplib` from the Python Standard Library. 
@@ -546,9 +615,36 @@ Processing strip-pair ID: WV01_20170717_102001006264A100_1020010066A25800, 15 sc
 ```
 After this run is complete, the unfiltered set of strip results is located in `/home/ehusby/scratch/data/setsm_results/strips/2m`. The location of the filtered set of (intermediate, yet complete) strip results was set automatically as `/home/ehusby/scratch/data/setsm_results/strips/2m_coreg_filt111`.
 
+**Note 1:** The `--dst` argument that specifies the strip output directory doesn’t need to be provided; if it is not provided, an attempt will be made to automatically derive a destination directory from the `src` directory path by replacing the last instance of `'tif_results'` in the `src` path with `'strips'`.
+
+**Note 2:** The "_filtXXX" naming convention as a suffix for the `--dst` destination directory in the example command `python batch_scenes2strips.py ~/scratch/data/setsm_results/tif_results/2m/ 2 --nowater --nocloud --dst ~/scratch/data/setsm_results/strips/2m_filt001 --meta-trans-dir ~/scratch/data/setsm_results/strips/2m/ --dryrun` corresponds to the filtering options applied in that run as they may be interpreted from the *bitmask.tif* scene/strip component raster files. See the bonus section "The bitmask.tif raster, explained" below for more information about the bitmask raster specifics.
+
+**Note 3:** If you are creating both filtered and unfiltered versions of strips and lose track of which is which (it is to prevent this that the "_filtXXX" naming convention is advised), this information is stored in the strip *meta.txt* result files. In the "Filtering Applied" section of the text file, the "bit" index and corresponding filter "class" is listed along with a value of "1" if the filter was applied during the "coreg"/"mosaic" coregistration/mosaicking step or a value of "0" if it was not applied.
+
+
+### The *bitmask.tif* raster, explained
+This is a UInt8 bitmask raster in which the three least significant bits (LSB) X-X-X (rightmost being the least significant bit) correspond to the presence of Cloud-Water-Edge components of the mask, respectively. When interpreting the pixel values in base 10, this means 0=good data, 1=edge, 2=water, 4=cloud, with integers in-between and up to 7 (1-1-1 in binary) meaning that pixel is covered by a combination of the three components. A lookup table is provided below.
+
+Using this mask, the water and/or cloud filters as they are computed for each scene/strip during the filtering step of the scenes2strips program can optionally be applied to any (unfiltered) strip (or scene) DEMs after they have been created, using the `batch_mask.py` script. The edge component of the mask is always applied in both the coregistration and mosaicking steps of the scenes2strips program because currently bad data is always present on the edges of the scene DEMs when they come out of SETSM.
+
+|   | **Bit Values** |   |   |
+| --- | --- | --- | --- |
+| **Bit Index (zero-based, from LSB)** | 3-7 | 2 | 1 | 0 |   |   |
+| **Bit Indication** | Not used | Cloud | Water | Edge | **Decimal Value** | **Interpretation** |
+|   | 00000 | 0 | 0 | 0 | 0 | &quot;Good data&quot; |
+|   | 00000 | 0 | 0 | 1 | 1 | Bad edge data |
+|   | 00000 | 0 | 1 | 0 | 2 | Water |
+|   | 00000 | 0 | 1 | 1 | 3 | Water and edge |
+|   | 00000 | 1 | 0 | 0 | 4 | Cloud |
+|   | 00000 | 1 | 0 | 1 | 5 | Cloud and edge |
+|   | 00000 | 1 | 1 | 0 | 6 | Cloud and water |
+|   | 00000 | 1 | 1 | 1 | 7 | Cloud, water, and edge |
+
+
 
 ## batch_mask.py
 Documentation forthcoming.
+
 
 
 ## diff_strips.py (WIP)

@@ -13,6 +13,8 @@ PROJREF_POLAR_STEREO = """PROJCS["unnamed",GEOGCS["WGS 84",DATUM["WGS_1984",SPHE
 RASTER_DEFAULT_PROJREF = PROJREF_POLAR_STEREO
 
 
+gdal.UseExceptions()
+
 class RasterIOError(Exception):
     def __init__(self, msg=""):
         self.msg = msg

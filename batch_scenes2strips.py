@@ -137,6 +137,10 @@ class MetaReadError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
+class ExternalError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
 
 @contextlib.contextmanager
 def capture_stdout_stderr():
@@ -908,8 +912,15 @@ def saveStripBrowse(strip_demFile, demSuffix):
         print(cmd)
         batch_handler.exec_cmd(cmd)
 
-    if os.path.isfile(strip_demFile_10m):
-        os.remove(strip_demFile_10m)
+    if not os.path.isfile(strip_demFile_10m):
+        raise ExternalError("`gdal_translate` program did not create "
+                            "output 10m strip DEM file: {}".format(strip_demFile_10m))
+    if not os.path.isfile(strip_demFile_browse):
+        raise ExternalError("`gdaldem hillshade` program did not create "
+                            "output 10m DEM hillshade file: {}".format(strip_demFile_browse))
+
+#     if os.path.isfile(strip_demFile_10m):
+#         os.remove(strip_demFile_10m)
 
 
 def getDemSuffix(demFile):

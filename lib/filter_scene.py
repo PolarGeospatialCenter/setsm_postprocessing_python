@@ -1454,11 +1454,11 @@ def getCloudMask(dem_array, ortho_array, data_density_map, edge_mask=None,
     stdev_thresh = None
     if percentile_diff <= 40:
         stdev_thresh = 10.5
-    elif 40 < percentile_diff <= 50:
+    elif percentile_diff <= 50:
         stdev_thresh = 15
-    elif 50 < percentile_diff <= 75:
+    elif percentile_diff <= 75:
         stdev_thresh = 19
-    elif 75 < percentile_diff <= 100:
+    elif percentile_diff <= 100:
         stdev_thresh = 27
     elif percentile_diff > 100:
         stdev_thresh = 50
@@ -1732,9 +1732,9 @@ def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_ve
 
     if field_wvc1_name not in meta:
         meta[field_wvc1_name] = 1 if satID in ('WV01', 'WV02') else 0
-    elif satID in ('WV01', 'WV02') and meta[field_wvc1_name] != 1:
-        raise MetadataError("Scene metadata file ({}); Image 1 has satID {} but meta says"
-                            "{}={}, should be =1?".format(metaFile, satID, field_wvc1_name, meta[field_wvc1_name]))
+    # elif satID in ('WV01', 'WV02') and meta[field_wvc1_name] != 1:
+    #     raise MetadataError("Scene metadata file ({}); Image 1 has satID {} but meta says"
+    #                         "{}={}, should be =1?".format(metaFile, satID, field_wvc1_name, meta[field_wvc1_name]))
 
     if meta[field_wvc1_name] == 1:
         meta_fieldname_xmltag_dict[field_max1_name] = None

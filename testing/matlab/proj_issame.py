@@ -8,15 +8,15 @@ import gdal
 import osr
 
 
-srs_base = None
+gdal.UseExceptions()
 
 
 items = sys.argv[1:]
+srs_base = None
 
 for item in items:
 
     srs_compare = osr.SpatialReference()
-
 
     if os.path.isfile(item):
         rasterFile = item
@@ -30,7 +30,6 @@ for item in items:
     else:
         proj4_str = item
         srs_compare.ImportFromProj4(proj4_str)
-
 
     if srs_base is None:
         srs_base = srs_compare
