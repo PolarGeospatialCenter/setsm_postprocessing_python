@@ -627,10 +627,10 @@ This is a UInt8 bitmask raster in which the three least significant bits (LSB) X
 
 Using this mask, the water and/or cloud filters as they are computed for each scene/strip during the filtering step of the scenes2strips program can optionally be applied to any (unfiltered) strip (or scene) DEMs after they have been created, using the `batch_mask.py` script. The edge component of the mask is always applied in both the coregistration and mosaicking steps of the scenes2strips program because currently bad data is always present on the edges of the scene DEMs when they come out of SETSM.
 
-|   | Span <td colspan=4>**Bit Values** |   |   |
-| --- | --- | --- | --- | --- | --- | --- |
 | **Bit Index (zero-based, from LSB)** | 3-7 | 2 | 1 | 0 |   |   |
-| **Bit Indication** | Not used | Cloud | Water | Edge | **Decimal Value** | **Interpretation** |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Bit Indication** | Not used | Cloud | Water | Edge |   |   |
+|   | **Bit Value** | **Bit Value** | **Bit Value** | **Bit Value** | **Decimal Value** | **Interpretation** |
 |   | 00000 | 0 | 0 | 0 | 0 | &quot;Good data&quot; |
 |   | 00000 | 0 | 0 | 1 | 1 | Bad edge data |
 |   | 00000 | 0 | 1 | 0 | 2 | Water |
