@@ -4,13 +4,20 @@
 
 from __future__ import division
 import argparse
+import contextlib
 import copy
 import functools
 import glob
 import os
+import platform
+import smtplib
 import subprocess
 import sys
+import traceback
+from email.mime.text import MIMEText
 from time import sleep
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
 
 import numpy as np
 
@@ -30,6 +37,7 @@ SCRIPT_FILE = os.path.realpath(__file__)
 SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
+SCRIPT_RUNCMD = ' '.join(sys.argv)+'\n'
 
 ##############################
 
@@ -39,10 +47,12 @@ SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 ARGSTR_SRC = 'src'
 ARGSTR_DSTDIR = '--dstdir'
 ARGSTR_SRC_SUFFIX = '--src-suffix'
+ARGSTR_DST_SUFFIX = '--dst-suffix'
 ARGSTR_DST_NODATA = '--dst-nodata'
 ARGSTR_EDGE = '--edge'
 ARGSTR_WATER = '--water'
 ARGSTR_CLOUD = '--cloud'
+ARGSTR_OVERWRITE = '--overwrite'
 ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_TASKS_PER_JOB = '--tasks-per-job'
@@ -94,6 +104,19 @@ class InvalidArgumentError(Exception):
         super(Exception, self).__init__(msg)
 
 
+@contextlib.contextmanager
+def capture_stdout_stderr():
+    oldout, olderr = sys.stdout, sys.stderr
+    out = [StringIO(), StringIO()]
+    try:
+        sys.stdout, sys.stderr = out
+        yield out
+    finally:
+        sys.stdout, sys.stderr = oldout, olderr
+        out[0] = out[0].getvalue()
+        out[1] = out[1].getvalue()
+
+
 class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
 
 def argtype_path_handler(path, argstr,
@@ -111,6 +134,7 @@ def argtype_path_handler(path, argstr,
     return abspath_fn(path) if abspath_fn is not None else path
 
 ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
+ARGTYPE_BOOL_PLUS = functools.partial(functools.partial, batch_handler.argtype_bool_plus)
 
 def argparser_init():
 
@@ -149,7 +173,7 @@ def argparser_init():
             existcheck_reqval=False),
         help=' '.join([
             "Path to destination directory for output masked raster(s)",
-            "(default is directory of `{}`).".format(ARGSTR_SRC)
+            "(default is directory of argument {}).".format(ARGSTR_SRC)
         ])
     )
     parser.add_argument(
@@ -166,6 +190,19 @@ def argparser_init():
             "\nIf the source raster does not have a set NoData value, masking of that",
             "raster will be skipped.",
             "\n"
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_DST_SUFFIX,
+        type=str,
+        default=None,
+        help=' '.join([
+            "Suffix appended to filename of output masked rasters."
+            "\nWorks like 'src-raster-fname.tif' -> 'src-raster-fname_[DST_SUFFIX].tif'.",
+            "\nIf not provided, the default output suffix is 'maskXXX', where [XXX] is the",
+            "bit-code corresponding to the filter components ([cloud, water, edge], respectively)",
+            "applied in the masking for this run with the (-c, -w, -e) mask filter options."
+            "\nProvide an empty string ('') with  "
         ])
     )
     parser.add_argument(
@@ -204,6 +241,12 @@ def argparser_init():
         ARGSTR_CLOUD, '-c',
         action='store_true',
         help="Apply cloud filter."
+    )
+
+    parser.add_argument(
+        ARGSTR_OVERWRITE,
+        action='store_true',
+        help="Overwrite existing output rasters."
     )
 
     parser.add_argument(
@@ -261,8 +304,10 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_EMAIL,
-        action='store_true',
-        help="Send email to user upon END or ABORT of the LAST job of batch submitted to scheduler."
+        type=ARGTYPE_BOOL_PLUS(
+            parse_fn=str),
+        nargs='?',
+        help="Send email to user upon end or abort of the LAST SUBMITTED task."
     )
 
     parser.add_argument(
@@ -279,7 +324,7 @@ def main():
     # Invoke argparse argument parsing.
     arg_parser = argparser_init()
     try:
-        args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, SCRIPT_FILE)
+        args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, SCRIPT_FILE, sys.argv)
     except InvalidArgumentError as e:
         arg_parser.error(e)
 
@@ -308,6 +353,10 @@ def main():
     if args.get(ARGSTR_DSTDIR) is None:
         args.set(ARGSTR_DSTDIR, src if os.path.isdir(src) else os.path.dirname(src))
         print("argument {} set automatically to: {}".format(ARGSTR_DSTDIR, args.get(ARGSTR_DSTDIR)))
+
+    if args.get(ARGSTR_DST_SUFFIX) is None:
+        args.set(ARGSTR_DST_SUFFIX, 'mask'+get_mask_bitstring(*args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)))
+        print("argument {} set automatically to: {}".format(ARGSTR_DST_SUFFIX, args.get(ARGSTR_DST_SUFFIX)))
 
     if args.get(ARGSTR_SCHEDULER) is not None:
         if args.get(ARGSTR_JOBSCRIPT) is None:
@@ -352,7 +401,7 @@ def main():
             src_raster_dir = os.path.dirname(src_raster)
             src_raster_fname = os.path.basename(src_raster)
             beg, end = 0, len(src_raster_fname)
-            end = float('inf')
+            end = None
             while end != -1:
                 end = src_raster_fname.rfind('_', beg, end)
                 if os.path.isfile(os.path.join(src_raster_dir, '{}_{}'.format(src_raster_fname[beg:end], BITMASK_SUFFIX))):
@@ -379,9 +428,6 @@ def main():
 
     elif os.path.isdir(src):
         srcdir = src
-        if suffix_maskval_dict is None:
-            arg_parser.error("{} option must be provided when argument {} is a directory".format(
-                             ARGSTR_SRC_SUFFIX, ARGSTR_SRC))
         src_bitmasks = glob.glob(os.path.join(srcdir, '*_{}'.format(BITMASK_SUFFIX)))
         src_bitmasks.sort()
 
@@ -389,25 +435,40 @@ def main():
         arg_parser.error("argument {} must be a path to either a directory or a file, "
                          "but was '{}'".format(ARGSTR_SRC, src))
 
+    if suffix_maskval_dict is not None:
+        # Build processing list by only adding bitmasks for which
+        # an output masked raster image(s) with the specified mask settings
+        # does not already exist in the destination directory.
+        src_suffixes = suffix_maskval_dict.keys()
+
+        masks_to_apply = []
+        for maskFile in src_bitmasks:
+            for rasterSuffix in src_suffixes:
+                src_rasterFile = maskFile.replace(BITMASK_SUFFIX, rasterSuffix)
+                dst_rasterFile = get_dstFile(maskFile, rasterSuffix, args)
+                if os.path.isfile(src_rasterFile) and (not os.path.isfile(dst_rasterFile) or args.get(ARGSTR_OVERWRITE)):
+                    masks_to_apply.append(maskFile)
+                    break
+    else:
+        masks_to_apply = src_bitmasks
+
     print("-----")
-    print("[Raster Suffix, Masking Value]")
-    for suffix, maskval in suffix_maskval_dict.items():
-        print("{}, {}".format(suffix, maskval if maskval is not None else 'source NoDataVal'))
+    print(
+"""Selected bitmask components to mask:
+[{}] EDGE
+[{}] WATER
+[{}] CLOUD""".format(
+    *['X' if opt is True else ' ' for opt in args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)]
+    ))
+    print("Output file suffix: {}".format(args.get(ARGSTR_DST_SUFFIX)))
+
     print("-----")
 
-    # Build processing list by only adding bitmasks for which
-    # an output masked raster image(s) with the specified mask settings
-    # does not already exist in the destination directory.
-    src_suffixes = suffix_maskval_dict.keys()
-    masking_bitstring = get_mask_bitstring(*args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD))
-    masks_to_apply = []
-    for maskFile in src_bitmasks:
-        for rasterSuffix in src_suffixes:
-            src_rasterFile = maskFile.replace(BITMASK_SUFFIX, rasterSuffix)
-            dst_rasterFile = get_dstFile(args.get(ARGSTR_DSTDIR), maskFile, rasterSuffix, masking_bitstring)
-            if os.path.isfile(src_rasterFile) and not os.path.isfile(dst_rasterFile):
-                masks_to_apply.append(maskFile)
-                break
+    if suffix_maskval_dict is not None:
+        print("[Raster Suffix, Masking Value]")
+        for suffix, maskval in suffix_maskval_dict.items():
+            print("{}, {}".format(suffix, maskval if maskval is not None else '(source NoDataVal)'))
+        print("-----")
 
     num_tasks = len(masks_to_apply)
 
@@ -455,10 +516,9 @@ def main():
             job_num += 1
 
             args_single.set(ARGSTR_SRC, srcfp)
-            cmd_single = args_single.get_cmd()
-
             if last_job_email and job_num == num_jobs:
-                args_single.set(ARGSTR_EMAIL, True)
+                args_single.set(ARGSTR_EMAIL, last_job_email)
+            cmd_single = args_single.get_cmd()
 
             job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
             cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
@@ -471,12 +531,50 @@ def main():
                 subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
 
     else:
-        # Process masks in serial.
+        error_trace = None
+        try:
+            # Process masks in serial.
 
-        for i, maskFile in enumerate(masks_to_apply):
-            print("Mask ({}/{}): {}".format(i+1, num_tasks, maskFile))
-            if not args.get(ARGSTR_DRYRUN):
-                mask_rasters(args.get(ARGSTR_DSTDIR), maskFile, suffix_maskval_dict, args)
+            for i, maskFile in enumerate(masks_to_apply):
+                print("Mask ({}/{}): {}".format(i+1, num_tasks, maskFile))
+                if not args.get(ARGSTR_DRYRUN):
+                    mask_rasters(maskFile, suffix_maskval_dict, args)
+
+        except KeyboardInterrupt:
+            raise
+
+        except:
+            with capture_stdout_stderr() as out:
+                traceback.print_exc()
+            caught_out, caught_err = out
+            error_trace = caught_err
+            print(error_trace)
+
+        if type(args.get(ARGSTR_EMAIL)) is str:
+            # Send email notification of script completion.
+
+            email_body = SCRIPT_RUNCMD
+
+            if error_trace is not None:
+                email_status = "ERROR"
+                email_body += "\n{}\n".format(error_trace)
+            else:
+                email_status = "COMPLETE"
+
+            email_subj = "{} - {}".format(email_status, SCRIPT_FNAME)
+            platform_node = platform.node()
+
+            # subprocess.call('echo "{}" | mail -s "{}" {}'.format(email_body, email_subj, email_addr), shell=True)
+            msg = MIMEText(email_body)
+            msg['Subject'] = email_subj
+            msg['From'] = platform_node if platform_node is not None else 'your-computer'
+            msg['To'] = args.get(ARGSTR_EMAIL)
+            s = smtplib.SMTP('localhost')
+            s.sendmail(args.get(ARGSTR_EMAIL), [args.get(ARGSTR_EMAIL)], msg.as_string())
+            s.quit()
+
+        if error_trace is not None:
+            sys.exit(1)
 
 
 def get_mask_bitstring(edge, water, cloud):
@@ -493,20 +591,26 @@ def get_mask_bitstring(edge, water, cloud):
     return bitstring
 
 
-def get_dstFile(dstDir, maskFile, rasterSuffix, masking_bitstring):
+def get_dstFile(maskFile, rasterSuffix, args):
     dstFname_prefix, dstFname_ext = os.path.splitext(
         os.path.basename(maskFile).replace(BITMASK_SUFFIX, rasterSuffix))
-    dstFname = '{}_mask{}{}'.format(dstFname_prefix, masking_bitstring, dstFname_ext)
-    dstFile = os.path.join(dstDir, dstFname)
+    dstFname = '{}{}{}'.format(
+        dstFname_prefix, '_'+args.get(ARGSTR_DST_SUFFIX) if args.get(ARGSTR_DST_SUFFIX) != '' else '', dstFname_ext)
+    dstFile = os.path.join(args.get(ARGSTR_DSTDIR), dstFname)
     return dstFile
 
 
-def mask_rasters(dstDir, maskFile, suffix_maskval_dict, args):
+def mask_rasters(maskFile, suffix_maskval_dict, args):
 
-    masking_bitstring = get_mask_bitstring(*args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD))
     nodata_opt = args.get(ARGSTR_DST_NODATA)
 
-    if int(masking_bitstring) > 0:
+    if suffix_maskval_dict is None:
+        maskFile_base = maskFile.replace(BITMASK_SUFFIX, '')
+        suffix_maskval_dict = {src_rasterFile.replace(maskFile_base, ''): None
+                               for src_rasterFile in glob.glob(maskFile_base+'*.tif')
+                               if not src_rasterFile.endswith(BITMASK_SUFFIX)}
+
+    if True in args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD):
         # Read in mask raster, then unset bits that will not be used to mask.
         mask_select, mask_x, mask_y = rat.extractRasterData(maskFile, 'z', 'x', 'y')
         mask_ones = np.ones_like(mask_select)
@@ -526,25 +630,28 @@ def mask_rasters(dstDir, maskFile, suffix_maskval_dict, args):
     # Make list for downsampled mask array "pyramids"
     # that may be built on-the-fly.
     mask_pyramids = [mask_select]
+    mask_pyramid_current = mask_pyramids[0]
 
     # Apply mask to source raster images and save results.
     for src_suffix, maskval in suffix_maskval_dict.items():
 
         src_rasterFile = maskFile.replace(BITMASK_SUFFIX, src_suffix)
-        dst_rasterFile = get_dstFile(dstDir, maskFile, src_suffix, masking_bitstring)
+        dst_rasterFile = get_dstFile(maskFile, src_suffix, args)
 
         if not os.path.isfile(src_rasterFile):
             print("Source raster does not exist: {}".format(src_rasterFile))
             continue
         if os.path.isfile(dst_rasterFile):
             print("Output raster already exists: {}".format(dst_rasterFile))
-            continue
+            if not args.get(ARGSTR_OVERWRITE):
+                continue
 
         print("Masking source raster ({}) to output raster ({})".format(src_rasterFile, dst_rasterFile))
 
         # Read in source raster.
-        dst_array, dst_x, dst_y, src_nodataval = rat.extractRasterData(
-            src_rasterFile, 'z', 'x', 'y', 'nodata_val')
+        dst_array, src_nodataval = rat.extractRasterData(src_rasterFile, 'array', 'nodata_val')
+
+        print("Source NoData value: {}".format(src_nodataval))
 
         # Set masking value to source NoDataVal if necessary.
         if maskval is None:
@@ -555,22 +662,22 @@ def mask_rasters(dstDir, maskFile, suffix_maskval_dict, args):
             else:
                 maskval = src_nodataval
 
-        if mask_select is not None:
+        print("Masking value: {}".format(maskval))
+
+        if mask_pyramid_current is not None:
             # Apply mask.
-            if mask_select.shape != dst_array.shape:
+            if mask_pyramid_current.shape != dst_array.shape:
                 # See if the required mask pyramid level has already been built.
-                mask_select = None
+                mask_pyramid_current = None
                 for arr in mask_pyramids:
                     if arr.shape == dst_array.shape:
-                        mask_select = arr
+                        mask_pyramid_current = arr
                         break
-                if mask_select is None:
+                if mask_pyramid_current is None:
                     # Build the required mask pyramid level and add to pyramids.
-                    mask_select = rat.interp2_gdal(
-                        mask_x, mask_y, mask_select, dst_x, dst_y,
-                        'nearest', extrapolate=True).astype(np.bool)
-                    mask_pyramids.append(mask_select)
-            dst_array[mask_select] = maskval
+                    mask_pyramid_current = rat.imresize(mask_select, dst_array.shape, interp='nearest')
+                    mask_pyramids.append(mask_pyramid_current)
+            dst_array[mask_pyramid_current] = maskval
 
         # Handle nodata options.
         if nodata_opt == ARGCHO_DST_NODATA_SAME:
@@ -587,6 +694,8 @@ def mask_rasters(dstDir, maskFile, suffix_maskval_dict, args):
             dst_nodataval = maskval
         elif nodata_opt == ARGCHO_DST_NODATA_UNSET:
             dst_nodataval = None
+
+        print("Output NoData value: {}".format(dst_nodataval))
 
         # Save output masked raster.
         rat.saveArrayAsTiff(dst_array, dst_rasterFile,
