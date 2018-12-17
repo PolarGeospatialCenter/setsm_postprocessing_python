@@ -19,7 +19,7 @@ import numpy as np
 from scipy import ndimage as sp_ndimage
 
 from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag
-from testing.test import TESTDIR, saveImage
+from testing import TESTDIR
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
 else:
@@ -280,6 +280,7 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
                                                  "does not match coverage of official binary mask array")
                 except MaskComponentError:
                     print("Saving mask coverage arrays in question for inspection")
+                    from testing.test import saveImage
                     saveImage(mask_bin, demFname.replace(demSuffix, mask_version+'_binary.tif'), overwrite=True)
                     saveImage(mask_comp.astype(np.bool), demFname.replace(demSuffix, mask_version+'_components.tif'), overwrite=True)
                     raise

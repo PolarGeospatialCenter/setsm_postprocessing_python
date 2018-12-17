@@ -75,7 +75,7 @@ SETSM DEMs often contain "blunders" -- areas of bad data that result from the pr
 * Around the edges of the scene, there will almost always be a thin border (with more or less straight internal edges) of bad data with a steep slope up or down from the edges of the scene to the region of good data. This border of bad data must be removed before merging.
 * The dark and glossy nature of water, combined with random reflection effects from waves that change randomly between collects, causes areas of water cover in a scene DEM to contain random bad data.
 * Cloud cover (such as opaque "popcorn" clouds) can cause bad data to show up in otherwise good DEMs. SETSM has been shown to create decent DEMs when looking through fog and other semi-transparent cloud cover, but they usually have a blanket of error shown as an artificial rough appearance. It should also be noted that it is possible for cloud cover to change between stereo collects, though usually the small time difference of ~2 minutes is too small of a window for effects of cloud movement to be apparent.
-* Areas in shadow are generally too dark (too low bit-depth) for SETSM to perform well in its pattern-matching. The inside of shadow-covered areas may show up in the DEM with artificial (erroneous) roughness similar to fog-covered areas, and the edges of shadow-covered areas will often show up as a apparent discontinuities (jumps) in the DEM.
+* Areas in shadow are generally too dark (too low bit-depth) for SETSM to perform well in its pattern-matching. The inside of shadow-covered areas may show up in the DEM with artificial (erroneous) roughness similar to fog-covered areas, and the edges of shadow-covered areas will often show up as apparent discontinuities (jumps) in the DEM.
 
 To attempt to identify bad data, a filtering method that is based on thresholding of the scene DEM, matchtag, and ortho image (in the OSU-PGC processing scheme, the ortho is always the "left" or first input image to the SETSM program) as follows:
 
@@ -93,7 +93,7 @@ To attempt to identify bad data, a filtering method that is based on thresholdin
 
 When it comes time to load the mask into the scene merging part of the program (in either the coregistration or mosaicking steps) a final post-processing step of the flattened mask (with particular toggling of water and cloud filters for the current run of the program) is to fill voids ("good data" in this context) with total # of pixels < `500 * (8 / image_res)**2`.
 
-***Important!***  Scene `*(bit)mask.tif` files are always created during the filtering step of the program and are stored alongside the scene files in the `src` scene directory, so make sure you have write permission for `src`.  These masks are also mosaicked together so that strip `*(bit)mask.tif` files are created and stored in the `dst` directory alongside strip results.
+***Important!***  Scene *(bit)mask.tif* files are always created during the filtering step of the program and are stored alongside the scene files in the `src` scene directory, so make sure you have write permission for `src`.  These masks are also mosaicked together so that strip `*(bit)mask.tif` files are created and stored in the `dst` directory alongside strip results.
 
 
 ### Step 3: Scene ordering and coregistration
@@ -151,7 +151,7 @@ Filters scene DEMs in a source directory, then mosaics them into strips and save
 Batch work is done in units of strip-pair IDs, as parsed from scene dem filenames (see --stripid argument for how this is parsed).
 
 positional arguments:
-  src                   Path to source directory containing scene DEMs to process. If --dst is not specified, this path should contain the folder 'tif_results'.
+  src                   Path to source directory containing scene DEMs to process. If --dst is not specified, this path should contain the folder 'tif_results'. The range of source scenes worked on may be limited with the --stripid argument.
   res                   Resolution of target DEMs in meters.
 
 optional arguments:
@@ -187,10 +187,11 @@ optional arguments:
                         Script to run in job submission to scheduler. (default scripts are found in /mnt/pgc/data/scratch/erik/repos/setsm_postprocessing_python/jobscripts) (default: None)
   --logdir LOGDIR       Directory to which standard output/error log files will be written for batch job runs. 
                         If not provided, default scheduler (or jobscript #CONDOPT_) options will be used. 
-                        **Note that due to implementation difficulties, this directory will also become the working directory for the job process. Since relative path inputs are always changed to absolute paths in this script, this should not be an issue. (default: None)
+                        **Note:** Due to implementation difficulties, this directory will also become the working directory for the job process. Since relative path inputs are always changed to absolute paths in this script, this should not be an issue. (default: None)
   --email [EMAIL]       Send email to user upon end or abort of the LAST SUBMITTED task. (default: None)
   --dryrun              Print actions without executing. (default: False)
-  --stripid STRIPID     Run filtering and mosaicking for a single strip with strip-pair ID as parsed from scene DEM filenames using the following regex: '(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$' (default: None)
+  --stripid STRIPID     Run filtering and mosaicking for a single strip with strip-pair ID as parsed from scene DEM filenames using the following regex: '(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$' 
+                        A text file containing a list of strip-pair IDs, each on a separate line,may instead be provided for batch processing of select strips. (default: None)
   ```
 
 * `src` :: In the OSU-PGC processing scheme, this is a path to a `*/tif_results/8m` or `*/tif_results/2m` folder for 8-meter or 2-meter DEMs, respectively. For 50-centimeter processing, it doesn't matter if the name of the lowest folder is "50cm" or "0.5m" or whatever.

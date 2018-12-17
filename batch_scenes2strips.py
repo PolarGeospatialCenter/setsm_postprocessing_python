@@ -196,7 +196,8 @@ def argparser_init():
             existcheck_reqval=True),
         help=' '.join([
             "Path to source directory containing scene DEMs to process.",
-            "If {} is not specified, this path should contain the folder 'tif_results'.".format(ARGSTR_DST)
+            "If {} is not specified, this path should contain the folder 'tif_results'.".format(ARGSTR_DST),
+            "The range of source scenes worked on may be limited with the {} argument.".format(ARGSTR_STRIPID)
         ])
     )
     parser.add_argument(
@@ -356,7 +357,7 @@ def argparser_init():
         help=' '.join([
             "Directory to which standard output/error log files will be written for batch job runs.",
             "\nIf not provided, default scheduler (or jobscript #CONDOPT_) options will be used.",
-            "\n**Note that due to implementation difficulties, this directory will also become the",
+            "\n**Note:** Due to implementation difficulties, this directory will also become the",
             "working directory for the job process. Since relative path inputs are always changed",
             "to absolute paths in this script, this should not be an issue."
         ])
@@ -379,7 +380,9 @@ def argparser_init():
         ARGSTR_STRIPID,
         help=' '.join([
             "Run filtering and mosaicking for a single strip with strip-pair ID",
-            "as parsed from scene DEM filenames using the following regex: '{}'".format(RE_STRIPID_STR)
+            "as parsed from scene DEM filenames using the following regex: '{}'".format(RE_STRIPID_STR),
+            "\nA text file containing a list of strip-pair IDs, each on a separate line,"
+            "may instead be provided for batch processing of select strips."
         ])
     )
 
@@ -480,9 +483,9 @@ def main():
         arg_parser.error("argument {} must be greater than zero".format(ARGSTR_RMSE_CUTOFF))
 
 
-    # Create output directories if they don't already exist.
+    ## Create output directories if they don't already exist.
     if not args.get(ARGSTR_DRYRUN):
-        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, list(args.get(*ARGGRP_OUTDIR)))):
+        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, args.get(*ARGGRP_OUTDIR, list_single=True))):
             if dir_path is not None and not os.path.isdir(dir_path):
                 print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
                 os.makedirs(dir_path)
@@ -539,10 +542,13 @@ def main():
 
         stripids = sorted(list(stripids))
 
-        # Check for existing strip output.
+
+        ## Create processing list.
+        ## Existence check. Filter out strips with existing .fin output file.
+        dstdir, res = args.get(ARGSTR_DST, ARGSTR_RES)
         stripids_to_process = [
             sID for sID in stripids if not os.path.isfile(
-                os.path.join(args.get(ARGSTR_DST), '{}_{}m.fin'.format(sID, args.get(ARGSTR_RES))))]
+                os.path.join(dstdir, '{}_{}m.fin'.format(sID, res)))]
         print("Found {}{} strip-pair IDs, {} unfinished".format(
             len(stripids), ' *'+demSuffix if demSuffix is not None else '', len(stripids_to_process)))
         if len(stripids_to_process) == 0:
@@ -550,10 +556,12 @@ def main():
             sys.exit(0)
         stripids_to_process.sort()
 
+
         # Pause for user review.
         wait_seconds = 5
         print("Sleeping {} seconds before task submission".format(wait_seconds))
         sleep(wait_seconds)
+
 
         ## Batch process each strip-pair ID.
 

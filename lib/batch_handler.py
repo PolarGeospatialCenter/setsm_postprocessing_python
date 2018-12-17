@@ -48,7 +48,7 @@ class ArgumentPasser:
     def __deepcopy__(self, memodict={}):
         return ArgumentPasser(self.parser, self.exe, self.script, self.sys_argv)
 
-    def get(self, *argstrs):
+    def get(self, *argstrs, list_single=False):
         if len(argstrs) < 1:
             raise InvalidArgumentError("One or more argument strings must be provided")
         argstrs_invalid = set(argstrs).difference(set(self.argstr2varstr))
@@ -56,7 +56,7 @@ class ArgumentPasser:
             raise InvalidArgumentError("This {} object does not have the following "
                                        "argument strings: {}".format(type(self).__name__, list(argstrs_invalid)))
         values = [self.vars_dict[self.argstr2varstr[argstr]] for argstr in argstrs]
-        if len(values) == 1:
+        if not list_single and len(values) == 1:
             values = values[0]
         return values
 

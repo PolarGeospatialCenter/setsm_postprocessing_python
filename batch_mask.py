@@ -297,7 +297,7 @@ def argparser_init():
         help=' '.join([
             "Directory to which standard output/error log files will be written for batch job runs.",
             "\nIf not provided, default scheduler (or jobscript #CONDOPT_) options will be used.",
-            "\n**Note that due to implementation difficulties, this directory will also become the",
+            "\n**Note:** Due to implementation difficulties, this directory will also become the",
             "working directory for the job process. Since relative path inputs are always changed",
             "to absolute paths in this script, this should not be an issue."
         ])
@@ -435,6 +435,8 @@ def main():
         arg_parser.error("argument {} must be a path to either a directory or a file, "
                          "but was '{}'".format(ARGSTR_SRC, src))
 
+
+    ## Create processing list.
     if suffix_maskval_dict is not None:
         # Build processing list by only adding bitmasks for which
         # an output masked raster image(s) with the specified mask settings
@@ -451,6 +453,7 @@ def main():
                     break
     else:
         masks_to_apply = src_bitmasks
+
 
     print("-----")
     print(
@@ -478,19 +481,21 @@ def main():
     if num_tasks == 0:
         sys.exit(0)
 
-    # Create output directories if they don't already exist.
-    if not args.get(ARGSTR_DRYRUN):
-        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, list(args.get(*ARGGRP_OUTDIR)))):
-            if dir_path is not None and not os.path.isdir(dir_path):
-                print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
-                os.makedirs(dir_path)
-
     # Pause for user review.
     print("-----")
     wait_seconds = 5
     print("Sleeping {} seconds before task submission".format(wait_seconds))
     sleep(wait_seconds)
     print("-----")
+
+
+    ## Create output directories if they don't already exist.
+    if not args.get(ARGSTR_DRYRUN):
+        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, args.get(*ARGGRP_OUTDIR, list_single=True))):
+            if dir_path is not None and not os.path.isdir(dir_path):
+                print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
+                os.makedirs(dir_path)
+
 
     ## Process masks.
 
