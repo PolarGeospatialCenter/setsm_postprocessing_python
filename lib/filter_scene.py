@@ -1682,6 +1682,7 @@ def readSceneMeta(metaFile, trying_repaired_version=False):
     # Get satID and check for cross track naming convention.
     try:
         satID = os.path.basename(meta['image_1'])[0:4].upper()
+        image_2 = meta['image_2']
     except KeyError as e:
         print(e)
         warn("Scene metadata file ({}) is missing key information".format(metaFile))
@@ -1733,9 +1734,6 @@ def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_ve
 
     if field_wvc1_name not in meta:
         meta[field_wvc1_name] = 1 if satID in ('WV01', 'WV02') else 0
-    # elif satID in ('WV01', 'WV02') and meta[field_wvc1_name] != 1:
-    #     raise MetadataError("Scene metadata file ({}); Image 1 has satID {} but meta says"
-    #                         "{}={}, should be =1?".format(metaFile, satID, field_wvc1_name, meta[field_wvc1_name]))
 
     if meta[field_wvc1_name] == 1:
         meta_fieldname_xmltag_dict[field_max1_name] = None
@@ -1771,7 +1769,6 @@ def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_ve
         if metaFile_repaired is not None:
             print("Reverting to original incomplete metadata file")
 
-    import glob
     image_1_metafile = None
     for pathconstruct_method in [2]:
         if pathconstruct_method == 1:

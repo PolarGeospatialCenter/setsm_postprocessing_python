@@ -26,6 +26,10 @@ else:
 # comparison to the spatial references of all other source raster files.
 __STRIP_SPAT_REF__ = None
 
+HOLD_GUESS_OFF = 0
+HOLD_GUESS_ALL = 1
+HOLD_GUESS_UPDATE_RMSE = 2
+
 
 class InvalidArgumentError(Exception):
     def __init__(self, msg=""):
@@ -42,7 +46,8 @@ class RasterDimensionError(Exception):
 
 def scenes2strips(demdir, demFiles,
                   maskSuffix=None, filter_options=(), max_coreg_rmse=1,
-                  trans_guess=None, rmse_guess=None, hold_guess=False):
+                  trans_guess=None, rmse_guess=None,
+                  hold_guess=HOLD_GUESS_OFF, check_guess=True):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -353,28 +358,41 @@ def scenes2strips(demdir, demFiles,
             continue
 
         # Coregister this scene to the strip mosaic.
-        trans[:, i], rmse[0, i] = coregisterdems(
-            Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
-               x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
-            P0, P1,
-            (trans_guess[:, i] if trans_guess is not None else trans_guess),
-            hold_guess
-        )[[1, 2]]
+        if (    hold_guess == HOLD_GUESS_ALL and not check_guess
+            and (trans_guess is not None and rmse_guess is not None)):
+            trans[:, i] = trans_guess[:, i]
+            rmse[0, i] = rmse_guess[0, i]
+        else:
+            trans[:, i], rmse[0, i] = coregisterdems(
+                Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
+                   x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
+                P0, P1,
+                (trans_guess[:, i] if trans_guess is not None else trans_guess),
+                hold_guess != HOLD_GUESS_OFF
+            )[[1, 2]]
 
-        if trans_guess is not None and hold_guess:
-            if not np.array_equal(trans[:, i], trans_guess[:, i]):
-                print("Under `hold_guess`, `trans` vector out of `coregisterdems` does not match `trans_guess`")
-                print("`trans_guess`:")
-                print(np.array2string(trans_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
-                print("`trans`")
-                print(np.array2string(trans, precision=4, max_line_width=np.inf, threshold=np.inf))
-        if rmse_guess is not None:
-            if np.round(rmse[0, i], decimals=2) != np.round(rmse_guess[0, i], decimals=2):
-                print("`rmse` out of `coregisterdems` does not match `rmse_guess` when rounded to 2 decimals")
-                print("`rmse_guess`:")
-                print(np.array2string(rmse_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
-                print("`rmse`")
-                print(np.array2string(rmse, precision=4, max_line_width=np.inf, threshold=np.inf))
+            if check_guess:
+                error_tol = 10**-2
+                if trans_guess is not None:
+                    if not np.allclose(trans[:, i], trans_guess[:, i], rtol=0, atol=error_tol, equal_nan=True):
+                        print("`trans` vector out of `coregisterdems` does not match `trans_guess` within error tol ({})".format(error_tol))
+                        print("`trans_guess`:")
+                        print(np.array2string(trans_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
+                        print("`trans`")
+                        print(np.array2string(trans, precision=4, max_line_width=np.inf, threshold=np.inf))
+                if rmse_guess is not None:
+                    if not np.allclose(rmse[0, i], rmse_guess[0, i], rtol=0, atol=error_tol, equal_nan=True):
+                        print("`rmse` out of `coregisterdems` does not match `rmse_guess` within error tol ({})".format(error_tol))
+                        print("`rmse_guess`:")
+                        print(np.array2string(rmse_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
+                        print("`rmse`")
+                        print(np.array2string(rmse, precision=4, max_line_width=np.inf, threshold=np.inf))
+
+            if hold_guess != HOLD_GUESS_OFF:
+                if trans_guess is not None:
+                    trans[:, i] = trans_guess[:, i]
+                if rmse_guess is not None and hold_guess == HOLD_GUESS_ALL:
+                    rmse[0, i] = rmse_guess[0, i]
 
         # Check for segment break.
         if np.isnan(rmse[0, i]):

@@ -210,6 +210,8 @@ class ArgumentPasser:
                                     condopt_add = self._jobscript_condopt_eval(cond_elseval, str)
                             elif cond_elseval is not None:
                                 raise SyntaxError
+                            elif cond_remain.startswith('import') or cond_remain.startswith('from'):
+                                exec(cond_remain)
                             else:
                                 condopt_add = self._jobscript_condopt_eval(cond_remain, str)
 

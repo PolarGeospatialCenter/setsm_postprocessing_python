@@ -394,6 +394,7 @@ def main():
     from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
     from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
     from lib.scenes2strips import scenes2strips
+    from lib.scenes2strips import HOLD_GUESS_OFF, HOLD_GUESS_ALL, HOLD_GUESS_UPDATE_RMSE
     from batch_mask import get_mask_bitstring
 
     # Invoke argparse argument parsing.
@@ -792,7 +793,8 @@ def main():
                     X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
                         args.get(ARGSTR_SRC), input_sceneDemFnames,
                         maskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
-                        trans_guess=trans, rmse_guess=(rmse if use_old_trans else None), hold_guess=True)
+                        trans_guess=trans, rmse_guess=(rmse if use_old_trans else None),
+                        hold_guess=HOLD_GUESS_ALL, check_guess=True)
                     if X is None:
                         all_data_masked = True
                     if mosaicked_sceneDemFnames != input_sceneDemFnames and use_old_trans:
@@ -927,8 +929,8 @@ def saveStripBrowse(strip_demFile, demSuffix):
         raise ExternalError("`gdaldem hillshade` program did not create "
                             "output 10m DEM hillshade file: {}".format(strip_demFile_browse))
 
-#     if os.path.isfile(strip_demFile_10m):
-#         os.remove(strip_demFile_10m)
+    if os.path.isfile(strip_demFile_10m):
+        os.remove(strip_demFile_10m)
 
 
 def getDemSuffix(demFile):
