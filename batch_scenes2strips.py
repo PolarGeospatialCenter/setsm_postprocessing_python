@@ -793,7 +793,7 @@ def main():
                     X, Y, Z, M, O, MD, trans, rmse, mosaicked_sceneDemFnames, spat_ref = scenes2strips(
                         args.get(ARGSTR_SRC), input_sceneDemFnames,
                         maskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
-                        trans_guess=trans, rmse_guess=(rmse if use_old_trans else None),
+                        trans_guess=trans, rmse_guess=rmse,
                         hold_guess=HOLD_GUESS_ALL, check_guess=True)
                     if X is None:
                         all_data_masked = True

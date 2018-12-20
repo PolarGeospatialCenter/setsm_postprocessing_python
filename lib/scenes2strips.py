@@ -377,16 +377,16 @@ def scenes2strips(demdir, demFiles,
                     if not np.allclose(trans[:, i], trans_guess[:, i], rtol=0, atol=error_tol, equal_nan=True):
                         print("`trans` vector out of `coregisterdems` does not match `trans_guess` within error tol ({})".format(error_tol))
                         print("`trans_guess`:")
-                        print(np.array2string(trans_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
+                        print(np.array2string(trans_guess, precision=4, max_line_width=np.inf))
                         print("`trans`")
-                        print(np.array2string(trans, precision=4, max_line_width=np.inf, threshold=np.inf))
+                        print(np.array2string(trans, precision=4, max_line_width=np.inf))
                 if rmse_guess is not None:
                     if not np.allclose(rmse[0, i], rmse_guess[0, i], rtol=0, atol=error_tol, equal_nan=True):
                         print("`rmse` out of `coregisterdems` does not match `rmse_guess` within error tol ({})".format(error_tol))
                         print("`rmse_guess`:")
-                        print(np.array2string(rmse_guess, precision=4, max_line_width=np.inf, threshold=np.inf))
+                        print(np.array2string(rmse_guess, precision=4, max_line_width=np.inf))
                         print("`rmse`")
-                        print(np.array2string(rmse, precision=4, max_line_width=np.inf, threshold=np.inf))
+                        print(np.array2string(rmse, precision=4, max_line_width=np.inf))
 
             if hold_guess != HOLD_GUESS_OFF:
                 if trans_guess is not None:
@@ -545,7 +545,7 @@ def coregisterdems(x1, y1, z1,
 
     # Initial trans and RMSE settings
     if trans_guess is not None:
-        p = np.reshape(trans_guess, (3, 1))
+        p = np.reshape(np.copy(trans_guess), (3, 1))
         interpflag = True
     else:
         p = np.zeros((3, 1))  # p  is prior iteration trans var
@@ -596,7 +596,7 @@ def coregisterdems(x1, y1, z1,
         if m1 is not None and m2 is not None:
             dz[~m2n | ~m1] = np.nan
 
-        if not np.any(~np.isnan(dz)):
+        if np.all(np.isnan(dz)):
             print("No overlap")
             critical_failure = True
             break
