@@ -491,7 +491,7 @@ def main():
 
     ## Create output directories if they don't already exist.
     if not args.get(ARGSTR_DRYRUN):
-        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, args.get(*ARGGRP_OUTDIR, list_single=True))):
+        for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, args.get_as_list(ARGGRP_OUTDIR))):
             if dir_path is not None and not os.path.isdir(dir_path):
                 print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
                 os.makedirs(dir_path)
