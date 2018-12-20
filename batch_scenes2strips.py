@@ -714,6 +714,10 @@ def main():
 
             print('')
 
+            if args.get(ARGSTR_DRYRUN):
+                print("Exiting dryrun")
+                sys.exit(0)
+
             # Filter all scenes in this strip.
             filter_list = [f for f in scene_demFiles if shouldDoMasking(selectBestMatchtag(f), mask_name)]
             filter_total = len(filter_list)
@@ -731,8 +735,6 @@ def main():
             print('')
 
             print("Running scenes2strips")
-            if args.get(ARGSTR_DRYRUN):
-                sys.exit(0)
             print('')
 
             # Mosaic scenes in this strip together.

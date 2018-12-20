@@ -6,8 +6,8 @@
 from __future__ import division
 import os.path
 import sys
+import traceback
 import warnings
-from traceback import print_exc
 
 import ogr
 import numpy as np
@@ -143,7 +143,7 @@ def scenes2strips(demdir, demFiles,
             x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile, metaFile)
         except:
             print("Data read error:")
-            print_exc()
+            traceback.print_exc()
             print("...skipping")
             continue
 

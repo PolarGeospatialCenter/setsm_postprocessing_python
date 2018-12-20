@@ -9,6 +9,7 @@ import math
 import os
 import re
 import sys
+import traceback
 from warnings import warn
 if sys.version_info[0] < 3:
     from StringIO import StringIO
@@ -1684,7 +1685,7 @@ def readSceneMeta(metaFile, trying_repaired_version=False):
         satID = os.path.basename(meta['image_1'])[0:4].upper()
         image_2 = meta['image_2']
     except KeyError as e:
-        print(e)
+        traceback.print_exc()
         warn("Scene metadata file ({}) is missing key information".format(metaFile))
         if RUNNING_AT_PGC and not trying_repaired_version:
             metaFile_repaired = pgc_find_repaired_metafile(metaFile)
@@ -1738,16 +1739,11 @@ def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_ve
     if meta[field_wvc1_name] == 1:
         meta_fieldname_xmltag_dict[field_max1_name] = None
 
-    meta_complete = True
-    for field_name in meta_fieldname_xmltag_dict:
-        if field_name not in meta:
-            meta_complete = False
-            break
-
-    if meta_complete:
+    missing_fieldnames = set(meta_fieldname_xmltag_dict.keys()).difference(set(meta.keys()))
+    if not missing_fieldnames:
         return meta
 
-    warn("Scene metadata file ({}) is missing key information".format(metaFile))
+    warn("Scene metadata file ({}) is missing key information: {}".format(metaFile, missing_fieldnames))
 
     if not trying_repaired_version:
         meta_repaired = None
