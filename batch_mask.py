@@ -38,6 +38,7 @@ SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 SCRIPT_RUNCMD = ' '.join(sys.argv)+'\n'
+PYTHON_EXE = 'python -u'
 
 ##############################
 
@@ -87,7 +88,6 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
-PYTHON_EXE = 'python -u'
 JOB_ABBREV = 'Mask'
 
 ##############################

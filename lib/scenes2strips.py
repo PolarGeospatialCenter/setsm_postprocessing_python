@@ -103,6 +103,9 @@ def scenes2strips(demdir, demFiles,
     # Initialize output stats.
     trans = np.zeros((3, num_scenes))
     rmse = np.zeros((1, num_scenes))
+    if check_guess:
+        trans_check = np.copy(trans)
+        rmse_check = np.copy(rmse)
 
     # Get projection reference of the first scene to be used in equality checks
     # with the projection reference of all scenes that follow.
@@ -374,19 +377,21 @@ def scenes2strips(demdir, demFiles,
             if check_guess:
                 error_tol = 10**-2
                 if trans_guess is not None:
-                    if not np.allclose(trans[:, i], trans_guess[:, i], rtol=0, atol=error_tol, equal_nan=True):
-                        print("`trans` vector out of `coregisterdems` does not match `trans_guess` within error tol ({})".format(error_tol))
+                    trans_check[:, i] = trans[:, i]
+                    if not np.allclose(trans_check[:, i], trans_guess[:, i], rtol=0, atol=error_tol, equal_nan=True):
+                        print("`trans_check` vector out of `coregisterdems` does not match `trans_guess` within error tol ({})".format(error_tol))
                         print("`trans_guess`:")
                         print(np.array2string(trans_guess, precision=4, max_line_width=np.inf))
-                        print("`trans`")
-                        print(np.array2string(trans, precision=4, max_line_width=np.inf))
+                        print("`trans_check`:")
+                        print(np.array2string(trans_check, precision=4, max_line_width=np.inf))
                 if rmse_guess is not None:
-                    if not np.allclose(rmse[0, i], rmse_guess[0, i], rtol=0, atol=error_tol, equal_nan=True):
-                        print("`rmse` out of `coregisterdems` does not match `rmse_guess` within error tol ({})".format(error_tol))
+                    rmse_check[0, i] = rmse[0, i]
+                    if not np.allclose(rmse_check[0, i], rmse_guess[0, i], rtol=0, atol=error_tol, equal_nan=True):
+                        print("`rmse_check` out of `coregisterdems` does not match `rmse_guess` within error tol ({})".format(error_tol))
                         print("`rmse_guess`:")
                         print(np.array2string(rmse_guess, precision=4, max_line_width=np.inf))
-                        print("`rmse`")
-                        print(np.array2string(rmse, precision=4, max_line_width=np.inf))
+                        print("`rmse_check`:")
+                        print(np.array2string(rmse_check, precision=4, max_line_width=np.inf))
 
             if hold_guess != HOLD_GUESS_OFF:
                 if trans_guess is not None:

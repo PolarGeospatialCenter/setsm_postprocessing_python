@@ -41,6 +41,7 @@ SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 SCRIPT_RUNCMD = ' '.join(sys.argv)+'\n'
+PYTHON_EXE = 'python -u'
 
 ##############################
 
@@ -113,7 +114,6 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_LOGDIR, ARGSTR_EMAIL]
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
-PYTHON_EXE = 'python -u'
 JOB_ABBREV = 's2s'
 
 ##############################
@@ -216,7 +216,7 @@ def argparser_init():
             existcheck_reqval=False),
         help=' '.join([
             "Path to destination directory for output mosaicked strip data.",
-            "(default is src.(reverse)replace('tif_results', 'strips'))"
+            "(default is {}.(reverse)replace('tif_results', 'strips'))".format(ARGSTR_SRC)
         ])
     )
 
@@ -796,7 +796,7 @@ def main():
                         args.get(ARGSTR_SRC), input_sceneDemFnames,
                         maskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
                         trans_guess=trans, rmse_guess=rmse,
-                        hold_guess=HOLD_GUESS_ALL, check_guess=True)
+                        hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans)
                     if X is None:
                         all_data_masked = True
                     if mosaicked_sceneDemFnames != input_sceneDemFnames and use_old_trans:
