@@ -142,13 +142,13 @@ def scenes2strips(demdir, demFiles,
 
         print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
 
-        try:
-            x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile, metaFile)
-        except:
-            print("Data read error:")
-            traceback.print_exc()
-            print("...skipping")
-            continue
+        # try:
+        x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile, metaFile)
+        # except:
+        #     print("Data read error:")
+        #     traceback.print_exc()
+        #     print("...skipping")
+        #     continue
 
         # Apply masks.
         x, y, z, m, o, md = applyMasks(x, y, z, m, o, md, filter_options, maskSuffix)

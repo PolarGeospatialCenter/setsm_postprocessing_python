@@ -4,6 +4,7 @@
 
 
 import argparse
+import copy
 import math
 import numpy as np
 import os
@@ -27,26 +28,37 @@ class InvalidArgumentError(Exception):
 
 class ArgumentPasser:
 
-    def __init__(self, parser, executable_path, script_path, sys_argv):
-        self.parser = parser
+    def __init__(self, executable_path, script_path, parser, sys_argv=[''], parse=True):
         self.exe = executable_path
         self.script = script_path
+        self.parser = parser
         self.sys_argv = list(sys_argv)
         self.script_run_cmd = ' '.join(self.sys_argv)
-        self.vars = self.parser.parse_args()
-        self.vars_dict = vars(self.vars)
+        self.parsed = parse
+
         self.argstr2varstr = self._make_argstr2varstr_dict()
         self.varstr2argstr = self._make_varstr2argstr_dict()
         self.varstr2action = self._make_varstr2action_dict()
         self.argstr_pos = self._find_pos_args()
         self.provided_opt_args = self._find_provided_opt_args()
+
+        if parse:
+            self.vars = self.parser.parse_args()
+            self.vars_dict = vars(self.vars)
+        else:
+            self.vars = None
+            self.vars_dict = {varstr: None for varstr in self.varstr2argstr}
+
         self._fix_bool_plus_args()
+
         self.cmd_optarg_base = None
         self.cmd = None
         self._update_cmd_base()
 
     def __deepcopy__(self, memodict={}):
-        return ArgumentPasser(self.parser, self.exe, self.script, self.sys_argv)
+        args = ArgumentPasser(self.exe, self.script, self.parser, self.sys_argv, self.parsed)
+        args.vars_dict = copy.deepcopy(self.vars_dict)
+        return args
 
     def get_as_list(self, *argstrs):
         if len(argstrs) < 1:
@@ -280,10 +292,12 @@ def get_jobnum_fmtstr(processing_list, min_digits=3):
 
 
 def exec_cmd(cmd):
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (so, se) = p.communicate()
     rc = p.wait()
     print("RETURN CODE: {}".format(rc))
-    print("STDOUT: {}".format(so))
-    print("STDERR: {}".format(se))
+    if so != '':
+        print("STDOUT:\n{}".format(so.rstrip()))
+    if se != '':
+        print("STDERR:\n{}".format(se.rstrip()))
     return rc

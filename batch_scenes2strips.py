@@ -129,7 +129,7 @@ RE_STRIPID = re.compile(RE_STRIPID_STR)
 ##############################
 
 
-class InvalidArgumentError(Exception):
+class ScriptArgumentError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
@@ -168,7 +168,7 @@ def argtype_path_handler(path, argstr,
         elif existcheck_fn is os.path.exists:
             existtype_str = 'file/directory'
         existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
-        raise InvalidArgumentError("argument {}: {} {}: {}".format(argstr, existtype_str, existresult_str, path))
+        raise ScriptArgumentError("argument {}: {} {}: {}".format(argstr, existtype_str, existresult_str, path))
     return abspath_fn(path) if abspath_fn is not None else path
 
 ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
@@ -400,8 +400,8 @@ def main():
     # Invoke argparse argument parsing.
     arg_parser = argparser_init()
     try:
-        args = batch_handler.ArgumentPasser(arg_parser, PYTHON_EXE, SCRIPT_FILE, sys.argv)
-    except InvalidArgumentError as e:
+        args = batch_handler.ArgumentPasser(PYTHON_EXE, SCRIPT_FILE, arg_parser, sys.argv)
+    except ScriptArgumentError as e:
         arg_parser.error(e)
 
 
@@ -437,6 +437,7 @@ def main():
                     + "please specify one with {} argument".format(ARGSTR_JOBSCRIPT))
             else:
                 args.set(ARGSTR_JOBSCRIPT, jobscript_default)
+                print("argument {} set automatically to: {}".format(ARGSTR_JOBSCRIPT, args.get(ARGSTR_JOBSCRIPT)))
 
 
     ## Validate argument values.
@@ -574,8 +575,8 @@ def main():
         args_single.unset_args(*ARGGRP_BATCH)
 
         job_num = 0
-        num_jobs = len(stripids)
-        for sID in stripids:
+        num_jobs = len(stripids_to_process)
+        for sID in stripids_to_process:
             job_num += 1
 
             # If output does not already exist, add to task list.
