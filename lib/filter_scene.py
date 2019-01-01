@@ -73,9 +73,9 @@ if HOSTNAME is not None:
     RUNNING_AT_PGC = True if True in [s in HOSTNAME for s in ['rookery', 'nunatak']] else False
 else:
     RUNNING_AT_PGC = False
-RE_SCENE_DEM_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9A-F]{16})_([0-9A-F]{16})_(.*?\-)?(.*?)_(P[0-9]{3})_(.*?\-)?(.*?)_(P[0-9]{3})_.*$"
+RE_SCENE_DEM_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9A-F]{16})_([0-9A-F]{16})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_.*$"
 RE_SCENE_DEM_FNAME_PARTS = re.compile(RE_SCENE_DEM_FNAME_PARTS_STR)
-RE_SOURCE_IMAGE_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})_([0-9A-F]{16})_.*?\-([A-Z0-9]{4})[\-_]{1}(.*?\-)?(.*?)_(P[0-9]{3})\..*$"
+RE_SOURCE_IMAGE_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})_([0-9A-F]{16})_[0-9]{2}([A-Z]{3})[0-9]{2}[0-9]{6}\-(.+?)\-([A-Z0-9]+_[0-9]+)_(P[0-9]{3})\..*$"
 RE_SOURCE_IMAGE_FNAME_PARTS = re.compile(RE_SOURCE_IMAGE_FNAME_PARTS_STR)
 
 
@@ -1682,8 +1682,13 @@ def readSceneMeta(metaFile, trying_repaired_version=False):
 
     # Get satID and check for cross track naming convention.
     try:
-        satID = os.path.basename(meta['image_1'])[0:4].upper()
-        image_2 = meta['image_2']
+        for left_image_tag in ['image_0', 'image_1']:
+            if left_image_tag in meta:
+                break
+        if left_image_tag == 'image_0':
+            warn("Scene metadata file ({}) was affected by Image 0/1 SETSM bug")
+        satID = os.path.basename(meta[left_image_tag])[0:4].upper()
+        # image_2 = meta['image_2']
     except KeyError as e:
         traceback.print_exc()
         warn("Scene metadata file ({}) is missing key information".format(metaFile))
@@ -1770,15 +1775,20 @@ def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_ve
         if pathconstruct_method == 1:
             try_source = 'scene DEM metadata filename'
             try_path = metaFile
+            re_parser = RE_SCENE_DEM_FNAME_PARTS
         elif pathconstruct_method == 2:
             try_source = '"Image 1" field in scene metadata'
             try:
-                try_path = meta['image_1']
+                if 'image_0' in meta:
+                    try_path = meta['image_0']
+                else:
+                    try_path = meta['image_1']
             except KeyError:
                 continue
+            re_parser = RE_SOURCE_IMAGE_FNAME_PARTS
 
         image_1_metafile = pgc_find_source_image_metafile(
-            try_path, satID=(satID if pathconstruct_method == 1 else None), source=try_source)
+            try_path, re_parser, source=try_source)
 
         if image_1_metafile is not None:
             break
@@ -1840,36 +1850,99 @@ def pgc_find_repaired_metafile(metaFile):
         return None
 
 
-def pgc_find_source_image_metafile(fname_path, satID=None, source='provided path'):
+def pgc_find_source_image_metafile(file_path, re_parser, dem_source_image='left', source='provided path'):
     import glob
 
-    re_parser = RE_SCENE_DEM_FNAME_PARTS if satID is not None else RE_SOURCE_IMAGE_FNAME_PARTS
+    if re_parser is RE_SOURCE_IMAGE_FNAME_PARTS:
+        path_type_str = 'image'
+    elif re_parser is RE_SCENE_DEM_FNAME_PARTS:
+        path_type_str = 'dem {} image'.format(dem_source_image)
 
-    match = re.match(re_parser, os.path.basename(fname_path))
+    file_name = os.path.basename(file_path)
+
+    match = re.match(re_parser, file_name)
     if match is None:
-        print("Regex failed to parse necessary bits from {}: {}".format(source, fname_path))
+        print("Regex failed to parse necessary bits from {} path: {}".format(path_type_str, file_path))
         return None
 
-    prodcode1 = None
-    if re_parser is RE_SCENE_DEM_FNAME_PARTS:
+    if re_parser is RE_SOURCE_IMAGE_FNAME_PARTS:
+        satID, year, month, day, time, catID, monthabrev, prodcode, ordnum, partnum = match.groups()
+        lookup_tries_remaining = 1
+
+    elif re_parser is RE_SCENE_DEM_FNAME_PARTS:
         satID_cross, year, month, day, catID1, catID2, prodcodeex1, ordnum1, partnum1, prodcodeex2, ordnum2, partnum2 = match.groups()
-    elif re_parser is RE_SOURCE_IMAGE_FNAME_PARTS:
-        satID_real, year, month, day, time, catID1, prodcode1, prodcodeex1, ordnum1, partnum1 = match.groups()
-        satID = satID_real
+        prodcode1 = 'P1BS' if prodcodeex1 is None else '{}_{}'.format('P1BS', prodcodeex1.rstrip('-'))
+        prodcode2 = 'P1BS' if prodcodeex2 is None else '{}_{}'.format('P1BS', prodcodeex2.rstrip('-'))
+        monthabrev = None
 
-    source_metafile_pattern = '/mnt/pgc/data/sat/orig/{}/1B/{}/{}_*/{}_{}_{}_{}/{}_{}{}{}*_{}_*{}_{}.xml'.format(
-        satID,
-        year,
-        month,
-        satID, catID1, 'P1BS' if prodcode1 is None else prodcode1, ordnum1,
-        satID, year, month, day, catID1, ordnum1, partnum1
-    )
-    match = glob.glob(source_metafile_pattern)
-    if match is None:
-        print("Failed to locate original source image with pattern: {}".format(source_metafile_pattern))
-        return None
-    else:
-        source_metafile = match[0]
+        satID_abbrev = satID_cross[0:2]
+        if   satID_abbrev == 'W1':
+            satID = 'WV01'
+        elif satID_abbrev == 'W2':
+            satID = 'WV02'
+        elif satID_abbrev == 'W3':
+            satID = 'WV03'
+        elif satID_abbrev == 'G1':
+            satID = 'GE01'
+        elif satID_abbrev == 'Q1':
+            satID = 'QB01'
+        elif satID_abbrev == 'Q2':
+            satID = 'QB02'
+        elif satID_abbrev == 'I1':
+            satID = 'IK01'
+        else:
+            satID = satID_cross
+
+        if dem_source_image == 'left':
+            catID = catID1
+            prodcode = prodcode1
+            ordnum = ordnum1
+            partnum = partnum1
+        elif dem_source_image == 'right':
+            catID = catID2
+            prodcode = prodcode2
+            ordnum = ordnum2
+            partnum = partnum2
+
+        lookup_tries_remaining = 2
+
+    source_metafile = None
+
+    while lookup_tries_remaining > 0:
+
+        source_metafile_pattern = '/mnt/pgc/data/sat/orig/{}/{}/{}/{}_{}/{}_{}_{}_{}/{}_{}{}{}*_{}_*-{}-{}_{}'.format(
+            satID,
+            prodcode[1:3],
+            year,
+            month, monthabrev.lower() if monthabrev is not None else '*',
+            satID, catID, prodcode[0:4], ordnum,
+            satID, year, month, day, catID, prodcode, ordnum, partnum
+        )
+
+        match = glob.glob(source_metafile_pattern+'.xml')
+        if not match:
+            match = glob.glob(source_metafile_pattern+'.XML')
+        lookup_tries_remaining -= 1
+
+        if len(match) == 1:
+            source_metafile = match[0]
+        elif len(match) > 1:
+            print("ERROR: {} matches (for fname '{}') with pattern: {}".format(
+                len(match), file_name, source_metafile_pattern))
+            for i, match_file in enumerate(match):
+                print("MATCH {}: {}".format(i+1, match_file))
+        elif re_parser is RE_SCENE_DEM_FNAME_PARTS and lookup_tries_remaining == 1:
+            if ordnum == ordnum1:
+                prodcode = prodcode2
+                ordnum = ordnum2
+                partnum = partnum2
+            elif ordnum == ordnum2:
+                prodcode = prodcode1
+                ordnum = ordnum1
+                partnum = partnum1
+        else:
+            print("Failed to locate original source image (fname '{}') with pattern: {}".format(
+                file_name, source_metafile_pattern))
 
     return source_metafile
 

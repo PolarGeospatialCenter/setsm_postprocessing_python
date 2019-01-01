@@ -94,7 +94,7 @@ JOB_ABBREV = 'Mask'
 
 ## Custom globals
 
-BITMASK_SUFFIX = 'bitmask.tif'.lstrip('_')
+BITMASK_SUFFIX = '_'+'bitmask.tif'.lstrip('_')
 
 ##############################
 
@@ -142,7 +142,7 @@ def argparser_init():
         formatter_class=RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
             "Selectively apply filter components from the SETSM DEM scene/strip",
-            "*_{} component raster to mask out corresponding locations".format(BITMASK_SUFFIX),
+            "*{} component raster to mask out corresponding locations".format(BITMASK_SUFFIX),
             "in another component raster(s), then save the resulting image(s)."
         ])
     )
@@ -157,9 +157,7 @@ def argparser_init():
             existcheck_reqval=True),
         help=' '.join([
             "Path to source DEM directory or raster file.",
-            "Accepts a task bundle text file listing paths to *_{}".format(BITMASK_SUFFIX),
-            "raster files along with with {} argument indicating".format(ARGSTR_SRC_SUFFIX),
-            "which components to mask."
+            "Accepts a task bundle text file listing paths to *{} files.".format(BITMASK_SUFFIX)
         ])
     )
 
@@ -183,12 +181,14 @@ def argparser_init():
         help=' '.join([
             "Mask raster images with a file suffix(es) matching this string.",
             "An optional numeric string may be provided following the suffix string,",
-            "delimited with a comma, to specify the 'masking value' to set",
+            "delimited with a comma (,), to specify the 'masking value' to set",
             "masked pixels in the output raster.",
             "\nIf the numeric string component is not provided, the NoData value",
-            "of the source raster will be taken as the masking value.",
-            "\nIf the source raster does not have a set NoData value, masking of that",
-            "raster will be skipped.",
+            "of the source raster will be taken as the masking value. If the source raster",
+            "does not have a set NoData value, masking of that raster will be skipped.",
+            "\nSpecify multiple source file suffixes (with or without added masking value)",
+            "by delimiting string with the pipe character (|), noting that you must then",
+            "wrap the whole argument string with quotes like 'dem.tif,0|ortho.tif,0'."
             "\n"
         ])
     )
@@ -346,7 +346,7 @@ def main():
                     maskval = maskval_num
                 except ValueError:
                     arg_parser.error("argument {} masking value '{}' is invalid".format(ARGSTR_SRC_SUFFIX, maskval))
-            suffix_maskval_dict[suffix] = maskval
+            suffix_maskval_dict['_'+suffix] = maskval
     else:
         suffix_maskval_dict = None
 
@@ -355,8 +355,9 @@ def main():
         print("argument {} set automatically to: {}".format(ARGSTR_DSTDIR, args.get(ARGSTR_DSTDIR)))
 
     if args.get(ARGSTR_DST_SUFFIX) is None:
-        args.set(ARGSTR_DST_SUFFIX, 'mask'+get_mask_bitstring(*args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)))
+        args.set(ARGSTR_DST_SUFFIX, '_mask'+get_mask_bitstring(*args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)))
         print("argument {} set automatically to: {}".format(ARGSTR_DST_SUFFIX, args.get(ARGSTR_DST_SUFFIX)))
+    args.set(ARGSTR_DST_SUFFIX, '_'+args.get(ARGSTR_DST_SUFFIX).lstrip('_'))
 
     if args.get(ARGSTR_SCHEDULER) is not None:
         if args.get(ARGSTR_JOBSCRIPT) is None:
@@ -384,11 +385,10 @@ def main():
         src_bitmask = src
         src_bitmasks = [src_bitmask]
         if suffix_maskval_dict is None:
-            suffix_maskval_dict = {}
-            src_prefix = src.replace(BITMASK_SUFFIX, '')
-            for suffix in [f.replace(src_prefix, '') for f in glob.glob(src_prefix+'*.tif')]:
-                if suffix != BITMASK_SUFFIX:
-                    suffix_maskval_dict[suffix] = None
+            maskFile_base = src_bitmask.replace(BITMASK_SUFFIX, '')
+            suffix_maskval_dict = {src_rasterFile.replace(maskFile_base, ''): None
+                                   for src_rasterFile in glob.glob(maskFile_base+'*.tif')
+                                   if not src_rasterFile.endswith(BITMASK_SUFFIX)}
 
     elif os.path.isfile(src) and not src.endswith('.txt'):
         src_raster = src
@@ -405,8 +405,8 @@ def main():
             end = None
             while end != -1:
                 end = src_raster_fname.rfind('_', beg, end)
-                if os.path.isfile(os.path.join(src_raster_dir, '{}_{}'.format(src_raster_fname[beg:end], BITMASK_SUFFIX))):
-                    src_suffix = src_raster_fname[end:].lstrip('_')
+                if os.path.isfile(os.path.join(src_raster_dir, src_raster_fname[beg:end].rstrip('_')+BITMASK_SUFFIX)):
+                    src_suffix = '_'+src_raster_fname[end:].lstrip('_')
                     break
         if src_suffix is None:
             arg_parser.error("Path of {} component for argument {} raster file "
@@ -422,14 +422,11 @@ def main():
 
     elif os.path.isfile(src) and src.endswith('.txt'):
         bundle_file = src
-        if suffix_maskval_dict is None:
-            arg_parser.error("{} option must be provided when argument {} is a task bundle text file".format(
-                             ARGSTR_SRC_SUFFIX, ARGSTR_SRC))
         src_bitmasks = batch_handler.read_task_bundle(bundle_file)
 
     elif os.path.isdir(src):
         srcdir = src
-        src_bitmasks = glob.glob(os.path.join(srcdir, '*_{}'.format(BITMASK_SUFFIX)))
+        src_bitmasks = glob.glob(os.path.join(srcdir, '*'+BITMASK_SUFFIX))
         src_bitmasks.sort()
 
     if src_bitmasks is None:
@@ -468,7 +465,10 @@ def main():
 
     print("-----")
 
-    if suffix_maskval_dict is not None:
+    if suffix_maskval_dict is None:
+        print("Masking all *_[SRC-SUFFIX(.tif)] raster components corresponding to "
+              "source *{} file(s), using source NoData values".format(BITMASK_SUFFIX))
+    else:
         print("[Raster Suffix, Masking Value]")
         for suffix, maskval in suffix_maskval_dict.items():
             print("{}, {}".format(suffix, maskval if maskval is not None else '(source NoDataVal)'))
@@ -601,7 +601,7 @@ def get_dstFile(maskFile, rasterSuffix, args):
     dstFname_prefix, dstFname_ext = os.path.splitext(
         os.path.basename(maskFile).replace(BITMASK_SUFFIX, rasterSuffix))
     dstFname = '{}{}{}'.format(
-        dstFname_prefix, '_'+args.get(ARGSTR_DST_SUFFIX) if args.get(ARGSTR_DST_SUFFIX) != '' else '', dstFname_ext)
+        dstFname_prefix, args.get(ARGSTR_DST_SUFFIX) if args.get(ARGSTR_DST_SUFFIX) != '' else '', dstFname_ext)
     dstFile = os.path.join(args.get(ARGSTR_DSTDIR), dstFname)
     return dstFile
 

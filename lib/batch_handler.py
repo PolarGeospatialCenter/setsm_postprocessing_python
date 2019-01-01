@@ -284,7 +284,10 @@ def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s'
 
 
 def read_task_bundle(bundle_file, args_dtype=np.dtype(str), args_delim=' '):
-    return np.loadtxt(bundle_file, dtype=args_dtype, delimiter=args_delim)
+    task_list = np.loadtxt(bundle_file, dtype=args_dtype, delimiter=args_delim).tolist()
+    if type(task_list) is not list:
+        task_list = [task_list]
+    return task_list
 
 
 def get_jobnum_fmtstr(processing_list, min_digits=3):
