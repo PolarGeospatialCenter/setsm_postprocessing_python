@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#PBS -l walltime=40:00:00,nodes=1:ppn=6
+#PBS -l walltime=0:40:00,nodes=1:ppn=6
 
 #PBS -j oe
 #PBS -o $PBS_JOBNAME.o$PBS_JOBID
