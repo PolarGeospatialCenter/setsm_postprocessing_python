@@ -64,6 +64,7 @@ ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_LOGDIR = '--logdir'
 ARGSTR_EMAIL = '--email'
+ARGSTR_REMOVE_UNFINISHED = '--remove-unfinished'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
 
@@ -371,6 +372,12 @@ def argparser_init():
     )
 
     parser.add_argument(
+        ARGSTR_REMOVE_UNFINISHED,
+        action='store_true',
+        help="Only remove unfinished (no .fin file) output, do not build strips."
+    )
+
+    parser.add_argument(
         ARGSTR_DRYRUN,
         action='store_true',
         help="Print actions without executing."
@@ -590,30 +597,40 @@ def main():
                     job_num, ARGSTR_STRIPID, sID, args_batch.get(ARGSTR_RES)))
                 continue
             elif dst_files:
-                print("{}, {} {} :: {} ({}m) output files exist ".format(
-                    job_num, ARGSTR_STRIPID, sID, len(dst_files), args_batch.get(ARGSTR_RES))
-                      + "(potentially unfinished since no *.fin file), skipping")
+                if not args.get(ARGSTR_REMOVE_UNFINISHED):
+                    print("{}, {} {} :: {} ({}m) output files exist ".format(
+                        job_num, ARGSTR_STRIPID, sID, len(dst_files), args_batch.get(ARGSTR_RES))
+                          + "(potentially unfinished since no *.fin file), skipping")
+                else:
+                    print("{}, {} {} :: {} ({}m) output files exist ".format(
+                        job_num, ARGSTR_STRIPID, sID, len(dst_files), args_batch.get(ARGSTR_RES))
+                          + "(potentially unfinished since no *.fin file), REMOVING")
+                    if not args.get(ARGSTR_DRYRUN):
+                        for f in dst_files:
+                            os.remove(f)
                 continue
 
-            args_single.set(ARGSTR_STRIPID, sID)
-            if last_job_email and job_num == num_jobs:
-                args_single.set(ARGSTR_EMAIL, last_job_email)
-            cmd_single = args_single.get_cmd()
+            if not args.get(ARGSTR_REMOVE_UNFINISHED):
 
-            if args_batch.get(ARGSTR_SCHEDULER) is not None:
-                job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
-                cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
-                                                    args_batch.get(ARGSTR_JOBSCRIPT),
-                                                    job_name, cmd_single)
-            else:
-                cmd = cmd_single
+                args_single.set(ARGSTR_STRIPID, sID)
+                if last_job_email and job_num == num_jobs:
+                    args_single.set(ARGSTR_EMAIL, last_job_email)
+                cmd_single = args_single.get_cmd()
 
-            print("{}, {}".format(job_num, cmd))
-            if not args_batch.get(ARGSTR_DRYRUN):
-                # For most cases, set `shell=True`.
-                # For attaching process to PyCharm debugger,
-                # set `shell=False`.
-                subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
+                if args_batch.get(ARGSTR_SCHEDULER) is not None:
+                    job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
+                    cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
+                                                        args_batch.get(ARGSTR_JOBSCRIPT),
+                                                        job_name, cmd_single)
+                else:
+                    cmd = cmd_single
+
+                print("{}, {}".format(job_num, cmd))
+                if not args_batch.get(ARGSTR_DRYRUN):
+                    # For most cases, set `shell=True`.
+                    # For attaching process to PyCharm debugger,
+                    # set `shell=False`.
+                    subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
 
 
     else:
@@ -826,11 +843,14 @@ def main():
             print('')
             print("Completed processing for this strip-pair ID")
 
-            with open(stripid_finFile, 'w'):
-                pass
+            with open(stripid_finFile, 'w') as stripid_finFile_fp:
+                for scene_dem in scene_demFiles:
+                    stripid_finFile_fp.write(os.path.basename(scene_dem)+'\n')
+
             if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
-                with open(stripid_finFile_coreg, 'w'):
-                    pass
+                with open(stripid_finFile_coreg, 'w') as stripid_finFile_fp:
+                    for scene_dem in scene_demFiles:
+                        stripid_finFile_fp.write(os.path.basename(scene_dem)+'\n')
 
             print(".fin finished indicator file created: {}".format(stripid_finFile))
             print('')

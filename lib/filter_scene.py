@@ -1850,7 +1850,7 @@ def pgc_find_repaired_metafile(metaFile):
         return None
 
 
-def pgc_find_source_image_metafile(file_path, re_parser, dem_source_image='left', source='provided path'):
+def pgc_find_source_image_metafile(file_path, re_parser, dem_source_image='left'):
     import glob
 
     if re_parser is RE_SOURCE_IMAGE_FNAME_PARTS:
