@@ -46,4 +46,4 @@ echo Running task
 echo ________________________________________
 echo
 
-time $p1
+time eval $p1

@@ -18,6 +18,8 @@ from email.mime.text import MIMEText
 from time import sleep
 if sys.version_info[0] < 3:
     from StringIO import StringIO
+else:
+    from io import StringIO
 
 import numpy as np
 
@@ -181,14 +183,14 @@ def argparser_init():
         help=' '.join([
             "Mask raster images with a file suffix(es) matching this string.",
             "An optional numeric string may be provided following the suffix string,",
-            "delimited with a comma (,), to specify the 'masking value' to set",
+            "delimited with an equal sign (=), to specify the 'masking value' to set",
             "masked pixels in the output raster.",
             "\nIf the numeric string component is not provided, the NoData value",
             "of the source raster will be taken as the masking value. If the source raster",
             "does not have a set NoData value, masking of that raster will be skipped.",
             "\nSpecify multiple source file suffixes (with or without added masking value)",
-            "by delimiting string with the pipe character (|), noting that you must then",
-            "wrap the whole argument string with quotes like 'dem.tif,0|ortho.tif,0'."
+            "by delimiting string with the pipe character (/), noting that you must then",
+            "wrap the whole argument string with quotes like 'dem.tif=0/ortho.tif=0'."
             "\n"
         ])
     )
@@ -334,8 +336,8 @@ def main():
     src = args.get(ARGSTR_SRC)
 
     if args.get(ARGSTR_SRC_SUFFIX) is not None:
-        src_suffixToptmaskval = [[ss.strip() for ss in s.strip().lstrip('_').split(',')]
-                                             for s  in args.get(ARGSTR_SRC_SUFFIX).split('|')]
+        src_suffixToptmaskval = [[ss.strip() for ss in s.strip().lstrip('_').split('=')]
+                                             for s  in args.get(ARGSTR_SRC_SUFFIX).split('/')]
         suffix_maskval_dict = {}
         for suffixToptmaskval in src_suffixToptmaskval:
             suffix = suffixToptmaskval[0]
@@ -531,9 +533,8 @@ def main():
                                                 args_batch.get(ARGSTR_JOBSCRIPT),
                                                 job_name, cmd_single)
 
-            if args_batch.get(ARGSTR_DRYRUN):
-                print(cmd)
-            else:
+            print(cmd)
+            if not args_batch.get(ARGSTR_DRYRUN):
                 subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
 
     else:

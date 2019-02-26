@@ -19,7 +19,7 @@ else:
 import numpy as np
 from scipy import ndimage as sp_ndimage
 
-from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag
+from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag, selectBestOrtho
 from testing import TESTDIR
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
@@ -247,8 +247,7 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
     masks = {}
 
     if mask_version == 'maskv1':
-        matchFile = selectBestMatchtag(demFile)
-        masks = mask_v1(matchFile, noentropy)
+        masks = mask_v1(demFile, noentropy)
 
     else:
         if mask_version in ('mask', 'bitmask', 'maskv2_debug'):
@@ -308,7 +307,7 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
         rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=mask_dtype, nbits=nbits)
 
 
-def mask_v1(matchFile, noentropy=False):
+def mask_v1(demFile, noentropy=False):
     """
     Creates an edgemask and datamask masking ON regions of bad data in
     a scene from a matchtag image and saves the two mask files to disk.
@@ -319,8 +318,8 @@ def mask_v1(matchFile, noentropy=False):
 
     Parameters
     ----------
-    matchFile : str (file path)
-        File path of the matchtag raster image.
+    demFile : str (file path)
+        File path of the DEM raster image.
     noentropy : bool
         If True, entropy filter is not applied.
         If False, entropy filter is applied.
@@ -343,8 +342,9 @@ def mask_v1(matchFile, noentropy=False):
     """
     component_masks = {}
 
+    matchFile = selectBestMatchtag(demFile)
+    orthoFile = selectBestOrtho(demFile)
     metaFile = matchFile.replace(getMatchtagSuffix(matchFile), 'meta.txt')
-    orthoFile = metaFile.replace('meta.txt', 'ortho.tif')
 
     # Find SETSM version.
     setsmVersion = None
@@ -511,9 +511,9 @@ def mask_v2(demFile=None, mask_version='mask',
         return mask
 
     demSuffix = getDemSuffix(demFile)
-    metaFile  = demFile.replace(demSuffix, 'meta.txt')
     matchFile = selectBestMatchtag(demFile)
-    orthoFile = demFile.replace(demSuffix, 'ortho.tif')
+    orthoFile = selectBestOrtho(demFile)
+    metaFile  = demFile.replace(demSuffix, 'meta.txt')
 
     meta = readSceneMeta(metaFile)
     try:

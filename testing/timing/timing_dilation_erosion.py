@@ -2,7 +2,11 @@ import cProfile
 import os
 import re
 import numpy as np
-from sys import stdout
+import sys
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
 
 from testing import TESTDIR
 from testing import test
@@ -15,8 +19,6 @@ statsFile = os.path.join(TESTDIR, 'timing_stats.csv')
 import contextlib
 @contextlib.contextmanager
 def capture():
-    import sys
-    from cStringIO import StringIO
     oldout, olderr = sys.stdout, sys.stderr
     try:
         out=[StringIO(), StringIO()]
@@ -61,7 +63,7 @@ for arr_sz_factor in array_sizes:
             print("~ function: {} ~".format(fun))
             row_entry[2] = fun
             for mode in function_modes:
-                stdout.write("mode: {}".format(mode))
+                sys.stdout.write("mode: {}".format(mode))
                 row_entry[3] = mode
                 # stdout.write("mode: ")
 

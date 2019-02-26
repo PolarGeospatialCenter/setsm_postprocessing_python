@@ -88,6 +88,10 @@ class ArgumentPasser:
             self._update_cmd_base()
 
     def unset_args(self, *argstrs):
+        if len(argstrs) < 1:
+            raise InvalidArgumentError("One or more argument strings must be provided")
+        elif len(argstrs) == 1 and type(argstrs[0]) in (list, tuple):
+            argstrs = argstrs[0]
         for argstr in argstrs:
             self.vars_dict[self.argstr2varstr[argstr]] = None
         if set(argstrs).issubset(set(self.argstr_pos)):
@@ -136,7 +140,16 @@ class ArgumentPasser:
                 self.set(argstr, (argstr in self.provided_opt_args))
 
     def _argval2str(self, item):
-        return '"{}"'.format(item) if type(item) is str else '{}'.format(item)
+        if type(item) is str:
+            if item.startswith('"') and item.endswith('"'):
+                item_str = item
+            elif item.startswith("'") and item.endswith("'"):
+                item_str = item
+            else:
+                item_str = '"{}"'.format(item)
+        else:
+            item_str = '{}'.format(item)
+        return item_str
 
     def _update_cmd_base(self):
         arg_list = []
@@ -276,11 +289,13 @@ def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s'
     bundle_prefix = os.path.join(dstdir, '{}_{}'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
     jobnum_total = int(math.ceil(len(task_list) / float(tasks_per_bundle)))
     jobnum_fmt = '{:0>'+str(len(str(jobnum_total)))+'}'
+    bundle_file_list = []
+    print("Writing task bundle text files in directory: {}".format(dstdir))
     for jobnum, tasknum in enumerate(range(0, len(task_list), tasks_per_bundle)):
         bundle_file = '{}_{}.txt'.format(bundle_prefix, jobnum_fmt.format(jobnum+1))
         np.savetxt(bundle_file, task_list[tasknum:tasknum+tasks_per_bundle], fmt=task_fmt, delimiter=task_delim)
-    bundle_files = glob(bundle_prefix+'*')
-    return bundle_files
+        bundle_file_list.append(bundle_file)
+    return bundle_file_list
 
 
 def read_task_bundle(bundle_file, args_dtype=np.dtype(str), args_delim=' '):

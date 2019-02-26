@@ -80,7 +80,7 @@ def scenes2strips(demdir, demFiles,
     respectively, will be applied.
 
     """
-    from batch_scenes2strips import getDemSuffix, selectBestMatchtag
+    from batch_scenes2strips import getDemSuffix, selectBestMatchtag, selectBestOrtho
     demSuffix = getDemSuffix(demFiles[0])
 
     # Order scenes in north-south or east-west direction by aspect ratio.
@@ -132,7 +132,7 @@ def scenes2strips(demdir, demFiles,
         # Construct filenames.
         demFile = os.path.join(demdir, demFiles_ordered[i])
         matchFile = selectBestMatchtag(demFile)
-        orthoFile = demFile.replace(demSuffix, 'ortho.tif')
+        orthoFile = selectBestOrtho(demFile)
         metaFile  = demFile.replace(demSuffix, 'meta.txt')
         if maskSuffix is None:
             print("No mask applied")

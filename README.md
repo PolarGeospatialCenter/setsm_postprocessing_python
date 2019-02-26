@@ -642,11 +642,3 @@ Using this mask, the water and/or cloud filters as they are computed for each sc
 |   | 00000 | 1 | 1 | 1 | 7 | Cloud, water, and edge |
 
 
-
-## batch_mask.py
-Documentation forthcoming.
-
-
-
-## diff_strips.py (WIP)
-Documentation forthcoming.
