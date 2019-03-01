@@ -3933,28 +3933,63 @@ def concave_hull_image(image, concavity,
     # Gather eroded triangles and triangles containing edges
     # with length equal to alpha_min.
     erode_tris = []
-    amin_instances = []
+    amin_tris = []
     for edge in edge_info:
         einfo = edge_info[edge]
         if einfo[1] >= alpha_cut:
-            erode_tris.append(shapely.geometry.Polygon(boundary_points[[edge[0], edge[1], einfo[2]]]))
+            erode_tri = shapely.geometry.Polygon(boundary_points[[edge[0], edge[1], einfo[2]]])
+            if not erode_tri.is_valid:
+                # Assume the three points in the triangle are all on the same line.
+                print("Erosion triangle is invalid (likely points lie on a line), skipping: {}".format(list(zip(*erode_tri.exterior.coords.xy))))
+                pass
+            else:
+                erode_tris.append(erode_tri)
         if einfo[1] == alpha_min:
             amin_indices = []
-            amin_instances.append(amin_indices)
             for k1 in edge:
                 amin_neighbors = indptr[indices[k1]:indices[k1+1]]
                 for k2 in amin_neighbors:
                     possible_k3 = set(indptr[indices[k1]:indices[k1+1]]).intersection(set(indptr[indices[k2]:indices[k2+1]]))
                     for k3 in possible_k3:
                         amin_indices.extend([k1, k2, k3])
+            amin_shape = shapely.geometry.MultiPoint(boundary_points[np.unique(amin_indices)]).convex_hull
+            if not amin_shape.is_valid:
+                print("Alpha min shape is invalid, skipping: {}".format(list(zip(*amin_shape.exterior.coords.xy))))
+                pass
+            else:
+                amin_tris.append(amin_shape)
 
     # Create convex hull (single) polygon, erosion region(s) (likely multi-)polygon,
     # and a polygon composed of edges that have an alpha equal to alpha_min.
-    erode_poly = shapely.ops.unary_union(erode_tris)
-    amin_poly = shapely.ops.unary_union(
-        [shapely.geometry.MultiPoint(boundary_points[np.unique(indices)]).convex_hull for indices in amin_instances]
-    )
     hull_convex_poly = shapely.geometry.MultiPoint(boundary_points[np.unique(hull_convex)]).convex_hull
+    try:
+        erode_poly = shapely.ops.unary_union(erode_tris)
+    except ValueError as e1:
+        warn(str(e1))
+        print("Could not perform shapely.ops.unary_union on erosion triangles")
+        print("Attempting to fish out bad union(s)")
+        erode_poly = erode_tris[0]
+        for erode_tri in erode_tris:
+            try:
+                erode_poly = shapely.ops.unary_union([erode_poly, erode_tri])
+            except ValueError as e2:
+                warn(str(e2))
+                print("Could not union erosion polygon with erosion triangle: {}".format(list(zip(*erode_tri.exterior.coords.xy))))
+                pass
+    try:
+        amin_poly = shapely.ops.unary_union(amin_tris)
+    except ValueError as e1:
+        warn(str(e1))
+        print("Could not perform shapely.ops.unary_union on alpha min shapes")
+        print("Attempting to fish out bad union(s)")
+        amin_poly = amin_tris[0]
+        for amin_shape in amin_tris:
+            try:
+                amin_poly = shapely.ops.unary_union([amin_poly, amin_shape])
+            except ValueError as e2:
+                warn(str(e2))
+                print("Could not union alpha min polygon with alpha min shape: {}".format(list(zip(*amin_shape.exterior.coords.xy))))
+                pass
 
     # Create concave hull (single) polygon.
     hull_concave_poly = hull_convex_poly.difference(erode_poly.difference(amin_poly))

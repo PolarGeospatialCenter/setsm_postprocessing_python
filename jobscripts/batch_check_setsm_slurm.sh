@@ -2,7 +2,7 @@
 
 #SBATCH --time=40:00:00  # walltime limit (HH:MM:SS)
 #SBATCH --nodes=1  # number of nodes
-#SBATCH --cpus-per-task=6  # processor core(s) per task
+#SBATCH --cpus-per-task=2  # processor core(s) per task
 
 #SBATCH -o %x.o%j  # stdout (+stderr) file name
 

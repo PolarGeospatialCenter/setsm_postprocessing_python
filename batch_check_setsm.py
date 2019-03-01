@@ -157,8 +157,8 @@ ARGCHOGRP_CHECK_SPECIAL_SETSM_STRIPLEVEL = [
 ]
 
 # Argument choice settings
-# ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL = 'matchtag.tif/ortho.tif/meta.txt/mask.tif'
-ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL = 'matchtag.tif/ortho.tif/meta.txt'
+ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL = 'matchtag.tif/ortho.tif/meta.txt/bitmask.tif'
+# ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL = 'matchtag.tif/ortho.tif/meta.txt'
 ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_STRIPLEVEL = '/'.join([
     ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL,
     'dem_10m.tif/dem_browse.tif'
@@ -212,7 +212,6 @@ ARGDEF_SRC_SUFFIX = '.tif'
 ARGDEF_CHECKFILE_EXT = '.check'
 ARGDEF_CHECKERROR_EXT = '.err'
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
-ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
 
 ##############################
 
@@ -220,6 +219,7 @@ ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOB_ABBREV = 'Check'
+BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
 
 ##############################
 
@@ -272,20 +272,23 @@ SETSM_META_ITEM_RE = get_setsm_meta_item_regex(None, "[\d\w_\-/]+\.tif")
 SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 SETSM_META_KEYGRP_GSD = [
-    'Mean_row_GSD',
-    'Mean_col_GSD',
-    'Mean_GSD'
+    # 'Mean_row_GSD',
+    # 'Mean_col_GSD',
+    # 'Mean_GSD'
 ]
 
 for SETSM_META_KEY in SETSM_META_KEYGRP_GSD + [
     'Mean_sun_azimuth_angle',
     'Mean_sun_elevation',
-    'Mean_sat_azimuth_angle',
-    'Mean_sat_elevation',
+    'Mean_sat_azimuth_angle'
 ]:
     SETSM_META_VALUE_RE = "\d+\.?\d*"
     SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, SETSM_META_VALUE_RE, allow_missing_image_prefix=True)
     SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
+
+SETSM_META_KEY = 'Mean_sat_elevation'
+SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, "\-?\d+\.?\d*", allow_missing_image_prefix=True)
+SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 for SETSM_META_KEY in [
     'effbw',
@@ -666,7 +669,7 @@ def argparser_init():
             argstr=ARGSTR_WD,
             existcheck_fn=os.path.isdir,
             existcheck_reqval=True),
-        default=ARGDEF_WD,
+        default=None,
         help=' '.join([
             "Copy source files to this directory before checking, run checks on these copies,",
             "then clean up the copies before moving on.",
@@ -813,7 +816,6 @@ def main():
     errfile_ext = args.get(ARGSTR_ERRFILE_EXT)
     allow_missing_suffix = args.get(ARGSTR_ALLOW_MISSING_SUFFIX)
     retry_errors = args.get(ARGSTR_RETRY_ERRORS)
-    keep_checkfiles_with_error = args.get(ARGSTR_KEEP_CHECKFILE_WITH_ERRORS)
     warn_errfile_exists = (not args.get(ARGSTR_SUPPRESS_ERRFILE_EXISTS))
     warn_missing_suffix = (not args.get(ARGSTR_SUPPRESS_MISSING_SUFFIX))
     warn_missing_checked = (not args.get(ARGSTR_SUPPRESS_MISSING_CHECKED))
@@ -922,7 +924,7 @@ def main():
                         missing_suffix_flag[0] = True
 
     elif os.path.isfile(src):
-        if src.endswith('.txt'):
+        if src.endswith('.txt') and not src.endswith('_meta.txt'):
             bundle_file = src
             task_list = batch_handler.read_task_bundle(bundle_file)
             if args.get(ARGSTR_CHECK_SPECIAL) == ARGCHO_CHECK_SPECIAL_ALL_SEPARATE:
@@ -1203,11 +1205,13 @@ def main():
         args_batch = args
         args_single = copy.deepcopy(args)
         args_single.unset_args(ARGGRP_BATCH)
+        if args.get(ARGSTR_WD) is None and BATCH_ARGDEF_WD is not None:
+            args_single.set(ARGSTR_WD, BATCH_ARGDEF_WD)
+            print("argument {} set to default value for batch run with {} option: {}".format(
+                ARGSTR_WD, ARGSTR_SCHEDULER, args_single.get(ARGSTR_WD)
+            ))
 
-        if check_items is checkffileroot_srcfnamechecklist_dict:
-            args_single.unset_args(ARGGRP_CHECK_ALL)
-            args_single.set(ARGSTR_SRC, srcdir)
-        elif check_items is srcffile_checklist:
+        if check_items is srcffile_checklist:
             args_single.set(ARGSTR_CHECK_SPECIAL, ARGCHO_CHECK_SPECIAL_ALL_SEPARATE)
         if args.get(ARGSTR_CHECK_SPECIAL) is not None:
             args_single.unset_args(ARGGRP_CHECK_REGULAR)
@@ -1358,17 +1362,15 @@ def check_rasters(raster_ffiles, checkfile, args):
                                     in_scenemeta_section = True
                             elif re.match(SETSM_STRIPMETA_SCENEMETA_ITEM_HEADER_REGEX, line) is not None:
                                 if current_scenemeta_name is not None:
-                                    with StringIO(scenemeta_txt) as scenemeta_fp:
-                                        meta_errmsg_list = check_setsm_meta(scenemeta_fp)
-                                        errmsg_list.extend(["{}: {}".format(current_scenemeta_name, err) for err in meta_errmsg_list])
+                                    meta_errmsg_list = check_setsm_meta(StringIO(scenemeta_txt))
+                                    errmsg_list.extend(["{}: {}".format(current_scenemeta_name, err) for err in meta_errmsg_list])
                                     scenemeta_txt = ''
                                 current_scenemeta_name = line.strip()
                             elif current_scenemeta_name is not None:
                                 scenemeta_txt += line
                         if current_scenemeta_name is not None:
-                            with StringIO(scenemeta_txt) as scenemeta_fp:
-                                meta_errmsg_list = check_setsm_meta(scenemeta_fp)
-                                errmsg_list.extend(["{}: {}".format(current_scenemeta_name, err) for err in meta_errmsg_list])
+                            meta_errmsg_list = check_setsm_meta(StringIO(scenemeta_txt))
+                            errmsg_list.extend(["{}: {}".format(current_scenemeta_name, err) for err in meta_errmsg_list])
 
                 else:
                     errmsg_print_and_list(errmsg_list, ' '.join([
@@ -1517,6 +1519,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                 else:
                     print("Adding filename to group checkfile list: {}".format(checkfile))
                     checkfile_group_fp.write(os.path.basename(raster_ffile)+'\n')
+                    # checkfile_group_fp.write(os.path.basename(raster_ffile).replace('.check', '_dem_smooth.tif')+'\n')
 
     if checkfile_group_fp is not None:
         checkfile_group_fp.close()
