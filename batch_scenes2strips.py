@@ -982,8 +982,8 @@ def saveStripBrowse(strip_demFile, demSuffix):
         raise ExternalError("`gdaldem hillshade` program did not create "
                             "output 10m DEM hillshade file: {}".format(strip_demFile_browse))
 
-    if os.path.isfile(strip_demFile_10m):
-        os.remove(strip_demFile_10m)
+    # if os.path.isfile(strip_demFile_10m):
+    #     os.remove(strip_demFile_10m)
 
 
 def getDemSuffix(demFile):
