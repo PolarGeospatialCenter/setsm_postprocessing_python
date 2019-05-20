@@ -68,11 +68,12 @@ ITHRESH_QUICK_SAVED = False
 
 
 HOSTNAME = os.getenv('HOSTNAME')
-if HOSTNAME is not None:
-    HOSTNAME = HOSTNAME.lower()
-    RUNNING_AT_PGC = True if True in [s in HOSTNAME for s in ['rookery', 'nunatak']] else False
-else:
-    RUNNING_AT_PGC = False
+# if HOSTNAME is not None:
+#     HOSTNAME = HOSTNAME.lower()
+#     RUNNING_AT_PGC = True if True in [s in HOSTNAME for s in ['rookery', 'nunatak']] else False
+# else:
+#     RUNNING_AT_PGC = False
+RUNNING_AT_PGC = False
 RE_SCENE_DEM_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9A-F]{16})_([0-9A-F]{16})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_.*$"
 RE_SCENE_DEM_FNAME_PARTS = re.compile(RE_SCENE_DEM_FNAME_PARTS_STR)
 RE_SOURCE_IMAGE_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})_([0-9A-F]{16})_[0-9]{2}([A-Z]{3})[0-9]{2}[0-9]{6}\-(.+?)\-([A-Z0-9]+_[0-9]+)_(P[0-9]{3})\..*$"
@@ -246,11 +247,11 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
 
     masks = {}
 
-    if mask_version == 'maskv1':
+    if mask_version.endswith('maskv1'):
         masks = mask_v1(demFile, noentropy)
 
     else:
-        if mask_version in ('mask', 'bitmask', 'maskv2_debug'):
+        if True in [mask_version.endswith(name) for name in ['mask', 'bitmask', 'maskv2_debug']]:
             if mask_version == 'mask':
                 save_component_masks = MASK_FLAT
             elif mask_version == 'bitmask':
@@ -258,9 +259,9 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
             mask = mask_v2(demFile, mask_version,
                            save_component_masks=(save_component_masks != MASK_FLAT),
                            debug_component_masks=debug_component_masks)
-        elif mask_version == 'mask2a':
+        elif mask_version.endswith('mask2a'):
             mask = mask_v2a(demFile)
-        elif mask_version == 'mask8m':
+        elif mask_version.endswith('mask8m'):
             mask = mask8m(demFile)
         else:
             raise InvalidArgumentError("`mask_version` must be one of {}, "
@@ -1680,13 +1681,17 @@ def readSceneMeta(metaFile, trying_repaired_version=False):
         line = metaFile_fp.readline()
     metaFile_fp.close()
 
+    # Detect scenes produced with flawed SETSM version 3.4.2 and quit building strip.
+    if meta['setsm_version'] == '3.4.2':
+        raise MetadataError("SETSM version is 3.4.2; scenes must be re-run to newest SETSM version")
+
     # Get satID and check for cross track naming convention.
     try:
         for left_image_tag in ['image_0', 'image_1']:
             if left_image_tag in meta:
                 break
         if left_image_tag == 'image_0':
-            warn("Scene metadata file ({}) was affected by Image 0/1 SETSM bug")
+            raise MetadataError("Scene metadata file ({}) was affected by Image 0/1 SETSM bug".format(metaFile))
         satID = os.path.basename(meta[left_image_tag])[0:4].upper()
         # image_2 = meta['image_2']
     except KeyError as e:
@@ -1787,8 +1792,7 @@ def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_ve
                 continue
             re_parser = RE_SOURCE_IMAGE_FNAME_PARTS
 
-        image_1_metafile = pgc_find_source_image_metafile(
-            try_path, re_parser, source=try_source)
+        image_1_metafile = pgc_find_source_image_metafile(try_path, re_parser)
 
         if image_1_metafile is not None:
             break

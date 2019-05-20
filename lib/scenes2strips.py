@@ -83,6 +83,8 @@ def scenes2strips(demdir, demFiles,
     from batch_scenes2strips import getDemSuffix, selectBestMatchtag, selectBestOrtho
     demSuffix = getDemSuffix(demFiles[0])
 
+    cmin = 1000  # Minimum data cluster area for 2m.
+
     # Order scenes in north-south or east-west direction by aspect ratio.
     num_scenes = len(demFiles)
     if trans_guess is None and rmse_guess is None:
@@ -153,9 +155,9 @@ def scenes2strips(demdir, demFiles,
         # Apply masks.
         x, y, z, m, o, md = applyMasks(x, y, z, m, o, md, filter_options, maskSuffix)
 
-        # Check for no data.
-        if np.all(np.isnan(z)):
-            print("All data is masked, skipping")
+        # Check for redundant scene.
+        if np.count_nonzero(~np.isnan(z)) <= cmin:
+            print("Not enough (unmasked) data, skipping")
             skipped_scene = True
             continue
 
@@ -223,8 +225,6 @@ def scenes2strips(demdir, demFiles,
         MDsub = np.copy(MD[r0:r1, c0:c1])
 
         # NEW MOSAICKING CODE
-
-        cmin = 1000  # Minimum data cluster area for 2m.
 
         # Crop to just region of overlap.
         A = (~np.isnan(Zsub) & ~np.isnan(z))

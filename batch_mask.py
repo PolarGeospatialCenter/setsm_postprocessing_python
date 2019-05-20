@@ -204,7 +204,7 @@ def argparser_init():
             "\nIf not provided, the default output suffix is 'maskXXX', where [XXX] is the",
             "bit-code corresponding to the filter components ([cloud, water, edge], respectively)",
             "applied in the masking for this run with the (-c, -w, -e) mask filter options."
-            "\nProvide an empty string ('') with  "
+            "\n"
         ])
     )
     parser.add_argument(
@@ -359,7 +359,10 @@ def main():
     if args.get(ARGSTR_DST_SUFFIX) is None:
         args.set(ARGSTR_DST_SUFFIX, '_mask'+get_mask_bitstring(*args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)))
         print("argument {} set automatically to: {}".format(ARGSTR_DST_SUFFIX, args.get(ARGSTR_DST_SUFFIX)))
-    args.set(ARGSTR_DST_SUFFIX, '_'+args.get(ARGSTR_DST_SUFFIX).lstrip('_'))
+    dst_suffix_raw = args.get(ARGSTR_DST_SUFFIX)
+    dst_suffix_fixed = '_'+dst_suffix_raw.lstrip('_') if dst_suffix_raw != '' else ''
+    if dst_suffix_fixed != dst_suffix_raw:
+        args.set(ARGSTR_DST_SUFFIX, dst_suffix_fixed)
 
     if args.get(ARGSTR_SCHEDULER) is not None:
         if args.get(ARGSTR_JOBSCRIPT) is None:
@@ -468,7 +471,7 @@ def main():
     print("-----")
 
     if suffix_maskval_dict is None:
-        print("Masking all *_[SRC-SUFFIX(.tif)] raster components corresponding to "
+        print("Masking all *_[RASTER-SUFFIX(.tif)] raster components corresponding to "
               "source *{} file(s), using source NoData values".format(BITMASK_SUFFIX))
     else:
         print("[Raster Suffix, Masking Value]")
@@ -486,7 +489,7 @@ def main():
 
     # Pause for user review.
     print("-----")
-    wait_seconds = 5
+    wait_seconds = 10
     print("Sleeping {} seconds before task submission".format(wait_seconds))
     sleep(wait_seconds)
     print("-----")
