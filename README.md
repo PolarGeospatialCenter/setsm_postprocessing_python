@@ -5,7 +5,7 @@ The code for both filtering and merging (also referred to as "mosaicking" here) 
 
 Please direct any questions to the current manager of this repo, Erik Husby, by email at husby036 (a+) umn (d<>t) edu.
 
-[(Click here for a shortcut to information on the *bitmask.tif* raster)](### The *bitmask.tif* raster, explained)
+[(Click here for a shortcut to information on the *bitmask.tif* raster)](https://github.com/PolarGeospatialCenter/setsm_postprocessing_python#the-bitmasktif-raster-explained)
 
 
 ## Python Requirements
@@ -74,7 +74,7 @@ The [3.0 branch of Ian Howat's setsm_postprocessing GitHub repo](https://github.
 * Added capability to create "unfiltered" strips (easiest done by passing the `--unf` script argument) in multiple processing scenarios in addition to the ability to create normal filtered strips.
 * Added mosaicking of scene masks into a mask strip component along with the normal dem/matchtag/ortho strip components.
 * Added ability to use different algorithms for scene filtering by invoking the `--mask-ver` script argument.
-* Restructured filtering code that produced the default 2-meter resolution FLAT binary *mask.tif* scene mask from [setsm_postprocessing 3.0](https://github.com/ihowat/setsm_postprocessing/tree/3.0 "setsm_postprocessing, 3.0 branch") to create the component-ized [*bitmask.tif*](### The *bitmask.tif* raster, explained) mask, which is now the default mask for 2-meter SETSM DEMs.
+* Restructured filtering code that produced the default 2-meter resolution FLAT binary *mask.tif* scene mask from [setsm_postprocessing 3.0](https://github.com/ihowat/setsm_postprocessing/tree/3.0 "setsm_postprocessing, 3.0 branch") to create the component-ized [*bitmask.tif*](https://github.com/PolarGeospatialCenter/setsm_postprocessing_python#the-bitmasktif-raster-explained) mask, which is now the default mask for 2-meter SETSM DEMs.
 
 
 ### Turning scenes into strips
