@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
 
-# Version 0.9; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Version 0.9; Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
 
 
 import argparse
@@ -13,12 +13,21 @@ from datetime import datetime
 from glob import glob
 
 
+SCHED_SUPPORTED = []
 SCHED_PBS = 'pbs'
 SCHED_SLURM = 'slurm'
-SCHED_SUPPORTED = [
-    SCHED_PBS,
-    SCHED_SLURM
-]
+SCHED_NAME_TESTCMD_DICT = {
+    SCHED_PBS: 'pbsnodes',
+    SCHED_SLURM: 'sinfo'
+}
+for sched_name in sorted(SCHED_NAME_TESTCMD_DICT.keys()):
+    try:
+        if subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE).wait() == 0:
+            SCHED_SUPPORTED.append(sched_name)
+    except OSError:
+        pass
+if len(SCHED_SUPPORTED) == 0:
+    SCHED_SUPPORTED.append(None)
 
 
 class InvalidArgumentError(Exception):
@@ -78,11 +87,23 @@ class ArgumentPasser:
             values = values[0]
         return values
 
-    def set(self, argstr, newval):
-        if argstr not in self.argstr2varstr:
-            raise InvalidArgumentError("This {} object has no '{}' argument string".format(type(self).__name__, argstr))
-        self.vars_dict[self.argstr2varstr[argstr]] = newval
-        if argstr in self.argstr_pos:
+    def set(self, argstrs, newval=None):
+        argstr_list = argstrs if type(argstrs) in (tuple, list) else [argstrs]
+        for argstr in argstr_list:
+            if argstr not in self.argstr2varstr:
+                raise InvalidArgumentError("This {} object has no '{}' argument string".format(type(self).__name__, argstr))
+            if newval is None:
+                action = self.varstr2action[self.argstr2varstr[argstr]]
+                acttype = type(action)
+                if acttype is argparse._StoreAction and 'function argtype_bool_plus' in str(action.type):
+                    newval = True
+                elif acttype in (argparse._StoreTrueAction, argparse._StoreFalseAction):
+                    newval = (acttype is argparse._StoreTrueAction)
+                else:
+                    raise InvalidArgumentError("Setting non-boolean argument string '{}' requires "
+                                               "a provided `newval` value".format(argstr))
+            self.vars_dict[self.argstr2varstr[argstr]] = newval
+        if set(argstr_list).issubset(set(self.argstr_pos)):
             self._update_cmd()
         else:
             self._update_cmd_base()
@@ -93,7 +114,15 @@ class ArgumentPasser:
         elif len(argstrs) == 1 and type(argstrs[0]) in (list, tuple):
             argstrs = argstrs[0]
         for argstr in argstrs:
-            self.vars_dict[self.argstr2varstr[argstr]] = None
+            action = self.varstr2action[self.argstr2varstr[argstr]]
+            acttype = type(action)
+            if acttype is argparse._StoreAction and 'function argtype_bool_plus' in str(action.type):
+                newval = False
+            elif acttype in (argparse._StoreTrueAction, argparse._StoreFalseAction):
+                newval = (acttype is argparse._StoreFalseAction)
+            else:
+                newval = None
+            self.vars_dict[self.argstr2varstr[argstr]] = newval
         if set(argstrs).issubset(set(self.argstr_pos)):
             self._update_cmd()
         else:

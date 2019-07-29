@@ -1,5 +1,5 @@
 
-# Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
 
 
 from __future__ import division
@@ -907,17 +907,18 @@ def main():
         if (    args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None
             and args.get(ARGSTR_CHECK_SPECIAL) != ARGCHO_CHECK_SPECIAL_ALL_SEPARATE):
             checkffileroot_srcfnamechecklist_dict = dict()
-            for srcfname in os.listdir(srcdir):
-                if endswith_one_of_coll(srcfname, src_suffixes):
-                    match = re.match(checkfile_root_regex, srcfname)
-                    if match is None:
-                        print("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
-                    else:
-                        cf_root_name = match.group(1)
-                        cf_root_full = os.path.join(srcdir, cf_root_name)
-                        if cf_root_full not in checkffileroot_srcfnamechecklist_dict:
-                            checkffileroot_srcfnamechecklist_dict[cf_root_full] = []
-                        checkffileroot_srcfnamechecklist_dict[cf_root_full].append(srcfname)
+            for root, dnames, fnames in os.walk(srcdir):
+                for srcfname in fnames:
+                    if endswith_one_of_coll(srcfname, src_suffixes):
+                        match = re.match(checkfile_root_regex, srcfname)
+                        if match is None:
+                            print("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
+                        else:
+                            cf_root_name = match.group(1)
+                            cf_root_full = os.path.join(root, cf_root_name)
+                            if cf_root_full not in checkffileroot_srcfnamechecklist_dict:
+                                checkffileroot_srcfnamechecklist_dict[cf_root_full] = []
+                            checkffileroot_srcfnamechecklist_dict[cf_root_full].append(srcfname)
 
         elif args.get(ARGSTR_CHECKFILE_ROOT) is not None:
             checkffileroot_srcfnamechecklist_dict = dict()
@@ -926,6 +927,11 @@ def main():
                 os.path.basename(f) for f in glob.glob(cf_root_full+'*') if endswith_one_of_coll(f, src_suffixes)]
 
         else:  # if argument --checkfile was provided or if each source raster is allotted a checkfile
+            srcffile_checklist = []
+            for root, dnames, fnames in os.walk(srcdir):
+                for srcfname in fnames:
+                    if endswith_one_of_coll(srcfname, src_suffixes):
+                        srcffile_checklist.append(os.path.join(root, srcfname))
             srcffile_checklist = [f for f in glob.glob(os.path.join(srcdir, '*')) if endswith_one_of_coll(f, src_suffixes)]
             if not (not args.get(ARGSTR_CHECKFILE_OFF) and args.get(ARGSTR_CHECKFILE) is not None):
                 missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, srcffile_checklist)]
@@ -1184,6 +1190,7 @@ def main():
         raise DeveloperError("Neither `checkffileroot_srcfnamechecklist_dict` "
                              "nor `srcffile_checklist` have been initialized")
 
+    num_errfiles_walk = 0
     print("-----")
     if not args.get(ARGSTR_CHECKFILE_OFF):
         print("Checkfile extension: {}".format(checkfile_ext))
@@ -1191,9 +1198,11 @@ def main():
     print("Accepted source file suffixes: {}".format(src_suffixes))
     print("-----")
     if os.path.isdir(src):
-        srcdir_errfiles = glob.glob(os.path.join(src, '*'+errfile_ext))
-        print("{} existing error files in source directory".format(len(srcdir_errfiles)))
-        del srcdir_errfiles
+        for root, dnames, fnames in os.walk(src):
+            for srcfname in fnames:
+                if srcfname.endswith(errfile_ext):
+                    num_errfiles_walk += 1
+        print("{} existing error files within source directory".format(num_errfiles_walk))
     print("{} existing error files among source selection".format(num_srcfiles_err_exist))
     if num_srcfiles is not None or num_srcfiles_to_check is not None:
         print("Number of source files: {}{}{}{}{}".format(

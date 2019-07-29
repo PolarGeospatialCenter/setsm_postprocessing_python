@@ -1,6 +1,6 @@
 # -*- coding: UTF-8 -*-
 
-# Version 3.1; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2018
+# Version 3.1; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2019
 # Translated from MATLAB code written by Ian Howat, Ohio State University, 2018
 
 
@@ -17,6 +17,7 @@ else:
     from io import StringIO
 
 import numpy as np
+import skimage.morphology as sk_morphology
 from scipy import ndimage as sp_ndimage
 
 from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag, selectBestOrtho
@@ -27,7 +28,7 @@ else:
     from lib import raster_array_tools as rat
 
 
-BITMASK_VERSION_NUM = 1.0
+BITMASK_VERSION_NUM = 1.2
 
 MASK_FLAT = 0
 MASK_SEPARATE = 1
@@ -584,6 +585,8 @@ def mask_v2(demFile=None, mask_version='mask',
         processing_dx = processing_res
         processing_dy = processing_res
 
+    dem_nodata = np.isnan(dem_array)
+
     # Coordinate ascending/descending directionality affects gradient used in getSlopeMask.
     if image_dx < 0:
         processing_dx = -processing_dx
@@ -596,6 +599,8 @@ def mask_v2(demFile=None, mask_version='mask',
                                   (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask = getEdgeMask(~mask)
     edge_mask = mask
+    edge_mask = mask_envelope_nodata(edge_mask, dem_nodata)
+    mask = edge_mask
     mask = handle_component_masks(MASKCOMP_EDGE_NAME, mask, component_masks,
                                   save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask_out = mask
@@ -603,15 +608,21 @@ def mask_v2(demFile=None, mask_version='mask',
     # Mask water.
     mask = getWaterMask(ortho_array, data_density_map, mean_sun_elevation,
                         debug_component_masks=debug_component_masks)
-    water_mask, _ = mask
-    water_mask[edge_mask] = False
+    water_mask, mask_comp = mask
+    water_mask = mask_envelope_nodata(water_mask, dem_nodata, edge_mask=edge_mask)
+    mask = water_mask, mask_comp
+    # water_mask[edge_mask] = False
     mask = handle_component_masks(MASKCOMP_WATER_NAME, mask, component_masks,
                                   save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask_out = (mask_out | mask)
 
     # Filter clouds.
-    mask = getCloudMask(dem_array, ortho_array, data_density_map, edge_mask=edge_mask,
+    mask = getCloudMask(dem_array, ortho_array, data_density_map,
+                        edge_mask=edge_mask, water_mask=water_mask,
                         debug_component_masks=debug_component_masks)
+    cloud_mask, mask_comp = mask
+    cloud_mask = mask_envelope_nodata(cloud_mask, dem_nodata, edge_mask=edge_mask)
+    mask = cloud_mask, mask_comp
     mask = handle_component_masks(MASKCOMP_CLOUD_NAME, mask, component_masks,
                                   save_component_masks or (debug_component_masks in (DEBUG_ALL, DEBUG_MASKS)))
     mask_out = (mask_out | mask)
@@ -624,6 +635,19 @@ def mask_v2(demFile=None, mask_version='mask',
         component_masks[mask_name] = mask
 
     return component_masks
+
+
+def mask_envelope_nodata(mask, nodata, edge_mask=None):
+    # TODO: Write docstring.
+
+    mask_addition = (rat.imdilate(mask, sk_morphology.diamond(1)) & nodata)
+
+    if edge_mask is not None:
+        mask_addition[edge_mask] = False
+        mask_addition = sp_ndimage.morphology.binary_fill_holes(mask_addition)
+        mask_addition[~nodata] = False
+
+    return (mask | mask_addition)
 
 
 def handle_component_masks(mask_name, mask_tuple, component_masks, save_component_masks):
@@ -1174,7 +1198,8 @@ def getSlopeMask(dem_array,
             "must be provided"
         )
     if avg_kernel_size is None:
-        avg_kernel_size = int(math.floor(21*2/source_res))
+        # avg_kernel_size = int(math.floor(21*2/source_res))
+        avg_kernel_size = min(21, int(math.floor(21*2/source_res)))
 
     # Get elevation grade at each pixel.
     if grad_dx is None:
@@ -1332,7 +1357,8 @@ def getWaterMask(ortho_array, data_density_map,
     return mask_pp, component_masks
 
 
-def getCloudMask(dem_array, ortho_array, data_density_map, edge_mask=None,
+def getCloudMask(dem_array, ortho_array, data_density_map,
+                 water_mask=None, edge_mask=None,
                  ortho_thresh=70,
                  data_density_thresh_hirad=0.9, data_density_thresh_lorad=0.6,
                  min_nocloud_cluster=10000, min_cloud_cluster=1000,
@@ -1367,6 +1393,11 @@ def getCloudMask(dem_array, ortho_array, data_density_map, edge_mask=None,
         each node describes the fraction of surrounding
         pixels in the input image that were match points
         in the photogrammetric process.
+    water_mask : None or ndarray, 2D, same shape as `dem_array`
+        Boolean mask of water for the scene.
+        If provided, cloud mask is prevent from excessive overlap
+        with the water mask by subtracting the water mask from the
+        cloud mask pre-dilation step.
     edge_mask : None or ndarray, 2D, same shape as `dem_array`
         Boolean mask of bad edges for the scene.
         If provided, cloud mask is clipped to the inside extent
@@ -1480,6 +1511,10 @@ def getCloudMask(dem_array, ortho_array, data_density_map, edge_mask=None,
 
     # Assemble cloud mask.
     mask = (dem_data & (mask_radiance | mask_datadensity | mask_stdev))
+
+    # Subtract water mask, if provided.
+    if water_mask is not None:
+        mask[water_mask] = False
 
     # The following call is commented out to avoid the cloud mask growing
     # to have an egrigous extent when the current mask makes a large ring

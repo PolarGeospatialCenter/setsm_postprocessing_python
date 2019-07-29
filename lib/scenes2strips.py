@@ -1,5 +1,5 @@
 
-# Version 3.1; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Version 3.1; Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
 # Translated from MATLAB code written by Ian Howat, Ohio State University, 2018
 
 
@@ -44,7 +44,7 @@ class RasterDimensionError(Exception):
         super(Exception, self).__init__(msg)
 
 
-def scenes2strips(demdir, demFiles,
+def scenes2strips(demFiles,
                   maskSuffix=None, filter_options=(), max_coreg_rmse=1,
                   trans_guess=None, rmse_guess=None,
                   hold_guess=HOLD_GUESS_OFF, check_guess=True):
@@ -89,7 +89,7 @@ def scenes2strips(demdir, demFiles,
     num_scenes = len(demFiles)
     if trans_guess is None and rmse_guess is None:
         print("Ordering {} scenes".format(num_scenes))
-        demFiles_ordered = orderPairs(demdir, demFiles)
+        demFiles_ordered = orderPairs(demFiles)
     elif trans_guess is not None and trans_guess.shape[1] != num_scenes:
         raise InvalidArgumentError("`trans_guess` array must be of shape (3, N) where N is the number "
                                    "of scenes in `demFiles`, but was {}".format(trans_guess.shape))
@@ -112,7 +112,10 @@ def scenes2strips(demdir, demFiles,
     # Get projection reference of the first scene to be used in equality checks
     # with the projection reference of all scenes that follow.
     global __STRIP_SPAT_REF__
-    __STRIP_SPAT_REF__ = rat.extractRasterData(os.path.join(demdir, demFiles_ordered[0]), 'spat_ref')
+    __STRIP_SPAT_REF__ = rat.extractRasterData(demFiles_ordered[0], 'spat_ref')
+    if __STRIP_SPAT_REF__.ExportToProj4() == '':
+        raise SpatialRefError("DEM '{}' spatial reference ({}) has no PROJ4 representation "
+                              "and is likely erroneous".format(demFiles_ordered[0], __STRIP_SPAT_REF__.ExportToWkt()))
 
     # File loop.
     skipped_scene = False
@@ -132,7 +135,7 @@ def scenes2strips(demdir, demFiles,
             continue
 
         # Construct filenames.
-        demFile = os.path.join(demdir, demFiles_ordered[i])
+        demFile = demFiles_ordered[i]
         matchFile = selectBestMatchtag(demFile)
         orthoFile = selectBestOrtho(demFile)
         metaFile  = demFile.replace(demSuffix, 'meta.txt')
@@ -256,6 +259,12 @@ def scenes2strips(demdir, demFiles,
         del strip_nodata, scene_data
 
         Ar = rat.imresize(A, 0.1, 'nearest')
+
+        # Check for redundant scene.
+        if not np.any(Ar):
+            print("Redundant scene, skipping")
+            skipped_scene = True
+            continue
 
         # Locate pixels on outside of boundary of overlap region.
         Ar_nonzero = (Ar != 0)
@@ -685,7 +694,7 @@ def coregisterdems(x1, y1, z1,
     return np.array([z2out, p.T[0], d0])
 
 
-def orderPairs(demdir, fnames):
+def orderPairs(fnames):
     """
     Scene order is determined in relation to *grid north* of the common projection
     by comparing total x-extent and y-extent of the scenes as a whole (aspect ratio).
@@ -698,7 +707,7 @@ def orderPairs(demdir, fnames):
 
     # Get rectangular parameters and geometries.
     for i in range(len(fnames)):
-        cc, geom = rat.extractRasterData(os.path.join(demdir, fnames[i]), 'corner_coords', 'geom')
+        cc, geom = rat.extractRasterData(fnames[i], 'corner_coords', 'geom')
         cc_x = cc[:, 0]
         cc_y = cc[:, 1]
         R0[i, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]

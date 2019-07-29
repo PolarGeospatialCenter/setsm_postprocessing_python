@@ -1,5 +1,5 @@
 
-# Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
 
 
 from __future__ import division
@@ -55,6 +55,7 @@ ARGSTR_DST_NODATA = '--dst-nodata'
 ARGSTR_EDGE = '--edge'
 ARGSTR_WATER = '--water'
 ARGSTR_CLOUD = '--cloud'
+ARGSTR_FILTER_OFF = '--filter-off'
 ARGSTR_OVERWRITE = '--overwrite'
 ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
@@ -79,11 +80,13 @@ ARGCHO_DST_NODATA = [
 ]
 
 # Argument defaults
+ARGDEF_SRC_SUFFIX = 'dem.tif'
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
 
 # Argument groups
 ARGGRP_OUTDIR = [ARGSTR_DSTDIR, ARGSTR_LOGDIR, ARGSTR_SCRATCH]
 ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR_EMAIL]
+ARGGRP_FILTER_COMP = [ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD]
 
 ##############################
 
@@ -97,6 +100,8 @@ JOB_ABBREV = 'Mask'
 ## Custom globals
 
 BITMASK_SUFFIX = '_'+'bitmask.tif'.lstrip('_')
+LSF_PREFIX = '_'+'lsf'.lstrip('_')
+LSF_BITMASK_SUFFIX = LSF_PREFIX + BITMASK_SUFFIX
 
 ##############################
 
@@ -173,13 +178,13 @@ def argparser_init():
             existcheck_reqval=False),
         help=' '.join([
             "Path to destination directory for output masked raster(s)",
-            "(default is directory of argument {}).".format(ARGSTR_SRC)
+            "(default is alongside source raster file(s))."
         ])
     )
     parser.add_argument(
         ARGSTR_SRC_SUFFIX,
         type=str,
-        default=None,
+        default=ARGDEF_SRC_SUFFIX,
         help=' '.join([
             "Mask raster images with a file suffix(es) matching this string.",
             "An optional numeric string may be provided following the suffix string,",
@@ -201,9 +206,13 @@ def argparser_init():
         help=' '.join([
             "Suffix appended to filename of output masked rasters."
             "\nWorks like 'src-raster-fname.tif' -> 'src-raster-fname_[DST_SUFFIX].tif'.",
-            "\nIf not provided, the default output suffix is 'maskXXX', where [XXX] is the",
+            "\nIf not provided, the default output suffix is 'filtXXX', where [XXX] is the",
             "bit-code corresponding to the filter components ([cloud, water, edge], respectively)",
-            "applied in the masking for this run with the (-c, -w, -e) mask filter options."
+            "applied in the masking for this run with the (-c, -w, -e) mask filter options.",
+            "\nIf the --filter-off option is instead provided, by default all output filenames",
+            "will be the same as input filenames.",
+            "\nIf none of the (-c, -w, -e, --filter-off) filter options are provided, all filter",
+            "components are applied and the default output suffix is simply 'filt'."
             "\n"
         ])
     )
@@ -230,19 +239,24 @@ def argparser_init():
         ARGSTR_EDGE, '-e',
         action='store_true',
         help=' '.join([
-            "Apply edge filter. Not necessary when masking strip DEMs,",
+            "Selectively apply edge filter. Not really necessary when masking strip DEMs,",
             "as it is already applied in the mosaicking step of scenes2strips."
         ])
     )
     parser.add_argument(
         ARGSTR_WATER, '-w',
         action='store_true',
-        help="Apply water filter."
+        help="Selectively apply water filter."
     )
     parser.add_argument(
         ARGSTR_CLOUD, '-c',
         action='store_true',
-        help="Apply cloud filter."
+        help="Selectively apply cloud filter."
+    )
+    parser.add_argument(
+        ARGSTR_FILTER_OFF,
+        action='store_true',
+        help="Turn off default (edge & water & cloud) so no filters are applied."
     )
 
     parser.add_argument(
@@ -335,6 +349,9 @@ def main():
 
     src = args.get(ARGSTR_SRC)
 
+    if args.get(ARGSTR_SRC_SUFFIX) == '':
+        args.set(ARGSTR_SRC_SUFFIX, None)
+
     if args.get(ARGSTR_SRC_SUFFIX) is not None:
         src_suffixToptmaskval = [[ss.strip() for ss in s.strip().lstrip('_').split('=')]
                                              for s  in args.get(ARGSTR_SRC_SUFFIX).split('/')]
@@ -352,17 +369,22 @@ def main():
     else:
         suffix_maskval_dict = None
 
-    if args.get(ARGSTR_DSTDIR) is None:
-        args.set(ARGSTR_DSTDIR, src if os.path.isdir(src) else os.path.dirname(src))
-        print("argument {} set automatically to: {}".format(ARGSTR_DSTDIR, args.get(ARGSTR_DSTDIR)))
+    if args.get(ARGGRP_FILTER_COMP).count(True) > 0 and args.get(ARGSTR_FILTER_OFF):
+        arg_parser.error("argument {} is incompatible with filter options {}".format(ARGSTR_FILTER_OFF, ARGGRP_FILTER_COMP))
 
     if args.get(ARGSTR_DST_SUFFIX) is None:
-        args.set(ARGSTR_DST_SUFFIX, '_mask'+get_mask_bitstring(*args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)))
-        print("argument {} set automatically to: {}".format(ARGSTR_DST_SUFFIX, args.get(ARGSTR_DST_SUFFIX)))
+        if args.get(ARGGRP_FILTER_COMP).count(True) > 0:
+            args.set(ARGSTR_DST_SUFFIX, '_filt'+get_mask_bitstring(*args.get(ARGGRP_FILTER_COMP)))
+        else:
+            args.set(ARGSTR_DST_SUFFIX, '_filt'*(not args.get(ARGSTR_FILTER_OFF)))
+        print("argument {} set automatically to: '{}'".format(ARGSTR_DST_SUFFIX, args.get(ARGSTR_DST_SUFFIX)))
     dst_suffix_raw = args.get(ARGSTR_DST_SUFFIX)
     dst_suffix_fixed = '_'+dst_suffix_raw.lstrip('_') if dst_suffix_raw != '' else ''
     if dst_suffix_fixed != dst_suffix_raw:
         args.set(ARGSTR_DST_SUFFIX, dst_suffix_fixed)
+
+    if args.get(ARGGRP_FILTER_COMP).count(True) == 0 and not args.get(ARGSTR_FILTER_OFF):
+        args.set(ARGGRP_FILTER_COMP)
 
     if args.get(ARGSTR_SCHEDULER) is not None:
         if args.get(ARGSTR_JOBSCRIPT) is None:
@@ -431,7 +453,11 @@ def main():
 
     elif os.path.isdir(src):
         srcdir = src
-        src_bitmasks = glob.glob(os.path.join(srcdir, '*'+BITMASK_SUFFIX))
+        src_bitmasks = []
+        for root, dirs, files in os.walk(srcdir):
+            for fn in files:
+                if fn.endswith(BITMASK_SUFFIX):
+                    src_bitmasks.append(os.path.join(root, fn))
         src_bitmasks.sort()
 
     if src_bitmasks is None:
@@ -449,7 +475,10 @@ def main():
         masks_to_apply = []
         for maskFile in src_bitmasks:
             for rasterSuffix in src_suffixes:
-                src_rasterFile = maskFile.replace(BITMASK_SUFFIX, rasterSuffix)
+                bitmask_suffix = LSF_BITMASK_SUFFIX if rasterSuffix.startswith(LSF_PREFIX) else BITMASK_SUFFIX
+                if not maskFile.endswith(bitmask_suffix):
+                    continue
+                src_rasterFile = maskFile.replace(bitmask_suffix, rasterSuffix)
                 dst_rasterFile = get_dstFile(maskFile, rasterSuffix, args)
                 if os.path.isfile(src_rasterFile) and (not os.path.isfile(dst_rasterFile) or args.get(ARGSTR_OVERWRITE)):
                     masks_to_apply.append(maskFile)
@@ -466,7 +495,7 @@ def main():
 [{}] CLOUD""".format(
     *['X' if opt is True else ' ' for opt in args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)]
     ))
-    print("Output file suffix: {}".format(args.get(ARGSTR_DST_SUFFIX)))
+    print("Output file suffix: '{}'".format(args.get(ARGSTR_DST_SUFFIX)))
 
     print("-----")
 
@@ -606,7 +635,8 @@ def get_dstFile(maskFile, rasterSuffix, args):
         os.path.basename(maskFile).replace(BITMASK_SUFFIX, rasterSuffix))
     dstFname = '{}{}{}'.format(
         dstFname_prefix, args.get(ARGSTR_DST_SUFFIX) if args.get(ARGSTR_DST_SUFFIX) != '' else '', dstFname_ext)
-    dstFile = os.path.join(args.get(ARGSTR_DSTDIR), dstFname)
+    dstFile = (os.path.join(args.get(ARGSTR_DSTDIR), dstFname) if args.get(ARGSTR_DSTDIR) is not None else
+               os.path.join(os.path.dirname(maskFile), dstFname))
     return dstFile
 
 
@@ -642,10 +672,12 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
     mask_pyramids = [mask_select]
     mask_pyramid_current = mask_pyramids[0]
 
+    bitmask_suffix = LSF_BITMASK_SUFFIX if maskFile.endswith(LSF_BITMASK_SUFFIX) else BITMASK_SUFFIX
+
     # Apply mask to source raster images and save results.
     for src_suffix, maskval in suffix_maskval_dict.items():
 
-        src_rasterFile = maskFile.replace(BITMASK_SUFFIX, src_suffix)
+        src_rasterFile = maskFile.replace(bitmask_suffix, src_suffix)
         dst_rasterFile = get_dstFile(maskFile, src_suffix, args)
 
         if not os.path.isfile(src_rasterFile):

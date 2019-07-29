@@ -8,10 +8,10 @@ TESTDIR = os.path.join(os.path.expanduser('~'), 'scratch', 'setsm_postprocessing
 
 # SYSTYPE = system()
 # if SYSTYPE == 'Windows':
-#     # TESTDIR = r'D:\setsm_postprocessing_tests\testFiles'
-#     TESTDIR = r'V:\pgc\data\scratch\erik\setsm_postprocessing_tests\testFiles'
+#     TESTDIR = r'E:\scratch\test\s2s\testFiles'
+#     # TESTDIR = r'V:\pgc\data\scratch\erik\test\s2s\testFiles'
 # elif SYSTYPE == 'Linux':
-#     TESTDIR = r'/mnt/pgc/data/scratch/erik/setsm_postprocessing_tests/testFiles'
+#     TESTDIR = r'/mnt/pgc/data/scratch/erik/test/s2s/testFiles'
 
 
 # Prefix of index file used for concurrent-run comparison mode of scenes2strips

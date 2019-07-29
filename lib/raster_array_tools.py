@@ -1,5 +1,5 @@
 
-# Version 3.1; Erik Husby; Polar Geospatial Center, University of Minnesota; 2018
+# Version 3.1; Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
 
 
 from __future__ import division
@@ -637,7 +637,7 @@ def saveArrayAsTiff(array, dest,
                      Y[0], geotrans_rot_tup[1], Y[1]-Y[0])
 
     if nodata_val == 'like_raster':
-            nodata_val = None
+        nodata_val = None
 
     if dtype_out is not None:
         if dtype_out == 'n-bit':
@@ -1250,8 +1250,9 @@ def interp2_fill_oob(X, Y, Zi, Xi, Yi, fillval=np.nan, coord_grace=True):
 
 
 # def interp2_cv2(X, Y, Z, Xi, Yi, interp_str, extrapolate=False, oob_val=np.nan):
-#     xx = np.repeat(np.reshape(Xi-X, (1, X.shape[0])), Y.shape[0], axis=0)
-#     yy = np.repeat(np.reshape(Yi-Y, (Y.shape[0], 1)), X.shape[0], axis=1)
+#     xx = np.repeat(np.reshape((Xi-X[0]/2, (1, X.size)), Y.size, axis=0)
+#     yy = np.repeat(np.reshape((Yi-Y[0])/-2, (Y.size, 1)), X.size, axis=1)
+#     cv2.remap(Z, xx.astype(np.float32), yy.astype(np.float32), cv2.INTER_LINEAR)
 #     pass
 
 
@@ -2110,8 +2111,10 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
     return fix_array_if_rotation_was_applied(array_c, rotation_flag)
 
 
-def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
-          fix_float_zeros=True, nan_over_zero=True, allow_flipped_processing=True):
+def conv2(array, kernel, shape='full', conv_depth='default',
+          zero_border=True, fix_float_zeros=True,
+          nan_same=False, nan_over_zero=True,
+          allow_flipped_processing=True):
     """
     Convolve two 2D arrays.
 
@@ -2152,6 +2155,9 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
             -1.0e-6 and +1.0e-6 to zero.
         - float54 (double):
             -1.0e-15 and +1.0e-15 to zero.
+    nan_same : bool
+        NaN values are treated as 0 in convolution computation,
+        but NaN pixels are retained from input to output.
     nan_over_zero : bool
         If True, let NaN x 0 = NaN in convolution computation.
         If False, let NaN x 0 = 0 in convolution computation.
@@ -2355,17 +2361,20 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
         elif shape == 'same' and not zero_border:
             array_nans = np.pad(array_nans, ((pady_top, pady_bot), (padx_lft, padx_rht)), 'edge')
 
-        dilate_structure = np.ones(kernel.shape, dtype=np.uint8)
-        if not nan_over_zero:
-            dilate_structure[kernel == 0] = 0
+        if nan_same:
+            array_nans_dilate = array_nans
+        else:
+            dilate_structure = np.ones(kernel.shape, dtype=np.uint8)
+            if not nan_over_zero:
+                dilate_structure[kernel == 0] = 0
 
-        array_nans_dilate = imdilate(array_nans, dilate_structure)
-        if shape == 'valid' or (shape == 'same' and not zero_border):
-            if pady_bot >= 0:
-                pady_bot = -pady_bot if pady_bot > 0 else None
-            if padx_rht >= 0:
-                padx_rht = -padx_rht if padx_rht > 0 else None
-            array_nans_dilate = array_nans_dilate[pady_top:pady_bot, padx_lft:padx_rht]
+            array_nans_dilate = imdilate(array_nans, dilate_structure)
+            if shape == 'valid' or (shape == 'same' and not zero_border):
+                if pady_bot >= 0:
+                    pady_bot = -pady_bot if pady_bot > 0 else None
+                if padx_rht >= 0:
+                    padx_rht = -padx_rht if padx_rht > 0 else None
+                array_nans_dilate = array_nans_dilate[pady_top:pady_bot, padx_lft:padx_rht]
 
         array_c[array_nans_dilate] = np.nan
 
@@ -2376,8 +2385,10 @@ def conv2(array, kernel, shape='full', conv_depth='default', zero_border=True,
     return fix_array_if_rotation_was_applied(array_c, rotation_flag)
 
 
-def filt2(array, kernel, shape='same', conv_depth='default', zero_border=False,
-          fix_float_zeros=True, nan_over_zero=True, allow_flipped_processing=True):
+def filt2(array, kernel, shape='same', conv_depth='default',
+          zero_border=False, fix_float_zeros=True,
+          nan_same=False, nan_over_zero=True,
+          allow_flipped_processing=True):
     """
     Apply the (convolution) filter kernel to an array in 2D.
 
@@ -2390,12 +2401,16 @@ def filt2(array, kernel, shape='same', conv_depth='default', zero_border=False,
     and performing the multiplications/additions.
 
     """
-    return conv2(array, np.rot90(kernel, 2), shape, conv_depth, zero_border,
-                 fix_float_zeros, nan_over_zero, allow_flipped_processing)
+    return conv2(array, np.rot90(kernel, 2), shape, conv_depth,
+                 zero_border, fix_float_zeros,
+                 nan_same, nan_over_zero,
+                 allow_flipped_processing)
 
 
-def moving_average(array, nhood, shape='same', conv_depth='default', zero_border=True,
-                   fix_float_zeros=True, nan_over_zero=True, allow_flipped_processing=True):
+def moving_average(array, nhood, shape='same', conv_depth='default',
+                   zero_border=True, fix_float_zeros=True,
+                   nan_same=False, nan_over_zero=True,
+                   allow_flipped_processing=True):
     """
     Calculate the moving average over an array.
 
@@ -2416,6 +2431,8 @@ def moving_average(array, nhood, shape='same', conv_depth='default', zero_border
     zero_border : bool
         See documentation for `conv2`.
     fix_float_zeros : bool
+        See documentation for `conv2`.
+    nan_same : bool
         See documentation for `conv2`.
     nan_over_zero : bool
         See documentation for `conv2`.
@@ -2468,8 +2485,10 @@ def moving_average(array, nhood, shape='same', conv_depth='default', zero_border
 
     conv_kernel = np.rot90(np.divide(structure, np.sum(structure), dtype=float_dtype), 2)
 
-    return conv2(array, conv_kernel, shape, conv_depth, zero_border,
-                 fix_float_zeros, nan_over_zero, allow_flipped_processing)
+    return conv2(array, conv_kernel, shape, conv_depth,
+                 zero_border, fix_float_zeros,
+                 nan_same, nan_over_zero,
+                 allow_flipped_processing)
 
 
 def conv_binary_prevent_overflow(array, structure):
@@ -3611,14 +3630,30 @@ def concave_hull_traverse_delaunay(boundary_points, convex_hull, vertex_neighbor
                         # Determine the third point in the forward triangle.
                         kc = set(indptr[indices[ka]:indices[ka+1]]).intersection(
                              set(indptr[indices[kb]:indices[kb+1]])).difference({k1, k2})
-                        if not kc:
+                        if len(kc) == 0:
                             # We've arrived at a convex hull edge.
                             if fedge == edge_1_3:
                                 edge_1_3 = None
                             else:
                                 edge_2_3 = None
                             continue
-                        kc = kc.pop()
+                        elif len(kc) == 1:
+                            # Only one forward triangle exists.
+                            kc = kc.pop()
+                        else:
+                            # More than one forward triangle exists.
+                            # Choose the triangle with lesser area.
+                            kc_list = list(kc)
+                            kc_temp = None
+                            kc_area_min = float('inf')
+                            pa, pb = boundary_points[[ka, kb]]
+                            for kc in kc_list:
+                                pc = boundary_points[kc]
+                                kc_area = abs(pa[0]*(pb[1]-pc[1]) + pb[0]*(pc[1]-pa[1]) + pc[0]*(pa[1]-pb[1])) / 2.0
+                                if kc_area < kc_area_min:
+                                    kc_area_min = kc_area
+                                    kc_temp = kc
+                            kc = kc_temp
 
                         if fedge not in edge_info:
                             # Catalog this edge.
@@ -3701,7 +3736,7 @@ def concave_hull_traverse_delaunay(boundary_points, convex_hull, vertex_neighbor
 
 def concave_hull_image(image, concavity,
                        fill=True, alpha_cutoff_mode='unique',
-                       boundary_res=3, debug=False):
+                       boundary_res=2, debug=False):
     """
     Compute the concave hull image of a binary image.
     The concave hull image is the convex hull image with edges
@@ -3735,7 +3770,7 @@ def concave_hull_image(image, concavity,
         See docs for `concave_hull_traverse_delaunay` for
         details on the relationship between "alpha" values
         and erosion tolerance.
-    boundary_res : positive int (3 appears safe for ~10k x ~10k pixel images)
+    boundary_res : positive int (2 appears safe for ~10k x ~10k pixel images)
         Minimum x or y *coordinate-wise* distance between two points
         in a triangle for their edge to be traversed, thereby allowing
         the triangle on the other side of that edge to be considered
