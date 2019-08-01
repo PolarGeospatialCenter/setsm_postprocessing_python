@@ -969,14 +969,14 @@ def main():
                         # strip metadata text file from prior strip creation.
                         stripmeta_ffile_old = os.path.join(args.get(ARGSTR_META_TRANS_DIR),
                                                            stripdem_fname.replace(stripDemSuffix, 'meta.txt'))
-                        scenedem_fname_coregistered, rmse, trans = readStripMeta_stats(stripmeta_ffile_old)
+                        scenedem_fname_coregistered, rmse, trans, trans_err = readStripMeta_stats(stripmeta_ffile_old)
                         if not set(scenedem_fname_coregistered).issubset(set(scenedem_fname_remaining)):
                             print("Current source DEMs do not include source DEMs referenced in old strip meta file")
                             use_old_trans = False
                     else:
                         print("Running s2s with coregistration filter options: {}".format(
                             ', '.join(filter_options_coreg) if filter_options_coreg else None))
-                        X, Y, Z, M, O, MD, trans, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
+                        X, Y, Z, M, O, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
                             scenedem_fname_remaining,
                             sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF))
                         if X is None:
@@ -1003,7 +1003,7 @@ def main():
                                 print("Saving output from coregistration step")
                                 if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
                                     saveStripMeta(stripdem_ffile_coreg, stripDemSuffix,
-                                                  X, Y, Z, trans, rmse, spat_ref,
+                                                  X, Y, Z, trans, trans_err, rmse, spat_ref,
                                                   args.get(ARGSTR_SRC), scenedem_fname_coregistered, args)
                                 if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                                     saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
@@ -1013,10 +1013,10 @@ def main():
                             del X, Y, Z, M, O, MD
                             gc.collect()
 
-                        X, Y, Z, M, O, MD, trans, rmse, scenedem_fname_mosaicked, spat_ref = scenes2strips(
+                        X, Y, Z, M, O, MD, trans, trans_err, rmse, scenedem_fname_mosaicked, spat_ref = scenes2strips(
                             scenedem_fname_coregistered.copy(),
                             sceneMaskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
-                            trans_guess=trans, rmse_guess=rmse,
+                            trans_guess=trans, trans_err_guess=trans_err, rmse_guess=rmse,
                             hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans)
                         if X is None:
                             all_data_masked = True
@@ -1035,7 +1035,7 @@ def main():
                     print("Writing output strip segment with DEM: {}".format(stripdem_ffile))
 
                     saveStripMeta(stripdem_ffile, stripDemSuffix,
-                                  X, Y, Z, trans, rmse, spat_ref,
+                                  X, Y, Z, trans, trans_err, rmse, spat_ref,
                                   args.get(ARGSTR_SRC), scenedem_fname_mosaicked, args)
                     saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
                                      X, Y, Z, M, O, MD, spat_ref)
@@ -1046,14 +1046,14 @@ def main():
                     segnum += 1
 
             except:
-                if scene_dfull is not None and sceneMaskSuffix is not None:
+                if scene_dfull is not None and sceneMaskSuffix is not None and not args.get(ARGSTR_USE_OLD_MASKS):
                     src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
                     if len(src_mask_ffile_glob) > 0:
                         print("Detected error; deleting incomplete strip results"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
                         for f in src_mask_ffile_glob:
                             cmd = "rm {}".format(f)
                             print(cmd)
-                            if not args.dryrun:
+                            if not args.get(ARGSTR_DRYRUN):
                                 os.remove(f)
                 if strip_dfull is not None:
                     print("Detected error; deleting incomplete strip results"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
@@ -1064,7 +1064,7 @@ def main():
                         for f in dst_strip_ffile_glob:
                             cmd = "rm {}".format(f)
                             print(cmd)
-                            if not args.dryrun:
+                            if not args.get(ARGSTR_DRYRUN):
                                 os.remove(f)
                         if not args.get(ARGSTR_OLD_ORG):
                             if not args.get(ARGSTR_DRYRUN):
@@ -1126,7 +1126,7 @@ def main():
 
 
 def saveStripMeta(strip_demFile, demSuffix,
-                  X, Y, Z, trans, rmse, spat_ref,
+                  X, Y, Z, trans, trans_err, rmse, spat_ref,
                   scenedir, scene_demFiles, args):
     from lib.raster_array_tools import getFPvertices
 
@@ -1139,7 +1139,7 @@ def saveStripMeta(strip_demFile, demSuffix,
     time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
 
     writeStripMeta(strip_metaFile, scenedir, scene_demFnames,
-                   trans, rmse, proj4, fp_vertices, time, args)
+                   trans, trans_err, rmse, proj4, fp_vertices, time, args)
 
 
 def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
@@ -1246,7 +1246,7 @@ def shouldDoMasking(matchFile, mask_name):
 
 
 def writeStripMeta(o_metaFile, scenedir, scene_demFnames,
-                   trans, rmse, proj4, fp_vertices, strip_time, args):
+                   trans, trans_err, rmse, proj4, fp_vertices, strip_time, args):
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
     from lib.filter_scene import BITMASK_VERSION_NUM
 
@@ -1269,7 +1269,7 @@ X: {}
 Y: {}
 
 Mosaicking Alignment Statistics (meters, rmse-cutoff={})
-scene, rmse, dz, dx, dy
+scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
 """.format(
     SCRIPT_VERSION_NUM,
     datetime.today().strftime("%d-%b-%Y %H:%M:%S"),
@@ -1282,8 +1282,12 @@ scene, rmse, dz, dx, dy
     )
 
     for i in range(len(scene_demFnames)):
-        line = "{} {:.4f} {:.4f} {:.4f} {:.4f}\n".format(
-            scene_demFnames[i], rmse[0, i], trans[0, i], trans[1, i], trans[2, i])
+        line = "{} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}\n".format(
+            scene_demFnames[i],
+            rmse[0, i],
+            trans[0, i], trans[1, i], trans[2, i],
+            trans_err[0, i], trans_err[1, i], trans_err[2, i]
+        )
         strip_info += line
 
         filter_info = "\nFiltering Applied: {} (v{})\n".format(mask_version, BITMASK_VERSION_NUM)
@@ -1330,7 +1334,7 @@ def readStripMeta_stats(metaFile):
         line = metaFile_fp.readline()
         while not line.startswith('Mosaicking Alignment Statistics') and line != '':
             line = metaFile_fp.readline()
-        while not line.startswith('scene, rmse, dz, dx, dy') and line != '':
+        while not line.startswith('scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err') and line != '':
             line = metaFile_fp.readline()
         if line == '':
             raise MetaReadError("{}: Could not parse 'Mosaicking Alignment Statistics'".format(metaFile))
@@ -1340,6 +1344,7 @@ def readStripMeta_stats(metaFile):
         sceneDemFnames = [line_items[0]]
         rmse = [line_items[1]]
         trans = np.array([[float(s) for s in line_items[2:5]]])
+        trans_err = np.array([[float(s) for s in line_items[5:8]]])
 
         while True:
             line = metaFile_fp.readline().strip()
@@ -1349,14 +1354,16 @@ def readStripMeta_stats(metaFile):
             sceneDemFnames.append(line_items[0])
             rmse.append(line_items[1])
             trans = np.vstack((trans, np.array([[float(s) for s in line_items[2:5]]])))
+            trans_err = np.vstack((trans_err, np.array([[float(s) for s in line_items[5:8]]])))
 
         rmse = np.array([[float(s) for s in rmse]])
         trans = trans.T
+        trans_err = trans_err.T
 
     finally:
         metaFile_fp.close()
 
-    return sceneDemFnames, rmse, trans
+    return sceneDemFnames, rmse, trans, trans_err
 
 
 

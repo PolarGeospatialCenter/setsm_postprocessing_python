@@ -209,8 +209,8 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
 
     # Coregister the two DEMs.
     print("Beginning coregistration")
-    _, trans, rmse = coregisterdems(x1_crop, y1_crop, z1_crop, x2_crop, y2_crop, z2_crop,
-                                    trans_guess=trans_guess)
+    _, trans, _, rmse = coregisterdems(x1_crop, y1_crop, z1_crop, x2_crop, y2_crop, z2_crop,
+                                       trans_guess=trans_guess)
     dz, dx, dy = trans
 
     # Interpolate comparison DEM to reference DEM.
