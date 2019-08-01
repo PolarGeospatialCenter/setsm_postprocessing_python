@@ -932,7 +932,6 @@ def main():
                 for srcfname in fnames:
                     if endswith_one_of_coll(srcfname, src_suffixes):
                         srcffile_checklist.append(os.path.join(root, srcfname))
-            srcffile_checklist = [f for f in glob.glob(os.path.join(srcdir, '*')) if endswith_one_of_coll(f, src_suffixes)]
             if not (not args.get(ARGSTR_CHECKFILE_OFF) and args.get(ARGSTR_CHECKFILE) is not None):
                 missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, srcffile_checklist)]
                 if missing_suffixes:
@@ -1039,10 +1038,7 @@ def main():
             cff_root_src_rasters = checkffileroot_srcfnamechecklist_dict[cff_root]
 
             if cff_root_src_rasters is not None:
-                if srcdir is not None:
-                    srcfname_errlist = [fn for fn in cff_root_src_rasters if os.path.isfile(os.path.join(srcdir, fn+errfile_ext))]
-                else:
-                    srcfname_errlist = [fn for fn in cff_root_src_rasters if os.path.isfile(os.path.join(os.path.dirname(cff_root), fn+errfile_ext))]
+                srcfname_errlist = [fn for fn in cff_root_src_rasters if os.path.isfile(os.path.join(os.path.dirname(cff_root), fn+errfile_ext))]
                 num_srcfiles_err_exist += len(srcfname_errlist)
             else:
                 srcfname_errlist = []
@@ -1202,8 +1198,8 @@ def main():
             for srcfname in fnames:
                 if srcfname.endswith(errfile_ext):
                     num_errfiles_walk += 1
-        print("{} existing error files within source directory".format(num_errfiles_walk))
-    print("{} existing error files among source selection".format(num_srcfiles_err_exist))
+        print("{} existing error files found within source directory via os.walk".format(num_errfiles_walk))
+    print("{} existing error files found among source selection".format(num_srcfiles_err_exist))
     if num_srcfiles is not None or num_srcfiles_to_check is not None:
         print("Number of source files: {}{}{}{}{}".format(
             num_srcfiles if num_srcfiles is not None else '',
