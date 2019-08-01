@@ -37,10 +37,11 @@ echo Changing to working directory
 
 cd $SLURM_SUBMIT_DIR
 
-echo Loading environment
-
-# Modify this to load your own environment
-source activate my_root  # load Python environment
+# Un-comment the following block to handle environment loading
+#echo Loading environment
+#
+## Modify the following line to load your own environment
+#source activate my_env  # load Python environment
 
 echo Running task
 echo ________________________________________
