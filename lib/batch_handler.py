@@ -22,7 +22,9 @@ SCHED_NAME_TESTCMD_DICT = {
 }
 for sched_name in sorted(SCHED_NAME_TESTCMD_DICT.keys()):
     try:
-        if subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE).wait() == 0:
+        child = subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdoutdata, stderrdata = child.communicate()
+        if child.returncode == 0:
             SCHED_SUPPORTED.append(sched_name)
     except OSError:
         pass
