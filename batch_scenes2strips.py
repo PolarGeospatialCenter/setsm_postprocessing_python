@@ -67,6 +67,7 @@ ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_LOGDIR = '--logdir'
 ARGSTR_EMAIL = '--email'
+ARGSTR_RESTART = '--restart'
 ARGSTR_REMOVE_INCOMPLETE = '--remove-incomplete'
 ARGSTR_USE_OLD_MASKS = '--use-old-masks'
 ARGSTR_OLD_ORG = '--old-org'
@@ -413,6 +414,11 @@ def argparser_init():
     )
 
     parser.add_argument(
+        ARGSTR_RESTART,
+        action='store_true',
+        help="Remove any unfinished (no .fin file) output before submitting all unfinished strips."
+    )
+    parser.add_argument(
         ARGSTR_REMOVE_INCOMPLETE,
         action='store_true',
         help="Only remove unfinished (no .fin file) output, do not build strips."
@@ -708,7 +714,7 @@ def main():
                     job_num, ARGSTR_STRIPID, sID, res_str))
                 continue
             elif len(dst_sID_ffile_glob) > 0:
-                if not args.get(ARGSTR_REMOVE_INCOMPLETE):
+                if not (args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART)):
                     print("{}, {} {} :: {} ({}) output files exist ".format(
                         job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
                           + "(potentially unfinished since no *.fin file), skipping")

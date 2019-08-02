@@ -167,7 +167,7 @@ usage: batch_scenes2strips.py [-h] [--dst DST]
                               [--save-coreg-step {off,meta,all}]
                               [--rmse-cutoff RMSE_CUTOFF] [--scheduler {pbs,slurm}]
                               [--jobscript JOBSCRIPT] [--logdir LOGDIR]
-                              [--email [EMAIL]] [--remove-incomplete]
+                              [--email [EMAIL]] [--restart] [--remove-incomplete]
                               [--use-old-masks] [--old-org] [--dryrun]
                               [--stripid STRIPID]
                               src res
@@ -222,6 +222,7 @@ optional arguments:
                         If not provided, default scheduler (or jobscript #CONDOPT_) options will be used. 
                         **Note:** Due to implementation difficulties, this directory will also become the working directory for the job process. Since relative path inputs are always changed to absolute paths in this script, this should not be an issue. (default: None)
   --email [EMAIL]       Send email to user upon end or abort of the LAST SUBMITTED task. (default: None)
+  --restart             Remove any unfinished (no .fin file) output before submitting all unfinished strips. (default: False)
   --remove-incomplete   Only remove unfinished (no .fin file) output, do not build strips. (default: False)
   --use-old-masks       Use existing scene masks instead of deleting and re-filtering. (default: False)
   --old-org             Use old scene and strip results organization in flat directory structure,prior to reorganization into strip pairname folders. (default: False)
@@ -247,6 +248,7 @@ optional arguments:
 * `--jobscript` :: REQUIREMENTS: The jobscript MUST (1) be readable by the provided `--scheduler` job scheduler type, (2) load the Python environment that includes all required packages as specified above under "Python package dependencies" before it (3) executes the main command that runs the script for a single `--stripid` by means of substituting the entire command into the jobscript through the environment variable `$p1`.
 * `--logdir` :: If this argument is NOT provided and you are using the default jobscripts from this repo, the default output log file directory for SLURM is the directory where the command to run the script was submitted, while for PBS it is the `$HOME` directory of the user who submitted the command.
 * `--email` :: If this option is provided (with or without an email address) and you are using the default jobscripts from this repo, an email will be sent to the email address tied to your user account upon end or abort of ONLY the job that was submitted last in the batch (to avoid spamming you with emails). This relies on the the mail option provided by the selected job scheduler, which is not supported on every system. If an email address is also provided with this option, an additional email will be sent upon end or error of the last submitted task/job using `email.mime.text.MIMEText` with `smtplib` from the Python Standard Library. 
+* `--restart` :: See notes for `--remove-incomplete`.
 * `--remove-incomplete` :: If the scenes2strips process ends abruptly due to any error, an automatic attempt will be made to remove any strip result data for the strip-pair ID that was being worked on, as such result data would be incomplete and must be reprocessed. If this automatic removal fails, incomplete strips (indicated by the absence of the corresponding *.fin* file from the strip results folder) can be identified and removed using this argument.
 * `--use-old-masks` :: Old scene masks being used to create new strips can cause issues when either the other scene DEM components are updated while the old scene mask remains, or the filtering algorithm is updated and an incomplete run of scenes2strips resulted in partial scene mask creation such that two mask versions could exist for the same strip-pair ID. To avoid these issues, any scene mask files that exist before strip creation are deleted and will be recreated during the filtering step.
 * `--old-org` :: Prior to July 26, 2019, scripts in this repo assumed the organization of all source and destination scene and strip files was flat within the `*/tif_results/2m` and `*/strips/2m` folders, respectively. After July 26, 2019, both scene and strip files are organized within proper strip-ID pairname folders like `*/tif_results/2m/{strip-pair ID}_2m` for scenes and `*/strips/2m/{strip-pair ID}_2m_lsf` for strips built with LSF-version DEM scenes. This argument must be provided to use the older organizational scheme.
