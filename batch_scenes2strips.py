@@ -809,9 +809,12 @@ def main():
             # Print arguments for this run.
             print("stripid: {}".format(args.get(ARGSTR_STRIPID)))
             print("res: {}".format(res_str))
-            print("srcdir: {}".format(args.get(ARGSTR_SRC)))
-            print("dstdir: {}".format(args.get(ARGSTR_DST)))
-            print("dstdir for coreg step: {}".format(dstdir_coreg))
+            print("src dir: {}".format(args.get(ARGSTR_SRC)))
+            print("dst dir: {}".format(args.get(ARGSTR_DST)))
+            print("scene dir: {}".format(scene_dfull))
+            print("strip dir: {}".format(strip_dfull))
+            print("dst dir for coreg step: {}".format(dstdir_coreg))
+            print("strip dir for coreg step: {}".format(strip_dfull_coreg))
             print("metadir: {}".format(args.get(ARGSTR_META_TRANS_DIR)))
             print("mask version: {}".format(args.get(ARGSTR_MASK_VER)))
             print("scene mask name: {}".format(scene_mask_name))
@@ -1026,7 +1029,7 @@ def main():
                                 if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
                                     saveStripMeta(stripdem_ffile_coreg, stripDemSuffix,
                                                   X, Y, Z, trans, trans_err, rmse, spat_ref,
-                                                  args.get(ARGSTR_SRC), scenedem_fname_coregistered, args)
+                                                  scene_dfull, scenedem_fname_coregistered, args)
                                 if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                                     saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
                                                      X, Y, Z, M, O, MD, spat_ref)
@@ -1058,7 +1061,7 @@ def main():
 
                     saveStripMeta(stripdem_ffile, stripDemSuffix,
                                   X, Y, Z, trans, trans_err, rmse, spat_ref,
-                                  args.get(ARGSTR_SRC), scenedem_fname_mosaicked, args)
+                                  scene_dfull, scenedem_fname_mosaicked, args)
                     saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
                                      X, Y, Z, M, O, MD, spat_ref)
                     if not args.get(ARGSTR_HILLSHADE_OFF):
@@ -1149,7 +1152,7 @@ def main():
 
 def saveStripMeta(strip_demFile, demSuffix,
                   X, Y, Z, trans, trans_err, rmse, spat_ref,
-                  scenedir, scene_demFiles, args):
+                  scene_dir, scene_demFiles, args):
     from lib.raster_array_tools import getFPvertices
 
     strip_metaFile = strip_demFile.replace(demSuffix, 'meta.txt')
@@ -1160,7 +1163,7 @@ def saveStripMeta(strip_demFile, demSuffix,
     proj4 = spat_ref.ExportToProj4()
     time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
 
-    writeStripMeta(strip_metaFile, scenedir, scene_demFnames,
+    writeStripMeta(strip_metaFile, scene_dir, scene_demFnames,
                    trans, trans_err, rmse, proj4, fp_vertices, time, args)
 
 
@@ -1267,7 +1270,7 @@ def shouldDoMasking(matchFile, mask_name):
     return False
 
 
-def writeStripMeta(o_metaFile, scenedir, scene_demFnames,
+def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
                    trans, trans_err, rmse, proj4, fp_vertices, strip_time, args):
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
     from lib.filter_scene import BITMASK_VERSION_NUM
@@ -1336,13 +1339,14 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
     for i in range(len(scene_demFnames)):
         scene_info += "scene {} name={}\n".format(i+1, scene_demFnames[i])
 
-        scene_metaFile = os.path.join(scenedir, scene_demFnames[i].replace(demSuffix, 'meta.txt'))
+        scene_metaFile = os.path.join(scene_dir, scene_demFnames[i].replace(demSuffix, 'meta.txt'))
         if os.path.isfile(scene_metaFile):
             scene_metaFile_fp = open(scene_metaFile, 'r')
             scene_info += scene_metaFile_fp.read()
             scene_metaFile_fp.close()
         else:
-            scene_info += "{} not found".format(scene_metaFile)
+            # scene_info += "{} not found".format(scene_metaFile)
+            raise FileNotFoundError("{} not found".format(scene_metaFile))
         scene_info += " \n"
 
     with open(o_metaFile, 'w') as strip_metaFile_fp:
