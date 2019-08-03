@@ -714,11 +714,7 @@ def main():
                     job_num, ARGSTR_STRIPID, sID, res_str))
                 continue
             elif len(dst_sID_ffile_glob) > 0:
-                if not (args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART)):
-                    print("{}, {} {} :: {} ({}) output files exist ".format(
-                        job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
-                          + "(potentially unfinished since no *.fin file), skipping")
-                else:
+                if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
                     print("{}, {} {} :: {} ({}) output files exist ".format(
                         job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
                           + "(potentially unfinished since no *.fin file), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
@@ -730,29 +726,34 @@ def main():
                     if not args.get(ARGSTR_OLD_ORG):
                         if not args.get(ARGSTR_DRYRUN):
                             os.rmdir(strip_dfull)
-                continue
 
-            if not args.get(ARGSTR_REMOVE_INCOMPLETE):
-
-                args_single.set(ARGSTR_STRIPID, sID)
-                if last_job_email and job_num == num_jobs:
-                    args_single.set(ARGSTR_EMAIL, last_job_email)
-                cmd_single = args_single.get_cmd()
-
-                if args_batch.get(ARGSTR_SCHEDULER) is not None:
-                    job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
-                    cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
-                                                        args_batch.get(ARGSTR_JOBSCRIPT),
-                                                        job_name, cmd_single)
+                    if not args.get(ARGSTR_RESTART):
+                        continue
                 else:
-                    cmd = cmd_single
+                    print("{}, {} {} :: {} ({}) output files exist ".format(
+                        job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
+                          + "(potentially unfinished since no *.fin file), skipping")
+                    continue
 
-                print("{}, {}".format(job_num, cmd))
-                if not args_batch.get(ARGSTR_DRYRUN):
-                    # For most cases, set `shell=True`.
-                    # For attaching process to PyCharm debugger,
-                    # set `shell=False`.
-                    subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
+            args_single.set(ARGSTR_STRIPID, sID)
+            if last_job_email and job_num == num_jobs:
+                args_single.set(ARGSTR_EMAIL, last_job_email)
+            cmd_single = args_single.get_cmd()
+
+            if args_batch.get(ARGSTR_SCHEDULER) is not None:
+                job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
+                cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
+                                                    args_batch.get(ARGSTR_JOBSCRIPT),
+                                                    job_name, cmd_single)
+            else:
+                cmd = cmd_single
+
+            print("{}, {}".format(job_num, cmd))
+            if not args_batch.get(ARGSTR_DRYRUN):
+                # For most cases, set `shell=True`.
+                # For attaching process to PyCharm debugger,
+                # set `shell=False`.
+                subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
 
 
     else:
@@ -842,13 +843,28 @@ def main():
             else:
                 stripid_fin_ffile_coreg = None
 
-            # Existence check. If output already exists, skip.
+            # Strip output existence check.
             if os.path.isfile(stripid_fin_ffile):
                 print("{} .fin file exists, strip output finished, skipping".format(stripid_fin_ffile))
                 sys.exit(0)
-            if len(glob.glob(os.path.join(strip_dfull, args.get(ARGSTR_STRIPID)+'*'))) > 0:
-                print("Strip output exists (potentially unfinished), skipping")
-                sys.exit(0)
+            dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, args.get(ARGSTR_STRIPID)+'*'))
+            if len(dstdir_stripFiles) > 0:
+                if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
+                    print("Strip output exists (potentially unfinished), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                    for f in dstdir_stripFiles:
+                        cmd = "rm {}".format(f)
+                        print(cmd)
+                        if not args.get(ARGSTR_DRYRUN):
+                            os.remove(f)
+                    if not args.get(ARGSTR_OLD_ORG):
+                        if not args.get(ARGSTR_DRYRUN):
+                            os.rmdir(strip_dfull)
+
+                    if not args.get(ARGSTR_RESTART):
+                        sys.exit(0)
+                else:
+                    print("Strip output exists (potentially unfinished), skipping")
+                    sys.exit(0)
 
             # Make sure all DEM component files exist. If missing, skip.
             src_scenefile_missing_flag = False
