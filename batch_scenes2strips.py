@@ -34,7 +34,7 @@ from lib import batch_handler
 
 ## Core globals
 
-SCRIPT_VERSION_NUM = 3.1
+SCRIPT_VERSION_NUM = 3.2
 
 # Script paths and execution
 SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
