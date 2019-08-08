@@ -125,7 +125,11 @@ def openRaster(file_or_ds, target_EPSG=None):
     elif isinstance(file_or_ds, str):
         if not os.path.isfile(file_or_ds):
             raise RasterIOError("No such rasterFile: '{}'".format(file_or_ds))
-        ds = gdal.Open(file_or_ds, gdal.GA_ReadOnly)
+        try:
+            ds = gdal.Open(file_or_ds, gdal.GA_ReadOnly)
+        except RuntimeError:
+            print("RuntimeError when opening file/dataset: {}".format(file_or_ds))
+            raise
     else:
         raise InvalidArgumentError("Invalid input type for `file_or_ds`: {}".format(
                                    type(file_or_ds)))
@@ -332,6 +336,8 @@ def extractRasterData(rasterFile_or_ds, *params):
         band = ds.GetRasterBand(1)
     if pset.intersection({'z', 'array'}):
         array_data = band.ReadAsArray()
+        if array_data is None:
+            raise RasterIOError("`band.ReadAsArray()` returned None: {}".format(rasterFile_or_ds))
     if pset.intersection({'shape', 'x', 'y', 'corner_coords', 'geom', 'geom_sr'}):
         shape = (ds.RasterYSize, ds.RasterXSize) if 'array_data' not in vars() else array_data.shape
     if pset.intersection({'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'geom', 'geom_sr'}):

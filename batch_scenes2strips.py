@@ -681,7 +681,7 @@ def main():
 
         args_batch = args
         args_single = copy.deepcopy(args)
-        args_single.unset_args(*ARGGRP_BATCH)
+        args_single.unset(*ARGGRP_BATCH)
 
         job_num = 0
         num_jobs = len(stripids_to_process)
@@ -902,7 +902,7 @@ def main():
                 src_scenefile_missing_flag = True
 
             if src_scenefile_missing_flag:
-                sys.exit(1)
+                raise FileNotFoundError("Source scene file(s) missing")
 
             # Clean up old strip results in the coreg folder, if they exist.
             if strip_dfull_coreg is not None and os.path.isdir(strip_dfull_coreg):
