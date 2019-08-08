@@ -850,7 +850,7 @@ def main():
     if args.get(ARGSTR_CHECK_SPECIAL) is not None:
         check_special_option = args.get(ARGSTR_CHECK_SPECIAL)
         for check_special_set_argstr, check_special_set_value in ARGCHOSET_CHECK_SPECIAL_SETTING_DICT[check_special_option]:
-            if check_special_set_argstr in args.provided_opt_args:
+            if args.provided(check_special_set_argstr):
                 continue
             if check_special_option in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM and check_special_set_argstr == ARGSTR_SRC_SUFFIX:
                 check_special_set_value = '/'.join([
@@ -1272,7 +1272,7 @@ def main():
 
         args_batch = args
         args_single = copy.deepcopy(args)
-        args_single.unset_args(ARGGRP_BATCH)
+        args_single.unset(ARGGRP_BATCH)
         if args.get(ARGSTR_WD) is None and BATCH_ARGDEF_WD is not None:
             args_single.set(ARGSTR_WD, BATCH_ARGDEF_WD)
             print("argument {} set to default value for batch run with {} option: {}".format(
@@ -1282,7 +1282,7 @@ def main():
         if check_items is srcffile_checklist:
             args_single.set(ARGSTR_CHECK_SPECIAL, ARGCHO_CHECK_SPECIAL_ALL_SEPARATE)
         if args.get(ARGSTR_CHECK_SPECIAL) is not None:
-            args_single.unset_args(ARGGRP_CHECK_REGULAR)
+            args_single.unset(ARGGRP_CHECK_REGULAR)
 
         job_num = 0
         num_jobs = len(check_units)

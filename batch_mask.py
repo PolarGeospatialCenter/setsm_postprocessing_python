@@ -14,6 +14,7 @@ import smtplib
 import subprocess
 import sys
 import traceback
+import warnings
 from email.mime.text import MIMEText
 from time import sleep
 if sys.version_info[0] < 3:
@@ -44,11 +45,19 @@ PYTHON_EXE = 'python -u'
 
 ##############################
 
+## Custom globals
+
+SUFFIX_BITMASK = '_bitmask.tif'
+
+##############################
+
 ## Argument globals
 
 # Argument strings
 ARGSTR_SRC = 'src'
 ARGSTR_DSTDIR = '--dstdir'
+ARGSTR_MASK_SUFFIX = '--mask-suffix'
+ARGSTR_MASK_VALUE = '--mask-value'
 ARGSTR_SRC_SUFFIX = '--src-suffix'
 ARGSTR_DST_SUFFIX = '--dst-suffix'
 ARGSTR_DST_NODATA = '--dst-nodata'
@@ -80,7 +89,8 @@ ARGCHO_DST_NODATA = [
 ]
 
 # Argument defaults
-ARGDEF_SRC_SUFFIX = 'dem.tif'
+ARGDEF_SRC_SUFFIX = '_dem.tif'
+ARGDEF_MASK_SUFFIX = SUFFIX_BITMASK
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
 
 # Argument groups
@@ -99,9 +109,21 @@ JOB_ABBREV = 'Mask'
 
 ## Custom globals
 
-BITMASK_SUFFIX = '_'+'bitmask.tif'.lstrip('_')
-LSF_PREFIX = '_'+'lsf'.lstrip('_')
-LSF_BITMASK_SUFFIX = LSF_PREFIX + BITMASK_SUFFIX
+SRC_SUFFIX_CATCH_ALL = '*.tif'
+
+STRIP_LSF_PREFIX = '_lsf'
+SUFFIX_STRIP_BITMASK = SUFFIX_BITMASK
+SUFFIX_STRIP_BITMASK_LSF = STRIP_LSF_PREFIX+SUFFIX_BITMASK
+SUFFIX_SCENE_BITMASK = '_dem'+SUFFIX_BITMASK
+SUFFIX_SCENE_BITMASK_LSF = '_dem_smooth'+SUFFIX_BITMASK
+
+global SUFFIX_PRIORITY_BITMASK
+SUFFIX_PRIORITY_BITMASK = [
+    SUFFIX_STRIP_BITMASK_LSF,
+    SUFFIX_SCENE_BITMASK_LSF,
+    SUFFIX_SCENE_BITMASK,
+    SUFFIX_STRIP_BITMASK
+]
 
 ##############################
 
@@ -149,7 +171,7 @@ def argparser_init():
         formatter_class=RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
             "Selectively apply filter components from the SETSM DEM scene/strip",
-            "*{} component raster to mask out corresponding locations".format(BITMASK_SUFFIX),
+            "*{} component raster to mask out corresponding locations".format(ARGDEF_MASK_SUFFIX),
             "in another component raster(s), then save the resulting image(s)."
         ])
     )
@@ -164,7 +186,7 @@ def argparser_init():
             existcheck_reqval=True),
         help=' '.join([
             "Path to source DEM directory or raster file.",
-            "Accepts a task bundle text file listing paths to *{} files.".format(BITMASK_SUFFIX)
+            "Accepts a task bundle text file listing paths to *{} files.".format(ARGDEF_MASK_SUFFIX)
         ])
     )
 
@@ -179,6 +201,26 @@ def argparser_init():
         help=' '.join([
             "Path to destination directory for output masked raster(s)",
             "(default is alongside source raster file(s))."
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_MASK_SUFFIX,
+        type=str,
+        default=ARGDEF_MASK_SUFFIX,
+        help=' '.join([
+            "Filename suffix to search for applicable masking rasters.",
+            "Currently only the bitmask mask version is supported."
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_MASK_VALUE,
+        type=str,
+        default=None,
+        help=' '.join([
+            "The 'masking value' to set masked pixels in the output raster."
+            "This value can be overridden on a per-raster-suffix basis using the {} option.".format(ARGSTR_SRC_SUFFIX),
+            "\nIf not provided, the NoData value of the source raster will be taken as the masking value.",
+            "If the source raster does not have a set NoData value, the raster will not be masked."
         ])
     )
     parser.add_argument(
@@ -349,25 +391,47 @@ def main():
 
     src = args.get(ARGSTR_SRC)
 
-    if args.get(ARGSTR_SRC_SUFFIX) == '':
-        args.set(ARGSTR_SRC_SUFFIX, None)
+    global SUFFIX_PRIORITY_BITMASK
+    mask_suffix_raw = args.get(ARGSTR_MASK_SUFFIX)
+    mask_suffix_fixed = '_'+mask_suffix_raw.lstrip('_')
+    use_raw_suffixes = False
+    if args.provided(ARGSTR_MASK_SUFFIX):
+        if mask_suffix_fixed in SUFFIX_PRIORITY_BITMASK:
+            SUFFIX_PRIORITY_BITMASK.remove(mask_suffix_fixed)
+            SUFFIX_PRIORITY_BITMASK.insert(0, mask_suffix_fixed)
+        else:
+            use_raw_suffixes = True
+            SUFFIX_PRIORITY_BITMASK = [args.get(ARGSTR_MASK_SUFFIX)]
+    if not use_raw_suffixes and mask_suffix_fixed != mask_suffix_raw:
+        args.set(ARGSTR_MASK_SUFFIX, mask_suffix_fixed)
 
-    if args.get(ARGSTR_SRC_SUFFIX) is not None:
-        src_suffixToptmaskval = [[ss.strip() for ss in s.strip().lstrip('_').split('=')]
+    if args.get(ARGSTR_SRC_SUFFIX) is None or args.get(ARGSTR_SRC_SUFFIX).strip() == '':
+        args.set(ARGSTR_SRC_SUFFIX, SRC_SUFFIX_CATCH_ALL)
+        print("argument {} set automatically from null value to catch-all default: '{}'".format(
+            ARGSTR_SRC_SUFFIX, ARGSTR_SRC_SUFFIX, args.get(ARGSTR_SRC_SUFFIX)
+        ))
+
+    if args.get(ARGSTR_SRC_SUFFIX) is None:
+        suffix_maskval_dict = {SRC_SUFFIX_CATCH_ALL: None}
+    else:
+        src_suffixToptmaskval = [[ss.strip() for ss in s.strip().split('=')]
                                              for s  in args.get(ARGSTR_SRC_SUFFIX).split('/')]
         suffix_maskval_dict = {}
         for suffixToptmaskval in src_suffixToptmaskval:
             suffix = suffixToptmaskval[0]
-            maskval = suffixToptmaskval[1] if len(suffixToptmaskval) == 2 else None
+            if not use_raw_suffixes and not suffix.startswith('*'):
+                suffix = '_'+suffix.lstrip('_')
+            maskval = suffixToptmaskval[1] if len(suffixToptmaskval) == 2 else args.get(ARGSTR_MASK_VALUE)
             if maskval is not None:
-                try:
-                    maskval_num = float(maskval)
-                    maskval = maskval_num
-                except ValueError:
-                    arg_parser.error("argument {} masking value '{}' is invalid".format(ARGSTR_SRC_SUFFIX, maskval))
-            suffix_maskval_dict['_'+suffix] = maskval
-    else:
-        suffix_maskval_dict = None
+                if startswith_one_of_coll(maskval, ['nodata', 'no-data'], case_sensitive=False):
+                    maskval = None
+                else:
+                    try:
+                        maskval_num = float(maskval)
+                        maskval = maskval_num
+                    except ValueError:
+                        arg_parser.error("argument {} masking value '{}' is invalid".format(ARGSTR_SRC_SUFFIX, maskval))
+            suffix_maskval_dict[suffix] = maskval
 
     if args.get(ARGGRP_FILTER_COMP).count(True) > 0 and args.get(ARGSTR_FILTER_OFF):
         arg_parser.error("argument {} is incompatible with filter options {}".format(ARGSTR_FILTER_OFF, ARGGRP_FILTER_COMP))
@@ -408,43 +472,52 @@ def main():
     # Gather list of masks to apply to a (range of) source raster suffix(es).
     src_bitmasks = None
 
-    if os.path.isfile(src) and src.endswith(BITMASK_SUFFIX):
+    if os.path.isfile(src) and src.endswith(args.get(ARGSTR_MASK_SUFFIX)):
         src_bitmask = src
         src_bitmasks = [src_bitmask]
         if suffix_maskval_dict is None:
-            maskFile_base = src_bitmask.replace(BITMASK_SUFFIX, '')
-            suffix_maskval_dict = {src_rasterFile.replace(maskFile_base, ''): None
-                                   for src_rasterFile in glob.glob(maskFile_base+'*.tif')
-                                   if not src_rasterFile.endswith(BITMASK_SUFFIX)}
+            # maskFile_base = src_bitmask.replace(args.get(ARGSTR_MASK_SUFFIX), '')
+            # suffix_maskval_dict = {src_rasterFile.replace(maskFile_base, ''): None
+            #                        for src_rasterFile in glob.glob(maskFile_base+'*.tif')
+            #                        if not src_rasterFile.endswith(args.get(ARGSTR_MASK_SUFFIX))}
+            suffix_maskval_dict = {SRC_SUFFIX_CATCH_ALL: None}
 
     elif os.path.isfile(src) and not src.endswith('.txt'):
+        if args.provided(ARGSTR_SRC_SUFFIX):
+            raise ScriptArgumentError("{} option cannot be used when argument {} is a path to "
+                                      "a source raster file".format(ARGSTR_SRC_SUFFIX, ARGSTR_SRC))
+        args.set(ARGSTR_SRC_SUFFIX, None)
+        suffix_maskval_dict = None
         src_raster = src
         src_suffix = None
-        if suffix_maskval_dict is not None:
-            for suffix in suffix_maskval_dict.keys():
-                if src_raster.endswith(suffix):
-                    src_suffix = suffix
-                    break
-        if src_suffix is None:
-            src_raster_dir = os.path.dirname(src_raster)
-            src_raster_fname = os.path.basename(src_raster)
-            beg, end = 0, len(src_raster_fname)
-            end = None
-            while end != -1:
-                end = src_raster_fname.rfind('_', beg, end)
-                if os.path.isfile(os.path.join(src_raster_dir, src_raster_fname[beg:end].rstrip('_')+BITMASK_SUFFIX)):
-                    src_suffix = '_'+src_raster_fname[end:].lstrip('_')
-                    break
+
+        src_raster_dir = os.path.dirname(src_raster)
+        src_raster_fname = os.path.basename(src_raster)
+        beg, end = 0, len(src_raster_fname)
+        # end = None
+        while end >= 0:
+            # end = max(src_raster_fname.rfind('_', beg, end), src_raster_fname.rfind('.', beg, end))
+            # if os.path.isfile(os.path.join(src_raster_dir, src_raster_fname[beg:end].rstrip('_')+args.get(ARGSTR_MASK_SUFFIX))):
+            if os.path.isfile(os.path.join(src_raster_dir, src_raster_fname[beg:end]+args.get(ARGSTR_MASK_SUFFIX))):
+                src_suffix = src_raster_fname[end:]
+                break
+            end -= 1
         if src_suffix is None:
             arg_parser.error("Path of {} component for argument {} raster file "
-                             "could not be determined".format(BITMASK_SUFFIX, ARGSTR_SRC))
-        if suffix_maskval_dict is None:
-            suffix_maskval_dict = {src_suffix: None}
+                             "could not be determined".format(args.get(ARGSTR_MASK_SUFFIX), ARGSTR_SRC))
 
-        src_bitmask = src_raster.replace(src_suffix, BITMASK_SUFFIX)
+        src_bitmask = src_raster.replace(src_suffix, args.get(ARGSTR_MASK_SUFFIX))
+        bitmaskSuffix = getBitmaskSuffix(src_bitmask)
+        maskFile_base = src_bitmask.replace(bitmaskSuffix, '')
+        src_suffix = src_raster.replace(maskFile_base, '')
+
+        args.set(ARGSTR_MASK_SUFFIX, bitmaskSuffix)
+        args.set(ARGSTR_SRC_SUFFIX, src_suffix)
+        suffix_maskval_dict = {src_suffix: None}
+
         if not os.path.isfile(src_bitmask):
             arg_parser.error("{} mask component for argument {} raster file does not exist: {}".format(
-                             BITMASK_SUFFIX, ARGSTR_SRC, src_bitmask))
+                             args.get(ARGSTR_MASK_SUFFIX), ARGSTR_SRC, src_bitmask))
         src_bitmasks = [src_bitmask]
 
     elif os.path.isfile(src) and src.endswith('.txt'):
@@ -454,9 +527,9 @@ def main():
     elif os.path.isdir(src):
         srcdir = src
         src_bitmasks = []
-        for root, dirs, files in os.walk(srcdir):
-            for fn in files:
-                if fn.endswith(BITMASK_SUFFIX):
+        for root, dnames, fnames in os.walk(srcdir):
+            for fn in fnames:
+                if fn.endswith(args.get(ARGSTR_MASK_SUFFIX)):
                     src_bitmasks.append(os.path.join(root, fn))
         src_bitmasks.sort()
 
@@ -465,29 +538,8 @@ def main():
                          "but was '{}'".format(ARGSTR_SRC, src))
 
 
-    ## Create processing list.
-    if suffix_maskval_dict is not None:
-        # Build processing list by only adding bitmasks for which
-        # an output masked raster image(s) with the specified mask settings
-        # does not already exist in the destination directory.
-        src_suffixes = suffix_maskval_dict.keys()
-
-        masks_to_apply = []
-        for maskFile in src_bitmasks:
-            for rasterSuffix in src_suffixes:
-                bitmask_suffix = LSF_BITMASK_SUFFIX if rasterSuffix.startswith(LSF_PREFIX) else BITMASK_SUFFIX
-                if not maskFile.endswith(bitmask_suffix):
-                    continue
-                src_rasterFile = maskFile.replace(bitmask_suffix, rasterSuffix)
-                dst_rasterFile = get_dstFile(maskFile, rasterSuffix, args)
-                if os.path.isfile(src_rasterFile) and (not os.path.isfile(dst_rasterFile) or args.get(ARGSTR_OVERWRITE)):
-                    masks_to_apply.append(maskFile)
-                    break
-    else:
-        masks_to_apply = src_bitmasks
-
-
     print("-----")
+    print("Mask file suffix: {}".format(args.get(ARGSTR_MASK_SUFFIX)))
     print(
 """Selected bitmask components to mask:
 [{}] EDGE
@@ -495,13 +547,141 @@ def main():
 [{}] CLOUD""".format(
     *['X' if opt is True else ' ' for opt in args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD)]
     ))
-    print("Output file suffix: '{}'".format(args.get(ARGSTR_DST_SUFFIX)))
+    print("Output file suffix: '{}[.EXT]'".format(args.get(ARGSTR_DST_SUFFIX)))
+
+    print("-----")
+    print("Any warnings would appear here:")
+
+
+    ## Create processing list.
+    if suffix_maskval_dict is None:
+        masks_to_apply = src_bitmasks
+        num_src_rasters = None
+    else:
+        # Build processing list by only adding bitmasks for which
+        # an output masked raster image(s) with the specified mask settings
+        # does not already exist in the destination directory.
+        src_suffixes = list(suffix_maskval_dict.keys())
+        num_src_rasters = 0
+
+        masks_to_apply = []
+        for maskFile in src_bitmasks:
+            bitmaskSuffix = getBitmaskSuffix(maskFile)
+            bitmask_is_strip_lsf = (bitmaskSuffix == SUFFIX_STRIP_BITMASK_LSF)
+            rasterFiles_checklist = set()
+            switched_to_glob = False
+
+            for rasterSuffix in src_suffixes:
+                bitmaskSuffix_temp = bitmaskSuffix
+                if rasterSuffix.startswith(STRIP_LSF_PREFIX):
+                    if not bitmask_is_strip_lsf:
+                        continue
+                elif bitmask_is_strip_lsf:
+                    bitmaskSuffix_temp = SUFFIX_STRIP_BITMASK
+                src_rasterFile = maskFile.replace(bitmaskSuffix_temp, rasterSuffix)
+
+                if '*' in rasterSuffix:
+                    src_rasterffile_glob = set(glob.glob(src_rasterFile))
+                    num_src_rasters += len(src_rasterffile_glob)
+                    double_dipped = src_rasterffile_glob.intersection(rasterFiles_checklist)
+                    if double_dipped:
+                        raise ScriptArgumentError("{} option '{}' matches source raster files that "
+                                                  "are already caught by another provided suffix!".format(
+                            ARGSTR_SRC_SUFFIX, rasterSuffix
+                        ))
+                    rasterFiles_checklist = rasterFiles_checklist.union(src_rasterffile_glob)
+                    mask_added = False
+                    for src_rasterFile in src_rasterffile_glob:
+                        if src_rasterFile.endswith(args.get(ARGSTR_MASK_SUFFIX)):
+                            continue
+                        if args.get(ARGSTR_OVERWRITE):
+                            pass
+                        else:
+                            dst_rasterFile = get_dstFile(src_rasterFile, args)
+                            if not os.path.isfile(dst_rasterFile):
+                                pass
+                            else:
+                                continue
+                        masks_to_apply.append(maskFile)
+                        mask_added = True
+                        break
+                    if len(src_rasterffile_glob) == 0:
+                        warnings.warn(
+                            "{} option '{}' did not match any source raster files "
+                            "corresponding to at least one mask file".format(
+                            ARGSTR_SRC_SUFFIX, rasterSuffix
+                        ))
+                    if mask_added:
+                        break
+
+                elif os.path.isfile(src_rasterFile):
+                    num_src_rasters += 1
+                    double_dipped = (src_rasterFile in rasterFiles_checklist)
+                    if double_dipped:
+                        raise ScriptArgumentError("{} option '{}' matches source raster files that "
+                                                  "are already caught by another provided suffix!".format(
+                            ARGSTR_SRC_SUFFIX, rasterSuffix
+                        ))
+                    rasterFiles_checklist.add(src_rasterFile)
+                    if args.get(ARGSTR_OVERWRITE):
+                        pass
+                    else:
+                        dst_rasterFile = get_dstFile(src_rasterFile, args)
+                        if not os.path.isfile(dst_rasterFile):
+                            pass
+                        else:
+                            continue
+                    masks_to_apply.append(maskFile)
+                    break
+
+                else:
+                    rasterSuffix_glob = '*'+rasterSuffix.lstrip('_')
+                    src_rasterFile = maskFile.replace(bitmaskSuffix_temp, rasterSuffix_glob)
+                    src_rasterffile_glob = set(glob.glob(src_rasterFile))
+                    num_src_rasters += len(src_rasterffile_glob)
+                    double_dipped = src_rasterffile_glob.intersection(rasterFiles_checklist)
+                    if double_dipped:
+                        raise ScriptArgumentError(
+                            "{} option '{}' (auto-globbed) matches source raster files that "
+                            "are already caught by another provided suffix!".format(
+                            ARGSTR_SRC_SUFFIX, rasterSuffix_glob
+                        ))
+                    rasterFiles_checklist = rasterFiles_checklist.union(src_rasterffile_glob)
+                    mask_added = False
+                    for src_rasterFile in src_rasterffile_glob:
+                        if src_rasterFile.endswith(args.get(ARGSTR_MASK_SUFFIX)):
+                            continue
+                        if args.get(ARGSTR_OVERWRITE):
+                            pass
+                        else:
+                            dst_rasterFile = get_dstFile(src_rasterFile, args)
+                            if not os.path.isfile(dst_rasterFile):
+                                pass
+                            else:
+                                continue
+                        masks_to_apply.append(maskFile)
+                        mask_added = True
+                        break
+                    if len(src_rasterffile_glob) == 0:
+                        warnings.warn(
+                            "{} option '{}' (auto-globbed) did not match any source raster files "
+                            "corresponding to at least one mask file".format(
+                            ARGSTR_SRC_SUFFIX, rasterSuffix_glob
+                        ))
+                    else:
+                        suffix_maskval_dict[rasterSuffix_glob] = suffix_maskval_dict[rasterSuffix]
+                        del suffix_maskval_dict[rasterSuffix]
+                        switched_to_glob = True
+                    if mask_added:
+                        break
+            if switched_to_glob:
+                src_suffixes = list(suffix_maskval_dict.keys())
 
     print("-----")
 
     if suffix_maskval_dict is None:
         print("Masking all *_[RASTER-SUFFIX(.tif)] raster components corresponding to "
-              "source *{} file(s), using source NoData values".format(BITMASK_SUFFIX))
+              "source *{} file(s), using source NoData values".format(args.get(ARGSTR_MASK_SUFFIX)))
     else:
         print("[Raster Suffix, Masking Value]")
         for suffix, maskval in suffix_maskval_dict.items():
@@ -510,7 +690,9 @@ def main():
 
     num_tasks = len(masks_to_apply)
 
-    print("Number of source bitmasks found: {}".format(len(src_bitmasks)))
+    print("Number of source mask files found: {}".format(len(src_bitmasks)))
+    if num_src_rasters is not None:
+        print("Number of source raster files found: {}".format(num_src_rasters))
     print("Number of incomplete masking tasks: {}".format(num_tasks))
 
     if num_tasks == 0:
@@ -548,7 +730,7 @@ def main():
 
         args_batch = args
         args_single = copy.deepcopy(args)
-        args_single.unset_args(*ARGGRP_BATCH)
+        args_single.unset(*ARGGRP_BATCH)
 
         job_num = 0
         num_jobs = len(src_files)
@@ -616,6 +798,21 @@ def main():
             sys.exit(1)
 
 
+def startswith_one_of_coll(check_string, string_starting_coll, case_sensitive=True, return_match=False):
+    for s_start in string_starting_coll:
+        if check_string.startswith(s_start) or (not case_sensitive and check_string.lower().startswith(s_start.lower())):
+            return s_start if return_match else True
+    return None if return_match else False
+
+
+def getBitmaskSuffix(bitmaskFile):
+    global SUFFIX_PRIORITY_BITMASK
+    for bitmaskSuffix in SUFFIX_PRIORITY_BITMASK:
+        if bitmaskFile.endswith(bitmaskSuffix):
+            return bitmaskSuffix
+    return None
+
+
 def get_mask_bitstring(edge, water, cloud):
     maskcomp_state_bit = [
         (MASKCOMP_EDGE_BIT, edge),
@@ -630,25 +827,28 @@ def get_mask_bitstring(edge, water, cloud):
     return bitstring
 
 
-def get_dstFile(maskFile, rasterSuffix, args):
-    dstFname_prefix, dstFname_ext = os.path.splitext(
-        os.path.basename(maskFile).replace(BITMASK_SUFFIX, rasterSuffix))
+def get_dstFile(rasterFile, args):
+    dstFname_prefix, dstFname_ext = os.path.splitext(os.path.basename(rasterFile))
     dstFname = '{}{}{}'.format(
         dstFname_prefix, args.get(ARGSTR_DST_SUFFIX) if args.get(ARGSTR_DST_SUFFIX) != '' else '', dstFname_ext)
     dstFile = (os.path.join(args.get(ARGSTR_DSTDIR), dstFname) if args.get(ARGSTR_DSTDIR) is not None else
-               os.path.join(os.path.dirname(maskFile), dstFname))
+               os.path.join(os.path.dirname(rasterFile), dstFname))
     return dstFile
 
 
 def mask_rasters(maskFile, suffix_maskval_dict, args):
 
+    global SRC_SUFFIX_CATCH_ALL
     nodata_opt = args.get(ARGSTR_DST_NODATA)
+    bitmaskSuffix = getBitmaskSuffix(maskFile)
+    bitmask_is_strip_lsf = (bitmaskSuffix == SUFFIX_STRIP_BITMASK_LSF)
 
     if suffix_maskval_dict is None:
-        maskFile_base = maskFile.replace(BITMASK_SUFFIX, '')
-        suffix_maskval_dict = {src_rasterFile.replace(maskFile_base, ''): None
-                               for src_rasterFile in glob.glob(maskFile_base+'*.tif')
-                               if not src_rasterFile.endswith(BITMASK_SUFFIX)}
+        # maskFile_base = maskFile.replace(bitmaskSuffix, '')
+        # suffix_maskval_dict = {src_rasterFile.replace(maskFile_base, ''): None
+        #                        for src_rasterFile in glob.glob(maskFile_base+SRC_SUFFIX_CATCH_ALL)
+        #                        if not src_rasterFile.endswith(bitmaskSuffix)}
+        suffix_maskval_dict = {SRC_SUFFIX_CATCH_ALL: None}
 
     if True in args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD):
         # Read in mask raster, then unset bits that will not be used to mask.
@@ -672,77 +872,96 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
     mask_pyramids = [mask_select]
     mask_pyramid_current = mask_pyramids[0]
 
-    bitmask_suffix = LSF_BITMASK_SUFFIX if maskFile.endswith(LSF_BITMASK_SUFFIX) else BITMASK_SUFFIX
-
     # Apply mask to source raster images and save results.
     for src_suffix, maskval in suffix_maskval_dict.items():
-
-        src_rasterFile = maskFile.replace(bitmask_suffix, src_suffix)
-        dst_rasterFile = get_dstFile(maskFile, src_suffix, args)
-
-        if not os.path.isfile(src_rasterFile):
-            print("Source raster does not exist: {}".format(src_rasterFile))
-            continue
-        if os.path.isfile(dst_rasterFile):
-            print("Output raster already exists: {}".format(dst_rasterFile))
-            if not args.get(ARGSTR_OVERWRITE):
+        bitmaskSuffix_temp = bitmaskSuffix
+        if src_suffix.startswith(STRIP_LSF_PREFIX):
+            if not bitmask_is_strip_lsf:
                 continue
+        elif bitmask_is_strip_lsf:
+            bitmaskSuffix_temp = SUFFIX_STRIP_BITMASK
 
-        print("Masking source raster ({}) to output raster ({})".format(src_rasterFile, dst_rasterFile))
-
-        # Read in source raster.
-        dst_array, src_nodataval = rat.extractRasterData(src_rasterFile, 'array', 'nodata_val')
-
-        print("Source NoData value: {}".format(src_nodataval))
-
-        # Set masking value to source NoDataVal if necessary.
-        if maskval is None:
-            if src_nodataval is None:
-                print("Source raster does not have a set NoData value, "
-                      "so masking value cannot be automatically determined; skipping")
+        src_rasterFile = maskFile.replace(bitmaskSuffix_temp, src_suffix)
+        if '*' in src_rasterFile:
+            src_rasterFile_list = glob.glob(src_rasterFile)
+            if len(src_rasterFile_list) == 0:
+                print("No source rasters found matching filename pattern: {}".format(src_rasterFile))
                 continue
-            else:
-                maskval = src_nodataval
+            maskFile_globbed = None
+            for src_rasterFile in src_rasterFile_list:
+                if src_rasterFile.endswith(bitmaskSuffix_temp):
+                    maskFile_globbed = src_rasterFile
+                    break
+            if maskFile_globbed is not None:
+                src_rasterFile_list.remove(maskFile_globbed)
+        else:
+            src_rasterFile_list = [src_rasterFile]
 
-        print("Masking value: {}".format(maskval))
+        for src_rasterFile in src_rasterFile_list:
+            if not os.path.isfile(src_rasterFile):
+                print("Source raster does not exist: {}".format(src_rasterFile))
+                continue
+            dst_rasterFile = get_dstFile(src_rasterFile, args)
+            if os.path.isfile(dst_rasterFile):
+                print("Output raster already exists: {}".format(dst_rasterFile))
+                if not args.get(ARGSTR_OVERWRITE):
+                    continue
 
-        if mask_pyramid_current is not None:
-            # Apply mask.
-            if mask_pyramid_current.shape != dst_array.shape:
-                # See if the required mask pyramid level has already been built.
-                mask_pyramid_current = None
-                for arr in mask_pyramids:
-                    if arr.shape == dst_array.shape:
-                        mask_pyramid_current = arr
-                        break
-                if mask_pyramid_current is None:
-                    # Build the required mask pyramid level and add to pyramids.
-                    mask_pyramid_current = rat.imresize(mask_select, dst_array.shape, interp='nearest')
-                    mask_pyramids.append(mask_pyramid_current)
-            dst_array[mask_pyramid_current] = maskval
+            print("Masking source raster ({}) to output raster ({})".format(src_rasterFile, dst_rasterFile))
 
-        # Handle nodata options.
-        if nodata_opt == ARGCHO_DST_NODATA_SAME:
-            dst_nodataval = src_nodataval
-        elif nodata_opt == ARGCHO_DST_NODATA_ADD:
-            dst_nodataval = maskval if src_nodataval is None else src_nodataval
-        elif nodata_opt == ARGCHO_DST_NODATA_SWITCH:
-            dst_nodataval = maskval
-        elif nodata_opt == ARGCHO_DST_NODATA_CONVERT:
-            if src_nodataval is not None:
-                dst_nodata = ((dst_array == src_nodataval)
-                              if not np.isnan(src_nodataval) else np.isnan(dst_array))
-                dst_array[dst_nodata] = maskval
-            dst_nodataval = maskval
-        elif nodata_opt == ARGCHO_DST_NODATA_UNSET:
-            dst_nodataval = None
+            # Read in source raster.
+            dst_array, src_nodataval = rat.extractRasterData(src_rasterFile, 'array', 'nodata_val')
 
-        print("Output NoData value: {}".format(dst_nodataval))
+            print("Source NoData value: {}".format(src_nodataval))
 
-        # Save output masked raster.
-        rat.saveArrayAsTiff(dst_array, dst_rasterFile,
-                            nodata_val=dst_nodataval,
-                            like_raster=src_rasterFile)
+            # Set masking value to source NoDataVal if necessary.
+            if maskval is None:
+                if src_nodataval is None:
+                    print("Source raster does not have a set NoData value, "
+                          "so masking value cannot be automatically determined; skipping")
+                    continue
+                else:
+                    maskval = src_nodataval
+
+            print("Masking value: {}".format(maskval))
+
+            if mask_pyramid_current is not None:
+                # Apply mask.
+                if mask_pyramid_current.shape != dst_array.shape:
+                    # See if the required mask pyramid level has already been built.
+                    mask_pyramid_current = None
+                    for arr in mask_pyramids:
+                        if arr.shape == dst_array.shape:
+                            mask_pyramid_current = arr
+                            break
+                    if mask_pyramid_current is None:
+                        # Build the required mask pyramid level and add to pyramids.
+                        mask_pyramid_current = rat.imresize(mask_select, dst_array.shape, interp='nearest')
+                        mask_pyramids.append(mask_pyramid_current)
+                dst_array[mask_pyramid_current] = maskval
+
+            # Handle nodata options.
+            if nodata_opt == ARGCHO_DST_NODATA_SAME:
+                dst_nodataval = src_nodataval
+            elif nodata_opt == ARGCHO_DST_NODATA_ADD:
+                dst_nodataval = maskval if src_nodataval is None else src_nodataval
+            elif nodata_opt == ARGCHO_DST_NODATA_SWITCH:
+                dst_nodataval = maskval
+            elif nodata_opt == ARGCHO_DST_NODATA_CONVERT:
+                if src_nodataval is not None:
+                    dst_nodata = ((dst_array == src_nodataval)
+                                  if not np.isnan(src_nodataval) else np.isnan(dst_array))
+                    dst_array[dst_nodata] = maskval
+                dst_nodataval = maskval
+            elif nodata_opt == ARGCHO_DST_NODATA_UNSET:
+                dst_nodataval = None
+
+            print("Output NoData value: {}".format(dst_nodataval))
+
+            # Save output masked raster.
+            rat.saveArrayAsTiff(dst_array, dst_rasterFile,
+                                nodata_val=dst_nodataval,
+                                like_raster=src_rasterFile)
 
 
 

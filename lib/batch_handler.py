@@ -101,16 +101,16 @@ class ArgumentPasser:
                     newval = True
                 elif acttype in (argparse._StoreTrueAction, argparse._StoreFalseAction):
                     newval = (acttype is argparse._StoreTrueAction)
-                else:
-                    raise InvalidArgumentError("Setting non-boolean argument string '{}' requires "
-                                               "a provided `newval` value".format(argstr))
+                # else:
+                #     raise InvalidArgumentError("Setting non-boolean argument string '{}' requires "
+                #                                "a provided `newval` value".format(argstr))
             self.vars_dict[self.argstr2varstr[argstr]] = newval
         if set(argstr_list).issubset(set(self.argstr_pos)):
             self._update_cmd()
         else:
             self._update_cmd_base()
 
-    def unset_args(self, *argstrs):
+    def unset(self, *argstrs):
         if len(argstrs) < 1:
             raise InvalidArgumentError("One or more argument strings must be provided")
         elif len(argstrs) == 1 and type(argstrs[0]) in (list, tuple):
@@ -129,6 +129,9 @@ class ArgumentPasser:
             self._update_cmd()
         else:
             self._update_cmd_base()
+
+    def provided(self, argstr):
+        return argstr in self.provided_opt_args
 
     def _make_argstr2varstr_dict(self):
         argstr2varstr = {}
