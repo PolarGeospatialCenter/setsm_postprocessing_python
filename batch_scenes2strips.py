@@ -664,6 +664,8 @@ def main():
         ]
         print("Found {}{} strip-pair IDs, {} unfinished".format(
             len(stripids), ' *'+demSuffix if demSuffix is not None else '', len(stripids_to_process)))
+        if len(stripids) == 0:
+            print("(Did you mean to pass `--dem-type non-lsf` or `--old-org` arguments?)")
         # sys.exit(0)
         if len(stripids_to_process) == 0:
             print("No unfinished strip DEMs found to process, exiting")
