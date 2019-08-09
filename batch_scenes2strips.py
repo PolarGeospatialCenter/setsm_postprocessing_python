@@ -506,6 +506,8 @@ def main():
                     'tif_results', 'strips' if not args.get(ARGSTR_UNFILTERED) else 'strips_unf')))
         print("argument {} set automatically to: {}".format(ARGSTR_DST, args.get(ARGSTR_DST)))
 
+    argcho_dem_type_opp = ARGCHO_DEM_TYPE_NON_LSF if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ARGCHO_DEM_TYPE_LSF
+
     if args.get(ARGSTR_UNFILTERED):
         args.set(ARGGRP_UNFILTERED)
         print("via provided argument {}, arguments {} set automatically".format(ARGSTR_UNFILTERED, ARGGRP_UNFILTERED))
@@ -665,7 +667,9 @@ def main():
         print("Found {}{} strip-pair IDs, {} unfinished".format(
             len(stripids), ' *'+demSuffix if demSuffix is not None else '', len(stripids_to_process)))
         if len(stripids) == 0:
-            print("(Did you mean to pass `--dem-type non-lsf` or `--old-org` arguments?)")
+            print("(Did you mean to pass `{} {}` or `{}` arguments?)".format(
+                ARGSTR_DEM_TYPE, argcho_dem_type_opp, ARGSTR_OLD_ORG
+            ))
         # sys.exit(0)
         if len(stripids_to_process) == 0:
             print("No unfinished strip DEMs found to process, exiting")
@@ -888,7 +892,6 @@ def main():
                     src_scenefile_missing_flag = True
 
             # If working on LSF DEMs, make sure that all DEM scenes for the strip exist in LSF.
-            argcho_dem_type_opp = ARGCHO_DEM_TYPE_NON_LSF if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ARGCHO_DEM_TYPE_LSF
             demSuffix_opp = DEM_TYPE_SUFFIX_DICT[argcho_dem_type_opp]
             src_scenedem_opp_ffile_glob = glob.glob(os.path.join(
                 scene_dfull,
