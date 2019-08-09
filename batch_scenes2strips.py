@@ -578,7 +578,7 @@ def main():
                 os.makedirs(dir_path)
 
 
-    if args.get(ARGSTR_STRIPID) is None or os.path.isfile(args.get(ARGSTR_STRIPID)):
+    if args.get(ARGSTR_STRIPID) is None or os.path.isfile(args.get(ARGSTR_STRIPID)) or args.get(ARGSTR_SCHEDULER) is not None:
         ## Batch processing
 
         # Gather strip-pair IDs to process.
@@ -615,7 +615,7 @@ def main():
 
             del src_scenedem_ffile_glob
 
-        else:
+        elif os.path.isfile(args.get(ARGSTR_STRIPID)):
 
             # Assume file is a list of strip-pair IDs, one per line.
             stripids = set(batch_handler.read_task_bundle(args.get(ARGSTR_STRIPID)))
@@ -639,6 +639,9 @@ def main():
 
             stripids = stripids_to_process
             demSuffix = None
+
+        else:
+            stripids = {args.get(ARGSTR_STRIPID)}
 
         stripids = sorted(list(stripids))
 
