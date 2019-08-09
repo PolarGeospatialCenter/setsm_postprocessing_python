@@ -76,6 +76,9 @@ The [3.0 branch of Ian Howat's setsm_postprocessing GitHub repo](https://github.
 * Added ability to use different algorithms for scene filtering by invoking the `--mask-ver` script argument.
 * Restructured filtering code that produced the default 2-meter resolution FLAT binary *mask.tif* scene mask from [setsm_postprocessing 3.0](https://github.com/ihowat/setsm_postprocessing/tree/3.0 "setsm_postprocessing, 3.0 branch") to create the component-ized [*bitmask.tif*](https://github.com/PolarGeospatialCenter/setsm_postprocessing_python#the-bitmasktif-raster-explained) mask, which is now the default mask for 2-meter SETSM DEMs.
 
+#### 3.2
+* Updated the coregistration function to match recent changes to the MATLAB source code. The coregistration function now reports error values for each (x,y,z) component of the returned translation vector. This information will be necessary in future efforts to create a new tile mosaicking process for SETSM DEMs.
+
 
 ### Turning scenes into strips
 
