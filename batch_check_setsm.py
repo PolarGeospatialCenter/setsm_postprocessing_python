@@ -76,14 +76,13 @@ ARGSTR_SUPPRESS_ERRFILE_EXISTS = '--suppress-errfile-exists'
 ARGSTR_SUPPRESS_MISSING_SUFFIX = '--suppress-missing-suffix'
 ARGSTR_SUPPRESS_MISSING_CHECKED = '--suppress-missing-checked'
 ARGSTR_SUPPRESS_NEW_SOURCE = '--suppress-new-source'
-ARGSTR_REMOVECF_ERRFILE_EXISTS = '--removecf-errfile-exists'
-ARGSTR_REMOVECF_MISSING_SUFFIX = '--removecf-missing-suffix'
-ARGSTR_REMOVECF_MISSING_CHECKED = '--removecf-missing-checked'
-ARGSTR_REMOVECF_NEW_SOURCE = '--removecf-new-source'
-ARGSTR_REMOVESRC_ERRFILE_EXISTS = '--removesrc-errfile-exists'
-ARGSTR_REMOVESRC_MISSING_SUFFIX = '--removesrc-missing-suffix'
-ARGSTR_REMOVESRC_MISSING_CHECKED = '--removesrc-missing-checked'
-ARGSTR_REMOVESRC_NEW_SOURCE = '--removesrc-new-source'
+ARGSTR_REMOVE_TYPE = '--remove-type'
+ARGSTR_RMWHERE_ERRFILE_EXISTS = '--rmwhere-errfile-exists'
+ARGSTR_RMWHERE_MISSING_SUFFIX = '--rmwhere-missing-suffix'
+ARGSTR_RMWHERE_MISSING_CHECKED = '--rmwhere-missing-checked'
+ARGSTR_RMWHERE_NEW_SOURCE = '--rmwhere-new-source'
+ARGSTR_REMOVE_ONLY = '--remove-only'
+ARGSTR_STATS_ONLY = '--stats-only'
 ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_TASKS_PER_JOB = '--tasks-per-job'
@@ -100,6 +99,13 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR
 ARGGRP_CHECK_REGULAR = [ARGSTR_CHECKFILE, ARGSTR_CHECKFILE_ROOT, ARGSTR_CHECKFILE_ROOT_REGEX]
 ARGGRP_CHECK_OTHER = [ARGSTR_CHECK_SPECIAL]
 ARGGRP_CHECK_ALL = ARGGRP_CHECK_REGULAR + ARGGRP_CHECK_OTHER
+ARGGRP_RMWHERE = [
+    ARGSTR_RMWHERE_ERRFILE_EXISTS,
+    ARGSTR_RMWHERE_MISSING_SUFFIX,
+    ARGSTR_RMWHERE_MISSING_CHECKED,
+    ARGSTR_RMWHERE_NEW_SOURCE
+]
+ARGGRP_REQUIRES_RMWHERE = [ARGSTR_DO_DELETE, ARGSTR_REMOVE_ONLY]
 
 # Argument choices
 ARGCHO_CHECK_METHOD_READ = 'read'
@@ -126,13 +132,21 @@ ARGCHO_CHECK_SPECIAL = [
     ARGCHO_CHECK_SPECIAL_SCENEMETA,
     ARGCHO_CHECK_SPECIAL_STRIPMETA
 ]
-ARGCHO_CHECK_SPECIAL_DEMTYPE_REGULAR = 'dem'
-ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH = 'dem_smooth'
+ARGCHO_CHECK_SPECIAL_DEMTYPE_REGULAR = 'non-lsf'
+ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH = 'lsf'
 ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH = 'both'
 ARGCHO_CHECK_SPECIAL_DEMTYPE = [
     ARGCHO_CHECK_SPECIAL_DEMTYPE_REGULAR,
     ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH,
     ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH
+]
+ARGCHO_REMOVE_TYPE_CHECKFILES = 'checkfiles'
+ARGCHO_REMOVE_TYPE_SOURCEFILES = 'sourcefiles'
+ARGCHO_REMOVE_TYPE_BOTH = 'both'
+ARGCHO_REMOVE_TYPE = [
+    ARGCHO_REMOVE_TYPE_CHECKFILES,
+    ARGCHO_REMOVE_TYPE_SOURCEFILES,
+    ARGCHO_REMOVE_TYPE_BOTH
 ]
 
 # Argument choice groups
@@ -573,61 +587,61 @@ def argparser_init():
     )
 
     parser.add_argument(
-        ARGSTR_REMOVECF_ERRFILE_EXISTS,
-        action='store_true',
+        ARGSTR_REMOVE_TYPE,
+        type=str,
+        choices=ARGCHO_REMOVE_TYPE,
+        default=ARGCHO_REMOVE_TYPE_CHECKFILES,
         help=' '.join([
-            "Remove existing checkfile when error files exist among check group source files."
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_REMOVECF_MISSING_SUFFIX,
-        action='store_true',
-        help=' '.join([
-            "Remove existing checkfile when source file suffixes are missing from check group."
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_REMOVECF_MISSING_CHECKED,
-        action='store_true',
-        help=' '.join([
-            "Remove existing checkfile when files listed in checkfile cannot be found in source directory."
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_REMOVECF_NEW_SOURCE,
-        action='store_true',
-        help=' '.join([
-            "Remove existing checkfile when new source files are to be added to checkfile."
+            "Specify which files can be removed by the following arguments:",
+            ARGSTR_RMWHERE_ERRFILE_EXISTS,
+            ARGSTR_RMWHERE_MISSING_SUFFIX,
+            ARGSTR_RMWHERE_MISSING_CHECKED,
+            ARGSTR_RMWHERE_NEW_SOURCE
         ])
     )
 
     parser.add_argument(
-        ARGSTR_REMOVESRC_ERRFILE_EXISTS,
+        ARGSTR_RMWHERE_ERRFILE_EXISTS,
         action='store_true',
         help=' '.join([
-            "Remove existing checkfile when error files exist among check group source files."
+            "Remove existing check/source files when error files exist among check group source files.",
+            "Use {} argument to specify which files can be removed.".format(ARGSTR_REMOVE_TYPE)
         ])
     )
     parser.add_argument(
-        ARGSTR_REMOVESRC_MISSING_SUFFIX,
+        ARGSTR_RMWHERE_MISSING_SUFFIX,
         action='store_true',
         help=' '.join([
-            "Remove existing checkfile when source file suffixes are missing from check group."
+            "Remove existing check/source files when source file suffixes are missing from check group.",
+            "Use {} argument to specify which files can be removed.".format(ARGSTR_REMOVE_TYPE)
         ])
     )
     parser.add_argument(
-        ARGSTR_REMOVESRC_MISSING_CHECKED,
+        ARGSTR_RMWHERE_MISSING_CHECKED,
         action='store_true',
         help=' '.join([
-            "Remove existing checkfile when files listed in checkfile cannot be found in source directory."
+            "Remove existing check/source files when files listed in checkfile cannot be found in source directory.",
+            "Use {} argument to specify which files can be removed.".format(ARGSTR_REMOVE_TYPE)
         ])
     )
     parser.add_argument(
-        ARGSTR_REMOVESRC_NEW_SOURCE,
+        ARGSTR_RMWHERE_NEW_SOURCE,
         action='store_true',
         help=' '.join([
-            "Remove existing checkfile when new source files are to be added to checkfile."
+            "Remove existing check/source files when new source files are to be added to checkfile.",
+            "Use {} argument to specify which files can be removed.".format(ARGSTR_REMOVE_TYPE)
         ])
+    )
+
+    parser.add_argument(
+        ARGSTR_REMOVE_ONLY,
+        action='store_true',
+        help="Scan check/source files and possibly perform removal actions, then exit."
+    )
+    parser.add_argument(
+        ARGSTR_STATS_ONLY,
+        action='store_true',
+        help="Scan check/source files and report task completion status, then exit."
     )
 
     parser.add_argument(
@@ -733,9 +747,11 @@ def ends_one_of_coll(string_ending, string_coll, case_sensitive=True, return_mat
     return None if return_match else False
 
 
-def checkfile_incomplete(checkfile_root, checkfile_ext, errfile_ext, src_suffixes,
+def checkfile_incomplete(args,
+                         checkfile_root, checkfile_ext, errfile_ext, src_suffixes,
                          src_rasters=None, return_incomplete_src_rasters=False,
-                         missing_suffix_flag=None, errfile_flag=None,
+                         srcfile_count=None, errfile_count=None,
+                         missing_suffix_flag=None, checkfile_removed_flag=None,
                          warn_missing_suffix=True, warn_errfile_exists=True,
                          warn_missing_checked=True, warn_new_source=True):
 
@@ -743,10 +759,17 @@ def checkfile_incomplete(checkfile_root, checkfile_ext, errfile_ext, src_suffixe
     if checkfile_ext is None and src_rasters is None:
         raise DeveloperError("Checkfile {}; cannot locate corresponding source files when checkfile"
                              "is a full file path (assuming argument {} was provided)".format(checkfile, ARGSTR_CHECKFILE))
+    checkfile_dir = os.path.dirname(checkfile)
+    checkfile_exists = os.path.isfile(checkfile)
     if src_rasters is not None and type(src_rasters) is list:
         src_rasters = set(src_rasters)
 
-    if os.path.isfile(checkfile):
+    find_src_rasters = (   return_incomplete_src_rasters
+                        or warn_missing_suffix or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX)
+                        or warn_errfile_exists or args.get(ARGSTR_RMWHERE_ERRFILE_EXISTS))
+    delete_files = False
+
+    if checkfile_exists and not args.get(ARGSTR_CHECKFILE_OFF):
         with open(checkfile, 'r') as checkfile_fp:
             src_rasters_checked = set(checkfile_fp.read().splitlines())
 
@@ -761,6 +784,7 @@ def checkfile_incomplete(checkfile_root, checkfile_ext, errfile_ext, src_suffixe
                     checkfile, len(src_rasters_to_check)))
                 for f in sorted(list(src_rasters_to_check)):
                     print(f)
+            delete_files = (delete_files or args.get(ARGSTR_RMWHERE_NEW_SOURCE))
 
         src_rasters_checked_missing = src_rasters_checked.difference(src_rasters)
         if src_rasters_checked_missing:
@@ -770,8 +794,9 @@ def checkfile_incomplete(checkfile_root, checkfile_ext, errfile_ext, src_suffixe
                     checkfile, len(src_rasters_checked_missing)))
                 for f in sorted(list(src_rasters_checked_missing)):
                     print(f)
+            delete_files = (delete_files or args.get(ARGSTR_RMWHERE_MISSING_CHECKED))
 
-    elif return_incomplete_src_rasters or warn_missing_suffix:
+    elif return_incomplete_src_rasters or find_src_rasters:
         if src_rasters is None:
             src_rasters = {os.path.basename(f) for f in glob.glob(checkfile_root+'*') if endswith_one_of_coll(f, src_suffixes)}
         src_rasters_to_check = src_rasters
@@ -780,6 +805,8 @@ def checkfile_incomplete(checkfile_root, checkfile_ext, errfile_ext, src_suffixe
         src_rasters_to_check = True
 
     if src_rasters is not None:
+        if type(srcfile_count) is list and len(srcfile_count) == 1:
+            srcfile_count[0] = len(src_rasters)
 
         missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, src_rasters)]
         if missing_suffixes:
@@ -788,18 +815,44 @@ def checkfile_incomplete(checkfile_root, checkfile_ext, errfile_ext, src_suffixe
                 print("Check group {}; missing the following source file suffixes: {}".format(checkfile_root, missing_suffixes))
             if type(missing_suffix_flag) is list and len(missing_suffix_flag) == 1:
                 missing_suffix_flag[0] = True
+            delete_files = (delete_files or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX))
 
-        src_rasters_with_error = [f for f in src_rasters if os.path.isfile(f+errfile_ext)]
-        if src_rasters_with_error:
+        src_raster_errfnames = [f+errfile_ext for f in src_rasters if os.path.isfile(os.path.join(checkfile_dir, f+errfile_ext))]
+        if src_raster_errfnames:
             warnings.warn("Error files were found among source files for a check group")
             if warn_errfile_exists:
                 print("Check group {}; {} error files were found among source selection:".format(
-                    checkfile, len(src_rasters_with_error)))
-                for f in sorted(list(src_rasters_with_error)):
+                    checkfile, len(src_raster_errfnames)))
+                for f in sorted(list(src_raster_errfnames)):
                     print(f)
-            if type(errfile_flag) is list and len(errfile_flag) == 1:
-                errfile_flag[0] = True
+            if type(errfile_count) is list and len(errfile_count) == 1:
+                errfile_count[0] = len(src_raster_errfnames)
+            delete_files = (delete_files or args.get(ARGSTR_RMWHERE_ERRFILE_EXISTS))
 
+        delete_dryrun = (args.get(ARGSTR_DRYRUN) or not args.get(ARGSTR_DO_DELETE))
+
+        if (    (delete_files and checkfile_exists)
+            and args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_CHECKFILES, ARGCHO_REMOVE_TYPE_BOTH]):
+            print("Removing checkfile"+" (dryrun)"*delete_dryrun)
+            cmd = "rm {}".format(checkfile)
+            print(cmd)
+            if not delete_dryrun:
+                os.remove(checkfile)
+            if type(checkfile_removed_flag) is list and len(checkfile_removed_flag) == 1:
+                checkfile_removed_flag[0] = True
+            src_rasters_to_check = src_rasters
+
+        if (    delete_files
+            and args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_SOURCEFILES, ARGCHO_REMOVE_TYPE_BOTH]):
+            print("Removing source files"+" (dryrun)"*delete_dryrun)
+            srcfnames_to_remove = list(src_rasters) + src_raster_errfnames
+            for fn in srcfnames_to_remove:
+                srcfile_to_remove = os.path.join(checkfile_dir, fn)
+                cmd = "rm {}".format(srcfile_to_remove)
+                print(cmd)
+                if not delete_dryrun:
+                    os.remove(srcfile_to_remove)
+            return -1
 
     return list(src_rasters_to_check) if return_incomplete_src_rasters else bool(src_rasters_to_check)
 
@@ -821,10 +874,14 @@ def main():
     errfile_ext = args.get(ARGSTR_ERRFILE_EXT)
     allow_missing_suffix = args.get(ARGSTR_ALLOW_MISSING_SUFFIX)
     retry_errors = args.get(ARGSTR_RETRY_ERRORS)
-    warn_errfile_exists = (not args.get(ARGSTR_SUPPRESS_ERRFILE_EXISTS))
-    warn_missing_suffix = (not args.get(ARGSTR_SUPPRESS_MISSING_SUFFIX))
-    warn_missing_checked = (not args.get(ARGSTR_SUPPRESS_MISSING_CHECKED))
-    warn_new_source = (not args.get(ARGSTR_SUPPRESS_NEW_SOURCE))
+    warn_errfile_exists = (not args.get(ARGSTR_SUPPRESS_ERRFILE_EXISTS) or args.get(ARGSTR_RMWHERE_ERRFILE_EXISTS))
+    warn_missing_suffix = (not args.get(ARGSTR_SUPPRESS_MISSING_SUFFIX) or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX))
+    warn_missing_checked = (not args.get(ARGSTR_SUPPRESS_MISSING_CHECKED) or args.get(ARGSTR_RMWHERE_MISSING_CHECKED))
+    warn_new_source = (not args.get(ARGSTR_SUPPRESS_NEW_SOURCE) or args.get(ARGSTR_RMWHERE_NEW_SOURCE))
+    try_removal = (True in args.get(ARGGRP_RMWHERE))
+    allow_remove_checkfiles = args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_CHECKFILES, ARGCHO_REMOVE_TYPE_BOTH]
+    allow_remove_sourcefiles = args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_SOURCEFILES, ARGCHO_REMOVE_TYPE_BOTH]
+    delete_dryrun = (args.get(ARGSTR_DRYRUN) or not args.get(ARGSTR_DO_DELETE))
 
     if args.get(ARGSTR_SCHEDULER) is not None:
         if args.get(ARGSTR_JOBSCRIPT) is None:
@@ -841,7 +898,12 @@ def main():
 
     ## Validate argument values.
 
-    argstr_mutexl_checkfile = [ARGSTR_CHECKFILE_ROOT, ARGSTR_CHECKFILE_ROOT_REGEX, ARGSTR_CHECK_SPECIAL]
+    argstr_mutexl_checkfile = [
+        ARGSTR_CHECKFILE,
+        ARGSTR_CHECKFILE_ROOT,
+        ARGSTR_CHECKFILE_ROOT_REGEX,
+        ARGSTR_CHECK_SPECIAL
+    ]
     argstr_incompat_sched = [ARGSTR_CHECKFILE, ARGSTR_CHECKFILE_ROOT]
 
     if args.get(argstr_mutexl_checkfile).count(None) < (len(argstr_mutexl_checkfile)-1):
@@ -861,6 +923,11 @@ def main():
             print("via provided argument {}={}, argument {} set automatically to: '{}'".format(
                 ARGSTR_CHECK_SPECIAL, args.get(ARGSTR_CHECK_SPECIAL),
                 check_special_set_argstr, args.get(check_special_set_argstr)))
+
+    for removal_argstr in ARGGRP_REQUIRES_RMWHERE:
+        if args.get(removal_argstr) and not try_removal:
+            arg_parser.error("{} option can only be used in conjunction with one of the following "
+                             "removal arguments: {}".format(removal_argstr, ARGGRP_RMWHERE))
 
     if args.get(ARGSTR_SCHEDULER) is not None and args.get(argstr_incompat_sched).count(None) < len(argstr_incompat_sched):
         arg_parser.error("{} option is incompatible with the following arguments: {}".format(
@@ -887,9 +954,11 @@ def main():
     checkffileroot_srcfnamechecklist_dict = None
     srcffile_checklist = None
     num_srcfiles = 0
-    num_checkfiles = None
+    num_checkgroups = None
+    srcfile_count = [None]
+    errfile_count = [None]
     missing_suffix_flag = [False]
-    errfile_flag = [False]
+    checkfile_removed_flag = [False]
 
     print("-----")
     if not args.get(ARGSTR_CHECKFILE_OFF):
@@ -932,13 +1001,12 @@ def main():
                 for srcfname in fnames:
                     if endswith_one_of_coll(srcfname, src_suffixes):
                         srcffile_checklist.append(os.path.join(root, srcfname))
-            if not (not args.get(ARGSTR_CHECKFILE_OFF) and args.get(ARGSTR_CHECKFILE) is not None):
-                missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, srcffile_checklist)]
-                if missing_suffixes:
-                    warnings.warn("Source file suffixes were not found")
-                    if warn_missing_suffix:
-                        print("Source directory is missing the following file suffixes: {}".format(missing_suffixes))
-                        missing_suffix_flag[0] = True
+            missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, srcffile_checklist)]
+            if missing_suffixes:
+                warnings.warn("Source file suffixes were not found")
+                if warn_missing_suffix:
+                    print("Source directory is missing the following file suffixes: {}".format(missing_suffixes))
+                    missing_suffix_flag[0] = True
 
     elif os.path.isfile(src):
         if src.endswith('.txt') and not src.endswith(ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META):
@@ -948,7 +1016,7 @@ def main():
                 srcffile_checklist = task_list
                 if args.get(ARGSTR_CHECKFILE_ROOT) is not None:
                     srcffile_checklist = [srcffile for srcffile in srcffile_checklist if
-                                          srcffile.startswith(ARGSTR_CHECKFILE_ROOT)]
+                                          os.path.basename(srcffile.startswith(ARGSTR_CHECKFILE_ROOT))]
                 elif args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None:
                     srcffile_checklist = [srcffile for srcffile in srcffile_checklist if
                                           re.match(checkfile_root_regex, os.path.basename(srcffile)) is not None]
@@ -965,7 +1033,9 @@ def main():
                 for cff_root in checkffileroot_list:
                     srcffiles.extend(glob.glob(cff_root+'*'))
 
-                if args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None:
+                if args.get(ARGSTR_CHECKFILE) is not None:
+                    srcffile_checklist = srcffiles
+                elif args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None:
                     checkffileroot_srcfnamechecklist_dict = dict()
                     for srcffile in srcffiles:
                         if endswith_one_of_coll(srcffile, src_suffixes):
@@ -995,8 +1065,6 @@ def main():
             warn_missing_checked = False
             warn_missing_suffix = False
 
-    # else:
-    #     raise DeveloperError("Script argument {} was not properly screened for path type os.path.exists == True")
     else:
         args.set(ARGSTR_CHECKFILE_ROOT, src)
         srcdir = os.path.dirname(src)
@@ -1008,116 +1076,116 @@ def main():
             os.path.basename(f) for f in glob.glob(cf_root_full+'*') if endswith_one_of_coll(f, src_suffixes)]
 
     num_srcfiles_to_check = None
-    num_checkfiles_to_check = None
+    num_checkgroups_to_check = None
     num_srcfiles_to_run = None
-    num_checkfiles_to_run = None
+    num_checkgroups_to_run = None
     num_srcfiles_err_exist = 0
     num_srcfiles_err_skip = 0
-    num_checkfiles_err_exist = 0
-    num_checkfiles_err_skip = 0
+    num_checkgroups_err_exist = 0
+    num_checkgroups_err_skip = 0
     num_srcfiles_suf_skip = 0
-    num_checkfiles_suf_miss = 0
-    num_checkfiles_suf_skip = 0
+    num_checkgroups_suf_miss = 0
+    num_checkgroups_suf_skip = 0
+    num_srcfiles_removed = 0
+    num_checkgroups_removed = 0
+    num_checkfiles_removed = 0
 
     check_items = None
 
     if checkffileroot_srcfnamechecklist_dict is not None:
-        num_checkfiles = len(checkffileroot_srcfnamechecklist_dict.keys())
-        if num_srcfiles is not None:
-            num_srcfiles = sum([len(file_list) for file_list in checkffileroot_srcfnamechecklist_dict.values()])
-        cff_root_src_rasters_to_check = []
+
+        num_checkgroups = len(checkffileroot_srcfnamechecklist_dict.keys())
 
         return_incomplete_src_rasters = (args.get(ARGSTR_SCHEDULER) is None)
         if return_incomplete_src_rasters:
             num_srcfiles_to_check = 0
             num_srcfiles_to_run = 0
-        num_checkfiles_to_check = 0
-        num_checkfiles_to_run = 0
+        num_checkgroups_to_check = 0
+        num_checkgroups_to_run = 0
 
         for cff_root in checkffileroot_srcfnamechecklist_dict:
             cff_root_src_rasters = checkffileroot_srcfnamechecklist_dict[cff_root]
 
-            if cff_root_src_rasters is not None:
-                srcfname_errlist = [fn for fn in cff_root_src_rasters if os.path.isfile(os.path.join(os.path.dirname(cff_root), fn+errfile_ext))]
-                num_srcfiles_err_exist += len(srcfname_errlist)
-            else:
-                srcfname_errlist = []
+            srcfile_count[0] = None
+            errfile_count[0] = None
+            missing_suffix_flag[0] = False
+            checkfile_removed_flag[0] = False
 
-            missing_suffix_flag = [False]
-            errfile_flag = [False]
-
-            if args.get(ARGSTR_CHECKFILE_OFF):
-                if cff_root_src_rasters is not None:
-                    missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, cff_root_src_rasters)]
-                    if missing_suffixes:
-                        warnings.warn("Source file suffixes for a check group were not found")
-                        if warn_missing_suffix:
-                            print("Check group {}; missing the following source file suffixes: {}".format(cff_root, missing_suffixes))
-                        if type(missing_suffix_flag) is list and len(missing_suffix_flag) == 1:
-                            missing_suffix_flag[0] = True
-            else:
-                checkffileroot_srcfnamechecklist_dict[cff_root] = checkfile_incomplete(
-                    cff_root, checkfile_ext, errfile_ext, src_suffixes,
-                    checkffileroot_srcfnamechecklist_dict[cff_root], return_incomplete_src_rasters,
-                    missing_suffix_flag, [],
-                    warn_missing_suffix, warn_errfile_exists,
-                    warn_missing_checked, warn_new_source
-                )
+            checkffileroot_srcfnamechecklist_dict[cff_root] = checkfile_incomplete(args,
+                cff_root, checkfile_ext, errfile_ext, src_suffixes,
+                checkffileroot_srcfnamechecklist_dict[cff_root], return_incomplete_src_rasters,
+                srcfile_count, errfile_count,
+                missing_suffix_flag, checkfile_removed_flag,
+                warn_missing_suffix, warn_errfile_exists,
+                warn_missing_checked, warn_new_source
+            )
+            if checkfile_removed_flag[0]:
+                num_checkfiles_removed += 1
 
             cff_root_src_rasters_to_check = checkffileroot_srcfnamechecklist_dict[cff_root]
+            if type(cff_root_src_rasters_to_check) is int and cff_root_src_rasters_to_check == -1:
+                checkffileroot_srcfnamechecklist_dict[cff_root] = None
+                num_checkgroups -= 1
+                num_checkgroups_removed += 1
+                num_srcfiles_removed += srcfile_count[0]
+                continue
+            elif srcfile_count[0] is not None:
+                num_srcfiles += srcfile_count[0]
+
+            if (    cff_root_src_rasters is not None
+                and (   errfile_count[0] is None
+                     or (not retry_errors and args.get(ARGSTR_CHECKFILE_OFF) and type(cff_root_src_rasters_to_check) is list))):
+                cff_dir = os.path.join(os.path.dirname(cff_root))
+                srcfname_errlist = [fn for fn in cff_root_src_rasters if os.path.isfile(os.path.join(cff_dir, fn+errfile_ext))]
+                errfile_count[0] = len(srcfname_errlist)
+
+            if errfile_count[0] is not None:
+                num_srcfiles_err_exist += errfile_count[0]
+
             if cff_root_src_rasters_to_check:
-                num_checkfiles_to_check += 1
+                num_checkgroups_to_check += 1
             if type(cff_root_src_rasters_to_check) is list:
                 num_srcfiles_to_check_this_group = len(cff_root_src_rasters_to_check)
                 num_srcfiles_to_check += num_srcfiles_to_check_this_group
             else:
                 num_srcfiles_to_check_this_group = None
 
-            if len(srcfname_errlist) > 0:
-                errfile_flag[0] = True
-                warnings.warn("Error files were found among source files for a check group")
-                if warn_errfile_exists:
-                    print("Check group {}; {} error files were found among source selection:".format(
-                        cff_root, len(srcfname_errlist)))
-                    for fn in sorted(list(srcfname_errlist)):
-                        print(os.path.join(cff_root, fn+errfile_ext))
-
             if (   (not allow_missing_suffix and missing_suffix_flag[0])
-                or (not retry_errors and errfile_flag[0])):
+                or (not retry_errors and errfile_count[0])):
                 cff_root_src_rasters_to_check_backup = cff_root_src_rasters_to_check
-                if not retry_errors and errfile_flag[0]:
+                if not retry_errors and errfile_count[0]:
                     if args.get(ARGSTR_CHECKFILE_OFF):
                         if type(cff_root_src_rasters_to_check) is list:
                             cff_root_src_rasters_to_check = list(set(cff_root_src_rasters_to_check).difference(set(srcfname_errlist)))
                             num_srcfiles_err_skip += (num_srcfiles_to_check_this_group - len(cff_root_src_rasters_to_check))
                             if len(cff_root_src_rasters_to_check) == 0:
                                 if num_srcfiles_to_check_this_group > 0:
-                                    num_checkfiles_err_skip += 1
+                                    num_checkgroups_err_skip += 1
                     else:
                         if type(cff_root_src_rasters_to_check) is list:
                             cff_root_src_rasters_to_check = []
                             num_srcfiles_err_skip += num_srcfiles_to_check_this_group
-                            num_checkfiles_err_exist += 1
+                            num_checkgroups_err_exist += 1
                             if num_srcfiles_to_check_this_group > 0:
-                                num_checkfiles_err_skip += 1
+                                num_checkgroups_err_skip += 1
                         else:
-                            num_checkfiles_err_exist += 1
+                            num_checkgroups_err_exist += 1
                             if cff_root_src_rasters_to_check:
                                 cff_root_src_rasters_to_check = False
-                                num_checkfiles_err_skip += 1
+                                num_checkgroups_err_skip += 1
                     checkffileroot_srcfnamechecklist_dict[cff_root] = cff_root_src_rasters_to_check
                 if not allow_missing_suffix and missing_suffix_flag[0]:
                     if type(cff_root_src_rasters_to_check_backup) is list:
                         cff_root_src_rasters_to_check = []
                         num_srcfiles_suf_skip += num_srcfiles_to_check_this_group
-                        num_checkfiles_suf_miss += 1
+                        num_checkgroups_suf_miss += 1
                         if num_srcfiles_to_check_this_group > 0:
-                            num_checkfiles_suf_skip += 1
+                            num_checkgroups_suf_skip += 1
                     else:
-                        num_checkfiles_suf_miss += 1
+                        num_checkgroups_suf_miss += 1
                         if cff_root_src_rasters_to_check_backup:
                             cff_root_src_rasters_to_check = False
-                            num_checkfiles_suf_skip += 1
+                            num_checkgroups_suf_skip += 1
                 checkffileroot_srcfnamechecklist_dict[cff_root] = cff_root_src_rasters_to_check
 
         checkffileroot_srcfnamechecklist_dict = {
@@ -1127,7 +1195,7 @@ def main():
 
         if type(cff_root_src_rasters_to_check) is list:
             num_srcfiles_to_run = sum([len(file_list) for file_list in checkffileroot_srcfnamechecklist_dict.values()])
-        num_checkfiles_to_run = len(checkffileroot_srcfnamechecklist_dict.keys())
+        num_checkgroups_to_run = len(checkffileroot_srcfnamechecklist_dict.keys())
 
     elif srcffile_checklist is not None:
         num_srcfiles = len(srcffile_checklist)
@@ -1139,48 +1207,48 @@ def main():
             num_srcfiles_to_check = len(srcffile_checklist)
         else:
             if args.get(ARGSTR_CHECKFILE):
-                num_checkfiles = 1
-                srcffile_checklist = checkfile_incomplete(
+                num_checkgroups = 1
+                srcffile_checklist = checkfile_incomplete(args,
                     args.get(ARGSTR_CHECKFILE), None, errfile_ext, src_suffixes,
                     srcffile_checklist, True,
-                    missing_suffix_flag, [],
+                    srcfile_count, errfile_count,
+                    missing_suffix_flag, checkfile_removed_flag,
                     warn_missing_suffix, warn_errfile_exists,
                     warn_missing_checked, warn_new_source
                 )
             else:
-                num_checkfiles = num_srcfiles
+                num_checkgroups = num_srcfiles
                 srcffile_checklist = [f for f in srcffile_checklist if not os.path.isfile(f+checkfile_ext)]
 
             num_srcfiles_to_check = len(srcffile_checklist)
-            num_checkfiles_to_check = 1 if (args.get(ARGSTR_CHECKFILE) and num_srcfiles_to_check > 0) else num_srcfiles_to_check
+            num_checkgroups_to_check = 1 if (args.get(ARGSTR_CHECKFILE) and num_srcfiles_to_check > 0) else num_srcfiles_to_check
 
-        if len(srcffile_errlist) > 0:
-            errfile_flag[0] = True
+        if num_srcfiles_err_exist > 0 and errfile_count[0] is None:
             warnings.warn("Error files were found among source files")
             if warn_errfile_exists:
-                print("{} error files were found among source selection:".format(len(srcffile_errlist)))
+                print("{} error files were found among source selection:".format(num_srcfiles_err_exist))
                 for fn in sorted(list(srcffile_errlist)):
                     print(fn+errfile_ext)
 
-        if not retry_errors and errfile_flag[0]:
+        if not retry_errors and num_srcfiles_err_exist > 0:
             if args.get(ARGSTR_CHECKFILE):
                 srcffile_checklist = []
                 num_srcfiles_err_skip = num_srcfiles_to_check
-                num_checkfiles_err_skip = num_checkfiles_to_check
+                num_checkgroups_err_skip = num_checkgroups_to_check
             else:
                 srcffile_checklist = list(set(srcffile_checklist).difference(set(srcffile_errlist)))
                 num_srcfiles_err_skip = num_srcfiles_to_check - len(srcffile_checklist)
-                num_checkfiles_err_skip = num_srcfiles_err_skip
+                num_checkgroups_err_skip = num_srcfiles_err_skip
 
         if not allow_missing_suffix and missing_suffix_flag[0]:
             srcffile_checklist = []
             num_srcfiles_suf_skip = num_srcfiles_to_check
-            num_checkfiles_suf_skip = num_checkfiles_to_check
+            num_checkgroups_suf_skip = num_checkgroups_to_check
 
         check_items = srcffile_checklist
 
         num_srcfiles_to_run = len(check_items)
-        num_checkfiles_to_run = 1 if (args.get(ARGSTR_CHECKFILE) and num_srcfiles_to_run > 0) else num_srcfiles_to_run
+        num_checkgroups_to_run = 1 if (args.get(ARGSTR_CHECKFILE) and num_srcfiles_to_run > 0) else num_srcfiles_to_run
 
     else:
         raise DeveloperError("Neither `checkffileroot_srcfnamechecklist_dict` "
@@ -1192,6 +1260,21 @@ def main():
         print("Checkfile extension: {}".format(checkfile_ext))
     print("Error file extension: {}".format(errfile_ext))
     print("Accepted source file suffixes: {}".format(src_suffixes))
+    if try_removal:
+        print("-----")
+        print("{} :: {}{}".format(
+            ARGSTR_REMOVE_TYPE, args.get(ARGSTR_REMOVE_TYPE),
+            " ({} and {})".format(ARGCHO_REMOVE_TYPE_CHECKFILES, ARGCHO_REMOVE_TYPE_SOURCEFILES)*(
+                args.get(ARGSTR_REMOVE_TYPE) == ARGCHO_REMOVE_TYPE_BOTH)))
+        if allow_remove_checkfiles:
+            print("Number of checkfiles removed: {}".format(num_checkfiles_removed))
+        if allow_remove_sourcefiles:
+            print("Number of check groups removed: {}".format(num_checkgroups_removed))
+            print("Total number of source files removed: {}".format(num_srcfiles_removed))
+        if delete_dryrun:
+            print("(dryrun; must turn on {} and turn off {} to do delete)".format(ARGSTR_DO_DELETE, ARGSTR_DRYRUN))
+        if args.get(ARGSTR_REMOVE_ONLY):
+            sys.exit(0)
     print("-----")
     if os.path.isdir(src):
         for root, dnames, fnames in os.walk(src):
@@ -1208,19 +1291,22 @@ def main():
             ' ({} skipped due to missing suffix)'.format(num_srcfiles_suf_skip) if num_srcfiles_suf_skip else '',
             ' ({} skipped due to existing error file)'.format(num_srcfiles_err_skip) if num_srcfiles_err_skip else ''
         ))
-    if num_checkfiles is not None:
+    if num_checkgroups is not None:
         print("Number of check groups: {}{}{}, {} to check{}{}".format(
-            num_checkfiles,
-            ' ({} with missing suffix)'.format(num_checkfiles_suf_miss) if num_checkfiles_suf_miss else '',
-            ' ({} with existing error file)'.format(num_checkfiles_err_exist) if num_checkfiles_err_exist else '',
-            num_checkfiles_to_check,
-            ' ({} skipped due to missing suffix)'.format(num_checkfiles_suf_skip) if num_checkfiles_suf_skip else '',
-            ' ({} skipped due to existing error file)'.format(num_checkfiles_err_skip) if num_checkfiles_err_skip else ''
+            num_checkgroups,
+            ' ({} with missing suffix)'.format(num_checkgroups_suf_miss) if num_checkgroups_suf_miss else '',
+            ' ({} with existing error file)'.format(num_checkgroups_err_exist) if num_checkgroups_err_exist else '',
+            num_checkgroups_to_check,
+            ' ({} skipped due to missing suffix)'.format(num_checkgroups_suf_skip) if num_checkgroups_suf_skip else '',
+            ' ({} skipped due to existing error file)'.format(num_checkgroups_err_skip) if num_checkgroups_err_skip else ''
         ))
 
+    if args.get(ARGSTR_STATS_ONLY):
+        sys.exit(0)
+
     print("--> Will run: {}{}{}".format(
-        '{} check groups'.format(num_checkfiles_to_run) if num_checkfiles_to_run is not None else '',
-        ', ' if (num_srcfiles_to_run is not None and num_checkfiles_to_run is not None) else '',
+        '{} check groups'.format(num_checkgroups_to_run) if num_checkgroups_to_run is not None else '',
+        ', ' if (num_srcfiles_to_run is not None and num_checkgroups_to_run is not None) else '',
         '{} source files'.format(num_srcfiles_to_run) if num_srcfiles_to_run is not None else '',
     ))
 
@@ -1289,10 +1375,6 @@ def main():
         for unit in check_units:
             job_num += 1
 
-            # if check_items is checkffileroot_srcfnamechecklist_dict and tasks_per_job is None:
-            #     args_single.set(ARGSTR_CHECKFILE_ROOT, os.path.basename(unit))
-            # else:
-            #     args_single.set(ARGSTR_SRC, unit)
             args_single.set(ARGSTR_SRC, unit)
             if last_job_email and job_num == num_jobs:
                 args_single.set(ARGSTR_EMAIL, last_job_email)
@@ -1320,14 +1402,14 @@ def main():
                     cf_rasterffile_list.sort()
                     checkfile = cff_root+checkfile_ext
                     print("Check group ({}/{}), {} files to check: {}*".format(
-                        i+1, num_checkfiles_to_check, len(cf_rasterffile_list), cff_root))
+                        i+1, num_checkgroups_to_check, len(cf_rasterffile_list), cff_root))
                     if not args.get(ARGSTR_DRYRUN):
                         check_rasters(cf_rasterffile_list, checkfile, args)
 
             elif check_items is srcffile_checklist:
                 for i, src_rasterffile in enumerate(check_items_sorted):
                     checkfile = src_rasterffile+checkfile_ext
-                    print("Check file ({}/{}): {}".format(i+1, num_srcfiles_to_check, src_rasterffile))
+                    print("Check source file ({}/{}): {}".format(i+1, num_srcfiles_to_check, src_rasterffile))
                     if not args.get(ARGSTR_DRYRUN):
                         check_rasters(src_rasterffile, checkfile, args)
 
