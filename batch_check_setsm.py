@@ -835,7 +835,8 @@ def checkfile_incomplete(args,
             and args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_CHECKFILES, ARGCHO_REMOVE_TYPE_BOTH]):
             print("Removing checkfile"+" (dryrun)"*delete_dryrun)
             cmd = "rm {}".format(checkfile)
-            print(cmd)
+            if args.get(ARGSTR_DO_DELETE):
+                print(cmd)
             if not delete_dryrun:
                 os.remove(checkfile)
             if type(checkfile_removed_flag) is list and len(checkfile_removed_flag) == 1:
@@ -849,7 +850,8 @@ def checkfile_incomplete(args,
             for fn in srcfnames_to_remove:
                 srcfile_to_remove = os.path.join(checkfile_dir, fn)
                 cmd = "rm {}".format(srcfile_to_remove)
-                print(cmd)
+                if args.get(ARGSTR_DO_DELETE):
+                    print(cmd)
                 if not delete_dryrun:
                     os.remove(srcfile_to_remove)
             return -1
