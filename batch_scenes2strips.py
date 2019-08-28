@@ -2,6 +2,20 @@
 # Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2019
 
 
+class VersionError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+import platform
+from lib.batch_handler import VersionString
+PYTHON_VERSION = VersionString(platform.python_version())
+
+PYTHON_VERSION_ACCEPTED_MIN = VersionString(2.7)
+if PYTHON_VERSION < PYTHON_VERSION_ACCEPTED_MIN:
+    raise VersionError("Python version ({}) is below accepted minimum ({})".format(
+        PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
+
+
 import argparse
 import contextlib
 import copy
@@ -10,7 +24,6 @@ import functools
 import gc
 import glob
 import os
-import platform
 import re
 import smtplib
 import subprocess
@@ -20,7 +33,7 @@ import warnings
 from email.mime.text import MIMEText
 from time import sleep
 from datetime import datetime
-if sys.version_info[0] < 3:
+if PYTHON_VERSION < VersionString(3):
     from StringIO import StringIO
 else:
     from io import StringIO
@@ -753,7 +766,8 @@ def main():
                 job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
                 cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
                                                     args_batch.get(ARGSTR_JOBSCRIPT),
-                                                    job_name, cmd_single)
+                                                    job_name, cmd_single,
+                                                    PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN)
             else:
                 cmd = cmd_single
 
@@ -825,6 +839,7 @@ def main():
             print("dst dir for coreg step: {}".format(dstdir_coreg))
             print("strip dir for coreg step: {}".format(strip_dfull_coreg))
             print("metadir: {}".format(args.get(ARGSTR_META_TRANS_DIR)))
+            print("dem type: {}".format(args.get(ARGSTR_DEM_TYPE)))
             print("mask version: {}".format(args.get(ARGSTR_MASK_VER)))
             print("scene mask name: {}".format(scene_mask_name))
             print("strip mask name: {}".format(strip_mask_name))
@@ -935,13 +950,14 @@ def main():
                 src_scenemask_ffile_glob = glob.glob(os.path.join(
                     scene_dfull,
                     '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], sceneMaskSuffix)))
-                print( "Deleting {} existing *_{}.tif existing scene masks".format(len(src_scenemask_ffile_glob), scene_mask_name)
-                      +" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                for f in src_scenemask_ffile_glob:
-                    cmd = "rm {}".format(f)
-                    print(cmd)
-                    if not args.get(ARGSTR_DRYRUN):
-                        os.remove(f)
+                if len(src_scenemask_ffile_glob) > 0:
+                    print( "Deleting {} existing *_{}.tif scene masks".format(len(src_scenemask_ffile_glob), scene_mask_name)
+                          +" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                    for f in src_scenemask_ffile_glob:
+                        cmd = "rm {}".format(f)
+                        print(cmd)
+                        if not args.get(ARGSTR_DRYRUN):
+                            os.remove(f)
                 scenedems_to_filter = src_scenedem_ffile_glob.copy()
             filter_total = len(scenedems_to_filter)
             i = 0

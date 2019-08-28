@@ -9,6 +9,20 @@
 #CONDOPT_SBATCH --mail-type=FAIL,END IF %EMAIL
 #CONDOPT_SBATCH --mail-user=%EMAIL IF type(%EMAIL) is str
 
+## Expected environment variables (passed with -v argument)
+# p1 :: task command
+# p2 :: path to python executable (usually just "python")
+# p3 :: python minimum version number (e.g. "3.7.3")
+
+task_cmd=$p1
+python_exe=$p2
+python_version_accepted_min=$p3
+
+if [ "$task_cmd" == "" ]; then
+    echo '$p1 variable (task command) not set, exiting'
+    exit 1
+fi
+
 echo ________________________________________
 echo
 echo SLURM Job Log
@@ -16,37 +30,60 @@ echo Start time: `date`
 echo
 echo Submitted by user: $USER
 echo SLURM account used: $SLURM_ACCOUNT
+echo Hostname of submission: $SLURM_SUBMIT_HOST
 echo
 echo Cluster name: $SLURM_CLUSTER_NAME
-echo
 echo Node name: $SLURMD_NODENAME
+echo
 echo CPUs on node: $SLURM_CPUS_ON_NODE
+echo CPUs per task: $SLURM_CPUS_PER_TASK
+echo Time limit: $SBATCH_TIMELIMIT
 echo
 echo Job name: $SLURM_JOB_NAME
 echo Job ID: $SLURM_JOBID
 echo
-echo Time limit: $SBATCH_TIMELIMIT
-echo CPUs per task: $SLURM_CPUS_PER_TASK
-echo
 echo Task command: $p1
 echo
-echo Hostname of submission: $SLURM_SUBMIT_HOST
 echo Working directory: $SLURM_SUBMIT_DIR
 echo
-echo Changing to working directory
 
-cd $SLURM_SUBMIT_DIR
-
-echo Loading environment
-
-# Un-comment the following block to handle environment loading
+### Un-comment this block to handle environment loading
+##
+## Modify the following lines to load your own environment
+#env_load_cmd="module load mod_name"  # example load system module
+#env_load_cmd="source /path/to/env_root/bin/activate"  # example load virtual environment
+#env_load_cmd="conda activate env_name"  # example load conda environment
+##
+#echo Environment load command: $env_load_cmd
+#echo
 #echo Loading environment
-#
-## Modify the following line to load your own environment
-#source activate my_env  # load Python environment
+#eval $env_load_cmd
+#[ $? -eq 0 ] || exit 1
+
+# Python version check
+if [ "$python_version_accepted_min" != "" ]; then
+    python_version=$($python_exe -c 'import platform; print(platform.python_version())')
+    IFS='.'
+    read -ra py_ver_nums <<< "$python_version"
+    read -ra py_ver_min_nums <<< "$python_version_accepted_min"
+    for ((n=0; n < ${#py_ver_nums[*]}; n++)); do
+        if [ "${py_ver_nums[n]}" == "" ]; then py_ver_nums[n]=0; fi
+        if [ "${py_ver_min_nums[n]}" == "" ]; then py_ver_min_nums[n]=0; fi
+        if (("${py_ver_nums[n]}" > "${py_ver_min_nums[n]}")); then
+            break
+        elif (("${py_ver_nums[n]}" < "${py_ver_min_nums[n]}")); then
+          echo "Python version ($python_version) is below accepted minimum ($python_version_accepted_min), exiting"
+          exit 1
+        fi
+    done
+fi
+
+echo Changing to working directory
+cd $SLURM_SUBMIT_DIR
+[ $? -eq 0 ] || exit 1
 
 echo Running task
 echo ________________________________________
 echo
 
-time eval $p1
+time eval $task_cmd

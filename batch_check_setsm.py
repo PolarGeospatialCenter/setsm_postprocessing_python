@@ -3,6 +3,22 @@
 
 
 from __future__ import division
+
+
+class VersionError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+import platform
+from lib.batch_handler import VersionString
+PYTHON_VERSION = VersionString(platform.python_version())
+
+PYTHON_VERSION_ACCEPTED_MIN = VersionString(2.7)
+if PYTHON_VERSION < PYTHON_VERSION_ACCEPTED_MIN:
+    raise VersionError("Python version ({}) is below accepted minimum ({})".format(
+        PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
+
+
 import argparse
 import contextlib
 import copy
@@ -19,7 +35,7 @@ import traceback
 import warnings
 from email.mime.text import MIMEText
 from time import sleep
-if sys.version_info[0] < 3:
+if PYTHON_VERSION < VersionString(3):
     from StringIO import StringIO
 else:
     from io import StringIO
@@ -1195,7 +1211,7 @@ def main():
 
         check_items = checkffileroot_srcfnamechecklist_dict
 
-        if type(cff_root_src_rasters_to_check) is list:
+        if type(checkffileroot_srcfnamechecklist_dict[0]) is list:
             num_srcfiles_to_run = sum([len(file_list) for file_list in checkffileroot_srcfnamechecklist_dict.values()])
         num_checkgroups_to_run = len(checkffileroot_srcfnamechecklist_dict.keys())
 
@@ -1385,7 +1401,8 @@ def main():
             job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
             cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
                                                 args_batch.get(ARGSTR_JOBSCRIPT),
-                                                job_name, cmd_single)
+                                                job_name, cmd_single,
+                                                PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN)
 
             print(cmd)
             if not args_batch.get(ARGSTR_DRYRUN):
