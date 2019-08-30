@@ -248,6 +248,7 @@ ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles'
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+JOBSCRIPT_INIT_FILE = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Check'
 BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
 
@@ -902,6 +903,7 @@ def main():
     delete_dryrun = (args.get(ARGSTR_DRYRUN) or not args.get(ARGSTR_DO_DELETE))
 
     if args.get(ARGSTR_SCHEDULER) is not None:
+        jobscript_use_init = (args.get(ARGSTR_JOBSCRIPT) is None)
         if args.get(ARGSTR_JOBSCRIPT) is None:
             jobscript_default = os.path.join(JOBSCRIPT_DIR,
                                              '{}_{}.sh'.format(SCRIPT_NAME, args.get(ARGSTR_SCHEDULER)))
@@ -1402,7 +1404,8 @@ def main():
             cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
                                                 args_batch.get(ARGSTR_JOBSCRIPT),
                                                 job_name, cmd_single,
-                                                PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN)
+                                                PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN,
+                                                JOBSCRIPT_INIT_FILE if jobscript_use_init else None)
 
             print(cmd)
             if not args_batch.get(ARGSTR_DRYRUN):

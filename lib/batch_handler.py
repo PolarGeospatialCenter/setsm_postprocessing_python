@@ -43,8 +43,8 @@ class VersionString:
         self.ver_str = str(ver_str_or_num)
         self.ver_num_list = [int(n) for n in self.ver_str.split('.')]
     def get_comparable_lists(self, other):
-        this_list = self.ver_num_list.copy()
-        other_list = other.ver_num_list.copy()
+        this_list = list(self.ver_num_list)
+        other_list = list(other.ver_num_list)
         if len(this_list) < len(other_list):
             this_list.extend([0]*(len(other_list)-len(this_list)))
         elif len(this_list) > len(other_list):
@@ -275,7 +275,7 @@ class ArgumentPasser:
             cmd = 'qsub'
             jobscript_optkey = '#PBS'
             if jobscript_subs is not None:
-                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs)])
+                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs) if a is not None])
                 cmd = r'{} -v {}'.format(cmd, cmd_subs)
             cmd = r'{} -N {}'.format(cmd, jobname)
 
@@ -283,7 +283,7 @@ class ArgumentPasser:
             cmd = 'sbatch'
             jobscript_optkey = '#SBATCH'
             if jobscript_subs is not None:
-                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs)])
+                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs) if a is not None])
                 cmd = r'{} --export={}'.format(cmd, cmd_subs)
             cmd = r'{} -J {}'.format(cmd, jobname)
 

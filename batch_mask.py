@@ -119,6 +119,7 @@ ARGGRP_FILTER_COMP = [ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD]
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+JOBSCRIPT_INIT_FILE = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Mask'
 
 ##############################
@@ -466,7 +467,9 @@ def main():
     if args.get(ARGGRP_FILTER_COMP).count(True) == 0 and not args.get(ARGSTR_FILTER_OFF):
         args.set(ARGGRP_FILTER_COMP)
 
+
     if args.get(ARGSTR_SCHEDULER) is not None:
+        jobscript_use_init = (args.get(ARGSTR_JOBSCRIPT) is None)
         if args.get(ARGSTR_JOBSCRIPT) is None:
             jobscript_default = os.path.join(JOBSCRIPT_DIR,
                                              '{}_{}.sh'.format(SCRIPT_NAME, args.get(ARGSTR_SCHEDULER)))
@@ -762,7 +765,8 @@ def main():
             cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
                                                 args_batch.get(ARGSTR_JOBSCRIPT),
                                                 job_name, cmd_single,
-                                                PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN)
+                                                PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN,
+                                                JOBSCRIPT_INIT_FILE if jobscript_use_init else None)
 
             print(cmd)
             if not args_batch.get(ARGSTR_DRYRUN):
