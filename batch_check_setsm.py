@@ -1217,7 +1217,7 @@ def main():
 
         check_items = checkffileroot_srcfnamechecklist_dict
 
-        if type(checkffileroot_srcfnamechecklist_dict[0]) is list:
+        if type(next(iter(checkffileroot_srcfnamechecklist_dict))) is list:
             num_srcfiles_to_run = sum([len(file_list) for file_list in checkffileroot_srcfnamechecklist_dict.values()])
         num_checkgroups_to_run = len(checkffileroot_srcfnamechecklist_dict.keys())
 
