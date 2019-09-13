@@ -46,6 +46,10 @@ import numpy as np
 from lib import batch_handler
 
 
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+
 ##############################
 
 ## Core globals
@@ -797,20 +801,20 @@ def checkfile_incomplete(args,
         if src_rasters_to_check:
             warnings.warn("There are more (new?) source files to be added to an existing checkfile")
             if warn_new_source:
-                print("Checkfile {}; {} more (new?) source files are to be added to existing checkfile".format(
+                eprint("Checkfile {}; {} more (new?) source files are to be added to existing checkfile".format(
                     checkfile, len(src_rasters_to_check)))
                 for f in sorted(list(src_rasters_to_check)):
-                    print(f)
+                    eprint(f)
             delete_files = (delete_files or args.get(ARGSTR_RMWHERE_NEW_SOURCE))
 
         src_rasters_checked_missing = src_rasters_checked.difference(src_rasters)
         if src_rasters_checked_missing:
             warnings.warn("Files listed in a checkfile were not captured in source selection")
             if warn_missing_checked:
-                print("Checkfile {}; {} source files listed in checkfile are missing from source selection:".format(
+                eprint("Checkfile {}; {} source files listed in checkfile are missing from source selection:".format(
                     checkfile, len(src_rasters_checked_missing)))
                 for f in sorted(list(src_rasters_checked_missing)):
-                    print(f)
+                    eprint(f)
             delete_files = (delete_files or args.get(ARGSTR_RMWHERE_MISSING_CHECKED))
 
     elif return_incomplete_src_rasters or find_src_rasters:
@@ -829,7 +833,7 @@ def checkfile_incomplete(args,
         if missing_suffixes:
             warnings.warn("Source file suffixes for a check group were not found")
             if warn_missing_suffix:
-                print("Check group {}; missing the following source file suffixes: {}".format(checkfile_root, missing_suffixes))
+                eprint("Check group {}; missing the following source file suffixes: {}".format(checkfile_root, missing_suffixes))
             if type(missing_suffix_flag) is list and len(missing_suffix_flag) == 1:
                 missing_suffix_flag[0] = True
             delete_files = (delete_files or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX))
@@ -838,10 +842,10 @@ def checkfile_incomplete(args,
         if src_raster_errfnames:
             warnings.warn("Error files were found among source files for a check group")
             if warn_errfile_exists:
-                print("Check group {}; {} error files were found among source selection:".format(
+                eprint("Check group {}; {} error files were found among source selection:".format(
                     checkfile, len(src_raster_errfnames)))
                 for f in sorted(list(src_raster_errfnames)):
-                    print(f)
+                    eprint(f)
             if type(errfile_count) is list and len(errfile_count) == 1:
                 errfile_count[0] = len(src_raster_errfnames)
             delete_files = (delete_files or args.get(ARGSTR_RMWHERE_ERRFILE_EXISTS))
@@ -850,10 +854,10 @@ def checkfile_incomplete(args,
 
         if (    (delete_files and checkfile_exists)
             and args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_CHECKFILES, ARGCHO_REMOVE_TYPE_BOTH]):
-            print("Removing checkfile"+" (dryrun)"*delete_dryrun)
+            eprint("Removing checkfile"+" (dryrun)"*delete_dryrun)
             cmd = "rm {}".format(checkfile)
             if args.get(ARGSTR_DO_DELETE):
-                print(cmd)
+                eprint(cmd)
             if not delete_dryrun:
                 os.remove(checkfile)
             if type(checkfile_removed_flag) is list and len(checkfile_removed_flag) == 1:
@@ -862,13 +866,13 @@ def checkfile_incomplete(args,
 
         if (    delete_files
             and args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_SOURCEFILES, ARGCHO_REMOVE_TYPE_BOTH]):
-            print("Removing source files"+" (dryrun)"*delete_dryrun)
+            eprint("Removing source files"+" (dryrun)"*delete_dryrun)
             srcfnames_to_remove = list(src_rasters) + src_raster_errfnames
             for fn in srcfnames_to_remove:
                 srcfile_to_remove = os.path.join(checkfile_dir, fn)
                 cmd = "rm {}".format(srcfile_to_remove)
                 if args.get(ARGSTR_DO_DELETE):
-                    print(cmd)
+                    eprint(cmd)
                 if not delete_dryrun:
                     os.remove(srcfile_to_remove)
             return -1
@@ -1001,7 +1005,7 @@ def main():
                     if endswith_one_of_coll(srcfname, src_suffixes):
                         match = re.match(checkfile_root_regex, srcfname)
                         if match is None:
-                            print("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
+                            eprint("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
                         else:
                             cf_root_name = match.group(1)
                             cf_root_full = os.path.join(root, cf_root_name)
@@ -1025,7 +1029,7 @@ def main():
             if missing_suffixes:
                 warnings.warn("Source file suffixes were not found")
                 if warn_missing_suffix:
-                    print("Source directory is missing the following file suffixes: {}".format(missing_suffixes))
+                    eprint("Source directory is missing the following file suffixes: {}".format(missing_suffixes))
                     missing_suffix_flag[0] = True
 
     elif os.path.isfile(src):
@@ -1062,8 +1066,8 @@ def main():
                             srcfdir, srcfname = os.path.split(srcffile)
                             match = re.match(checkfile_root_regex, srcfname)
                             if match is None:
-                                print("No regex match for file matching suffix criteria pulled from "
-                                      "source text file containing checkfile roots: {}".format(srcffile))
+                                eprint("No regex match for file matching suffix criteria pulled from "
+                                       "source text file containing checkfile roots: {}".format(srcffile))
                             else:
                                 cf_root_name = match.group(1)
                                 cf_root_full = os.path.join(srcfdir, cf_root_name)
@@ -1246,9 +1250,9 @@ def main():
         if num_srcfiles_err_exist > 0 and errfile_count[0] is None:
             warnings.warn("Error files were found among source files")
             if warn_errfile_exists:
-                print("{} error files were found among source selection:".format(num_srcfiles_err_exist))
+                eprint("{} error files were found among source selection:".format(num_srcfiles_err_exist))
                 for fn in sorted(list(srcffile_errlist)):
-                    print(fn+errfile_ext)
+                    eprint(fn+errfile_ext)
 
         if not retry_errors and num_srcfiles_err_exist > 0:
             if args.get(ARGSTR_CHECKFILE):
@@ -1443,7 +1447,7 @@ def main():
                 traceback.print_exc()
             caught_out, caught_err = out
             error_trace = caught_err
-            print(error_trace)
+            eprint(error_trace)
 
         if type(args.get(ARGSTR_EMAIL)) is str:
             # Send email notification of script completion.
