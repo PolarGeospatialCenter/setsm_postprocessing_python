@@ -53,9 +53,11 @@ echo
 echo Job name: $PBS_JOBNAME
 echo Job ID: $PBS_JOBID
 echo
-echo Task command: $task_cmd
+echo Hostname: $HOSTNAME
 echo
 echo Working directory: $PBS_O_WORKDIR
+echo
+echo Task command: $task_cmd
 echo
 
 # Environment load

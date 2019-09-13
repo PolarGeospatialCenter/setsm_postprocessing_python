@@ -58,9 +58,11 @@ echo
 echo Job name: $SLURM_JOB_NAME
 echo Job ID: $SLURM_JOBID
 echo
-echo Task command: $p1
+echo Hostname: $HOSTNAME
 echo
 echo Working directory: $SLURM_SUBMIT_DIR
+echo
+echo Task command: $task_cmd
 echo
 
 # Environment load
