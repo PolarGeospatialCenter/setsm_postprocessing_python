@@ -200,7 +200,7 @@ ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_STRIPLEVEL = '/'.join([
 ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META = 'meta.txt'
 ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = "(^[A-Z0-9]{4}_.*?[0-9A-F]{16}_.*?[0-9A-F]{16}_.*?_P[0-9]{3}_.*?_P[0-9]{3}_\d+).*$"
 ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL = "(^[A-Z0-9]{4}_.*?[0-9A-F]{16}_.*?[0-9A-F]{16}).*$"
-ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPSEGMENT = "(^[A-Z0-9]{4}_.*?[0-9A-F]{16}_.*?[0-9A-F]{16}_seg\d+_\d+m).*$"
+ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPSEGMENT = "(^[A-Z0-9]{4}_.*?[0-9A-F]{16}_.*?[0-9A-F]{16}_\d+c?m_seg\d+).*$"
 
 ARGCHOSET_CHECK_SPECIAL_SETTING_DICT = {
     ARGCHO_CHECK_SPECIAL_ALL_TOGETHER: [
@@ -1217,9 +1217,11 @@ def main():
 
         check_items = checkffileroot_srcfnamechecklist_dict
 
-        if type(next(iter(checkffileroot_srcfnamechecklist_dict))) is list:
-            num_srcfiles_to_run = sum([len(file_list) for file_list in checkffileroot_srcfnamechecklist_dict.values()])
         num_checkgroups_to_run = len(checkffileroot_srcfnamechecklist_dict.keys())
+        if num_checkgroups_to_run == 0:
+            num_srcfiles_to_run = 0
+        elif type(next(iter(checkffileroot_srcfnamechecklist_dict))) is list:
+            num_srcfiles_to_run = sum([len(file_list) for file_list in checkffileroot_srcfnamechecklist_dict.values()])
 
     elif srcffile_checklist is not None:
         num_srcfiles = len(srcffile_checklist)
