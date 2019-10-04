@@ -126,6 +126,8 @@ JOB_ABBREV = 'Mask'
 
 ## Custom globals
 
+MASKED_SUFFIX_DEFAULT = 'masked'
+
 SRC_SUFFIX_CATCH_ALL = '*.tif'
 
 STRIP_LSF_PREFIX = '_lsf'
@@ -455,9 +457,9 @@ def main():
 
     if args.get(ARGSTR_DST_SUFFIX) is None:
         if args.get(ARGGRP_FILTER_COMP).count(True) > 0:
-            args.set(ARGSTR_DST_SUFFIX, '_filt'+get_mask_bitstring(*args.get(ARGGRP_FILTER_COMP)))
+            args.set(ARGSTR_DST_SUFFIX, MASKED_SUFFIX_DEFAULT+get_mask_bitstring(*args.get(ARGGRP_FILTER_COMP)))
         else:
-            args.set(ARGSTR_DST_SUFFIX, '_filt'*(not args.get(ARGSTR_FILTER_OFF)))
+            args.set(ARGSTR_DST_SUFFIX, MASKED_SUFFIX_DEFAULT*(not args.get(ARGSTR_FILTER_OFF)))
         print("argument {} set automatically to: '{}'".format(ARGSTR_DST_SUFFIX, args.get(ARGSTR_DST_SUFFIX)))
     dst_suffix_raw = args.get(ARGSTR_DST_SUFFIX)
     dst_suffix_fixed = '_'+dst_suffix_raw.lstrip('_') if dst_suffix_raw != '' else ''
