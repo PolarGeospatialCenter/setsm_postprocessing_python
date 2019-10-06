@@ -3,39 +3,26 @@
 
 
 from __future__ import division
+from lib import script_utils
 
-
-class VersionError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
-
-import platform
-from lib.batch_handler import VersionString
-PYTHON_VERSION = VersionString(platform.python_version())
-
-PYTHON_VERSION_ACCEPTED_MIN = VersionString(2.7)
-if PYTHON_VERSION < PYTHON_VERSION_ACCEPTED_MIN:
-    raise VersionError("Python version ({}) is below accepted minimum ({})".format(
-        PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
+PYTHON_VERSION_ACCEPTED_MIN = "2.7"  # supports multiple dot notation
+if script_utils.PYTHON_VERSION < script_utils.VersionString(PYTHON_VERSION_ACCEPTED_MIN):
+    raise script_utils.VersionError("Python version ({}) is below accepted minimum ({})".format(
+        script_utils.PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
 
 
 import argparse
-import contextlib
 import copy
-import functools
 import glob
 import os
-import platform
 import re
 import shutil
-import smtplib
 import subprocess
 import sys
 import traceback
 import warnings
-from email.mime.text import MIMEText
 from time import sleep
-if PYTHON_VERSION < VersionString(3):
+if script_utils.PYTHON_VERSION < script_utils.VersionString(3):
     from StringIO import StringIO
 else:
     from io import StringIO
@@ -43,11 +30,8 @@ else:
 import gdal
 import numpy as np
 
-from lib import batch_handler
-
-
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+from lib.script_utils import eprint
+from lib.script_utils import ScriptArgumentError, DeveloperError
 
 
 ##############################
@@ -77,6 +61,7 @@ else:
 
 # Argument strings
 ARGSTR_SRC = 'src'
+ARGSTR_DEPTH = '--depth'
 ARGSTR_SRC_SUFFIX = '--src-suffix'
 ARGSTR_CHECK_METHOD = '--check-method'
 ARGSTR_CHECK_SETSM_VALIDRANGE = '--check-setsm-validrange'
@@ -243,6 +228,7 @@ ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT[ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH] =
 
 # Argument defaults
 ARGDEF_SRC_SUFFIX = '.tif'
+ARGDEF_DEPTH = script_utils.ARGNUM_POS_INF
 ARGDEF_CHECKFILE_EXT = '.check'
 ARGDEF_CHECKERROR_EXT = '.err'
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
@@ -360,14 +346,6 @@ del SETSM_META_KEY, SETSM_META_ITEM_RE, SETSM_META_VALUE_RE
 
 gdal.UseExceptions()
 
-class DeveloperError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
-
-class ScriptArgumentError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
-
 class SETSMMetaParseError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
@@ -377,43 +355,10 @@ class RasterFileReadError(Exception):
         super(Exception, self).__init__(msg)
 
 
-@contextlib.contextmanager
-def capture_stdout_stderr():
-    oldout, olderr = sys.stdout, sys.stderr
-    out = [StringIO(), StringIO()]
-    try:
-        sys.stdout, sys.stderr = out
-        yield out
-    finally:
-        sys.stdout, sys.stderr = oldout, olderr
-        out[0] = out[0].getvalue()
-        out[1] = out[1].getvalue()
-
-
-class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
-
-def argtype_path_handler(path, argstr,
-                         abspath_fn=os.path.realpath,
-                         existcheck_fn=None, existcheck_reqval=None):
-    path = os.path.expanduser(path)
-    if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
-        if existcheck_fn is os.path.isfile:
-            existtype_str = 'file'
-        elif existcheck_fn is os.path.isdir:
-            existtype_str = 'directory'
-        elif existcheck_fn is os.path.exists:
-            existtype_str = 'file/directory'
-        existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
-        raise ScriptArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
-    return abspath_fn(path) if abspath_fn is not None else path
-
-ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
-ARGTYPE_BOOL_PLUS = functools.partial(functools.partial, batch_handler.argtype_bool_plus)
-
 def argparser_init():
 
     parser = argparse.ArgumentParser(
-        formatter_class=RawTextArgumentDefaultsHelpFormatter,
+        formatter_class=script_utils.RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
             "Check existence and integrity of data files in batch."
         ])
@@ -423,7 +368,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_SRC,
-        # type=ARGTYPE_PATH(
+        # type=script_utils.ARGTYPE_PATH(
         #     argstr=ARGSTR_SRC,
         #     existcheck_fn=os.path.exists,
         #     existcheck_reqval=True),
@@ -435,6 +380,20 @@ def argparser_init():
     )
 
     # Optional arguments
+
+    parser.add_argument(
+        ARGSTR_DEPTH,
+        type=script_utils.ARGTYPE_NUM(
+            argstr=ARGSTR_DEPTH,
+            numeric_type=int,
+            allow_neg=False,
+            allow_zero=False,
+            allow_inf=True),
+        default=ARGDEF_DEPTH,
+        help=' '.join([
+            "Depth of recursive search into source directory for files to check.",
+        ])
+    )
 
     parser.add_argument(
         ARGSTR_SRC_SUFFIX,
@@ -477,7 +436,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_CHECKFILE,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_CHECKFILE,
             existcheck_fn=os.path.isdir,
             existcheck_reqval=False),
@@ -668,13 +627,13 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_SCHEDULER,
         type=str,
-        choices=batch_handler.SCHED_SUPPORTED,
+        choices=script_utils.SCHED_SUPPORTED,
         default=None,
         help="Submit tasks to job scheduler."
     )
     parser.add_argument(
         ARGSTR_JOBSCRIPT,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_JOBSCRIPT,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=True),
@@ -696,7 +655,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_SCRATCH,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_SCRATCH,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -705,7 +664,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_WD,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_WD,
             existcheck_fn=os.path.isdir,
             existcheck_reqval=True),
@@ -719,7 +678,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_LOGDIR,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_LOGDIR,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -734,7 +693,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_EMAIL,
-        type=ARGTYPE_BOOL_PLUS(
+        type=script_utils.ARGTYPE_BOOL_PLUS(
             parse_fn=str),
         nargs='?',
         help="Send email to user upon end or abort of the LAST SUBMITTED task."
@@ -885,7 +844,7 @@ def main():
     # Invoke argparse argument parsing.
     arg_parser = argparser_init()
     try:
-        args = batch_handler.ArgumentPasser(PYTHON_EXE, SCRIPT_FILE, arg_parser, sys.argv)
+        args = script_utils.ArgumentPasser(PYTHON_EXE, SCRIPT_FILE, arg_parser, sys.argv)
     except ScriptArgumentError as e:
         arg_parser.error(e)
 
@@ -893,6 +852,8 @@ def main():
     ## Further parse/adjust argument values.
 
     src = args.get(ARGSTR_SRC)
+    search_depth = args.get(ARGSTR_DEPTH)
+    print(search_depth)
     checkfile_ext = args.get(ARGSTR_CHECKFILE_EXT)
     errfile_ext = args.get(ARGSTR_ERRFILE_EXT)
     allow_missing_suffix = args.get(ARGSTR_ALLOW_MISSING_SUFFIX)
@@ -1001,17 +962,18 @@ def main():
             and args.get(ARGSTR_CHECK_SPECIAL) != ARGCHO_CHECK_SPECIAL_ALL_SEPARATE):
             checkffileroot_srcfnamechecklist_dict = dict()
             for root, dnames, fnames in os.walk(srcdir):
-                for srcfname in fnames:
-                    if endswith_one_of_coll(srcfname, src_suffixes):
-                        match = re.match(checkfile_root_regex, srcfname)
-                        if match is None:
-                            eprint("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
-                        else:
-                            cf_root_name = match.group(1)
-                            cf_root_full = os.path.join(root, cf_root_name)
-                            if cf_root_full not in checkffileroot_srcfnamechecklist_dict:
-                                checkffileroot_srcfnamechecklist_dict[cf_root_full] = []
-                            checkffileroot_srcfnamechecklist_dict[cf_root_full].append(srcfname)
+                if root[len(srcdir):].count(os.sep) < search_depth:
+                    for srcfname in fnames:
+                        if endswith_one_of_coll(srcfname, src_suffixes):
+                            match = re.match(checkfile_root_regex, srcfname)
+                            if match is None:
+                                eprint("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
+                            else:
+                                cf_root_name = match.group(1)
+                                cf_root_full = os.path.join(root, cf_root_name)
+                                if cf_root_full not in checkffileroot_srcfnamechecklist_dict:
+                                    checkffileroot_srcfnamechecklist_dict[cf_root_full] = []
+                                checkffileroot_srcfnamechecklist_dict[cf_root_full].append(srcfname)
 
         elif args.get(ARGSTR_CHECKFILE_ROOT) is not None:
             checkffileroot_srcfnamechecklist_dict = dict()
@@ -1022,9 +984,10 @@ def main():
         else:  # if argument --checkfile was provided or if each source raster is allotted a checkfile
             srcffile_checklist = []
             for root, dnames, fnames in os.walk(srcdir):
-                for srcfname in fnames:
-                    if endswith_one_of_coll(srcfname, src_suffixes):
-                        srcffile_checklist.append(os.path.join(root, srcfname))
+                if root[len(srcdir):].count(os.sep) < search_depth:
+                    for srcfname in fnames:
+                        if endswith_one_of_coll(srcfname, src_suffixes):
+                            srcffile_checklist.append(os.path.join(root, srcfname))
             missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, srcffile_checklist)]
             if missing_suffixes:
                 warnings.warn("Source file suffixes were not found")
@@ -1035,7 +998,7 @@ def main():
     elif os.path.isfile(src):
         if src.endswith('.txt') and not src.endswith(ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META):
             bundle_file = src
-            task_list = batch_handler.read_task_bundle(bundle_file)
+            task_list = script_utils.read_task_bundle(bundle_file)
             if args.get(ARGSTR_CHECK_SPECIAL) == ARGCHO_CHECK_SPECIAL_ALL_SEPARATE:
                 srcffile_checklist = task_list
                 if args.get(ARGSTR_CHECKFILE_ROOT) is not None:
@@ -1304,9 +1267,10 @@ def main():
     print("-----")
     if os.path.isdir(src):
         for root, dnames, fnames in os.walk(src):
-            for srcfname in fnames:
-                if srcfname.endswith(errfile_ext):
-                    num_errfiles_walk += 1
+            if root[len(srcdir):].count(os.sep) < search_depth:
+                for srcfname in fnames:
+                    if srcfname.endswith(errfile_ext):
+                        num_errfiles_walk += 1
         print("{} existing error files found within source directory via os.walk".format(num_errfiles_walk))
     print("{} existing error files found among source selection".format(num_srcfiles_err_exist))
     if num_srcfiles is not None or num_srcfiles_to_check is not None:
@@ -1375,11 +1339,11 @@ def main():
 
         tasks_per_job = args.get(ARGSTR_TASKS_PER_JOB)
         check_units = (check_items_sorted if tasks_per_job is None else
-                       batch_handler.write_task_bundles(check_items_sorted, tasks_per_job,
-                                                        args.get(ARGSTR_SCRATCH),
+                       script_utils.write_task_bundles(check_items_sorted, tasks_per_job,
+                                                       args.get(ARGSTR_SCRATCH),
                                                         '{}_{}'.format(JOB_ABBREV, ARGSTR_SRC)))
 
-        jobnum_fmt = batch_handler.get_jobnum_fmtstr(check_units)
+        jobnum_fmt = script_utils.get_jobnum_fmtstr(check_units)
         last_job_email = args.get(ARGSTR_EMAIL)
 
         args_batch = args
@@ -1445,7 +1409,7 @@ def main():
             raise
 
         except:
-            with capture_stdout_stderr() as out:
+            with script_utils.capture_stdout_stderr() as out:
                 traceback.print_exc()
             caught_out, caught_err = out
             error_trace = caught_err
@@ -1453,26 +1417,14 @@ def main():
 
         if type(args.get(ARGSTR_EMAIL)) is str:
             # Send email notification of script completion.
-
             email_body = SCRIPT_RUNCMD
-
             if error_trace is not None:
                 email_status = "ERROR"
                 email_body += "\n{}\n".format(error_trace)
             else:
                 email_status = "COMPLETE"
-
             email_subj = "{} - {}".format(email_status, SCRIPT_FNAME)
-            platform_node = platform.node()
-
-            # subprocess.call('echo "{}" | mail -s "{}" {}'.format(email_body, email_subj, email_addr), shell=True)
-            msg = MIMEText(email_body)
-            msg['Subject'] = email_subj
-            msg['From'] = platform_node if platform_node is not None else 'your-computer'
-            msg['To'] = args.get(ARGSTR_EMAIL)
-            s = smtplib.SMTP('localhost')
-            s.sendmail(args.get(ARGSTR_EMAIL), [args.get(ARGSTR_EMAIL)], msg.as_string())
-            s.quit()
+            script_utils.send_email(args.get(ARGSTR_EMAIL), email_subj, email_body)
 
         if error_trace is not None:
             sys.exit(1)

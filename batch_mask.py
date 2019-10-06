@@ -3,45 +3,29 @@
 
 
 from __future__ import division
+from lib import script_utils
 
-
-class VersionError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
-
-import platform
-from lib.batch_handler import VersionString
-PYTHON_VERSION = VersionString(platform.python_version())
-
-PYTHON_VERSION_ACCEPTED_MIN = VersionString(2.7)
-if PYTHON_VERSION < PYTHON_VERSION_ACCEPTED_MIN:
-    raise VersionError("Python version ({}) is below accepted minimum ({})".format(
-        PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
+PYTHON_VERSION_ACCEPTED_MIN = "2.7"  # supports multiple dot notation
+if script_utils.PYTHON_VERSION < script_utils.VersionString(PYTHON_VERSION_ACCEPTED_MIN):
+    raise script_utils.VersionError("Python version ({}) is below accepted minimum ({})".format(
+        script_utils.PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
 
 
 import argparse
-import contextlib
 import copy
-import functools
 import glob
 import os
-import platform
-import smtplib
 import subprocess
 import sys
 import traceback
 import warnings
-from email.mime.text import MIMEText
 from time import sleep
-if PYTHON_VERSION < VersionString(3):
-    from StringIO import StringIO
-else:
-    from io import StringIO
 
 import numpy as np
 
+from lib import script_utils
+from lib.script_utils import ScriptArgumentError
 from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
-from lib import batch_handler
 import lib.raster_array_tools as rat
 
 
@@ -147,47 +131,10 @@ SUFFIX_PRIORITY_BITMASK = [
 ##############################
 
 
-class ScriptArgumentError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
-
-
-@contextlib.contextmanager
-def capture_stdout_stderr():
-    oldout, olderr = sys.stdout, sys.stderr
-    out = [StringIO(), StringIO()]
-    try:
-        sys.stdout, sys.stderr = out
-        yield out
-    finally:
-        sys.stdout, sys.stderr = oldout, olderr
-        out[0] = out[0].getvalue()
-        out[1] = out[1].getvalue()
-
-
-class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
-
-def argtype_path_handler(path, argstr,
-                         abspath_fn=os.path.abspath,
-                         existcheck_fn=None, existcheck_reqval=None):
-    if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
-        if existcheck_fn is os.path.isfile:
-            existtype_str = 'file'
-        elif existcheck_fn is os.path.isdir:
-            existtype_str = 'directory'
-        elif existcheck_fn is os.path.exists:
-            existtype_str = 'file/directory'
-        existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
-        raise ScriptArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
-    return abspath_fn(path) if abspath_fn is not None else path
-
-ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
-ARGTYPE_BOOL_PLUS = functools.partial(functools.partial, batch_handler.argtype_bool_plus)
-
 def argparser_init():
 
     parser = argparse.ArgumentParser(
-        formatter_class=RawTextArgumentDefaultsHelpFormatter,
+        formatter_class=script_utils.RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
             "Selectively apply filter components from the SETSM DEM scene/strip",
             "*{} component raster to mask out corresponding locations".format(ARGDEF_MASK_SUFFIX),
@@ -199,7 +146,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_SRC,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_SRC,
             existcheck_fn=os.path.exists,
             existcheck_reqval=True),
@@ -213,7 +160,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_DSTDIR,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_DSTDIR,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -329,13 +276,13 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_SCHEDULER,
         type=str,
-        choices=batch_handler.SCHED_SUPPORTED,
+        choices=script_utils.SCHED_SUPPORTED,
         default=None,
         help="Submit tasks to job scheduler."
     )
     parser.add_argument(
         ARGSTR_JOBSCRIPT,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_JOBSCRIPT,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=True),
@@ -357,7 +304,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_SCRATCH,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_SCRATCH,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -366,7 +313,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_LOGDIR,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_LOGDIR,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -381,7 +328,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_EMAIL,
-        type=ARGTYPE_BOOL_PLUS(
+        type=script_utils.ARGTYPE_BOOL_PLUS(
             parse_fn=str),
         nargs='?',
         help="Send email to user upon end or abort of the LAST SUBMITTED task."
@@ -401,7 +348,7 @@ def main():
     # Invoke argparse argument parsing.
     arg_parser = argparser_init()
     try:
-        args = batch_handler.ArgumentPasser(PYTHON_EXE, SCRIPT_FILE, arg_parser, sys.argv)
+        args = script_utils.ArgumentPasser(PYTHON_EXE, SCRIPT_FILE, arg_parser, sys.argv)
     except ScriptArgumentError as e:
         arg_parser.error(e)
 
@@ -543,7 +490,7 @@ def main():
 
     elif os.path.isfile(src) and src.endswith('.txt'):
         bundle_file = src
-        src_bitmasks = batch_handler.read_task_bundle(bundle_file)
+        src_bitmasks = script_utils.read_task_bundle(bundle_file)
 
     elif os.path.isdir(src):
         srcdir = src
@@ -742,11 +689,11 @@ def main():
 
         tasks_per_job = args.get(ARGSTR_TASKS_PER_JOB)
         src_files = (masks_to_apply if tasks_per_job is None else
-                     batch_handler.write_task_bundles(masks_to_apply, tasks_per_job,
-                                                      args.get(ARGSTR_SCRATCH),
+                     script_utils.write_task_bundles(masks_to_apply, tasks_per_job,
+                                                     args.get(ARGSTR_SCRATCH),
                                                       '{}_{}'.format(JOB_ABBREV, ARGSTR_SRC)))
 
-        jobnum_fmt = batch_handler.get_jobnum_fmtstr(src_files)
+        jobnum_fmt = script_utils.get_jobnum_fmtstr(src_files)
         last_job_email = args.get(ARGSTR_EMAIL)
 
         args_batch = args
@@ -788,7 +735,7 @@ def main():
             raise
 
         except:
-            with capture_stdout_stderr() as out:
+            with script_utils.capture_stdout_stderr() as out:
                 traceback.print_exc()
             caught_out, caught_err = out
             error_trace = caught_err
@@ -796,26 +743,14 @@ def main():
 
         if type(args.get(ARGSTR_EMAIL)) is str:
             # Send email notification of script completion.
-
             email_body = SCRIPT_RUNCMD
-
             if error_trace is not None:
                 email_status = "ERROR"
                 email_body += "\n{}\n".format(error_trace)
             else:
                 email_status = "COMPLETE"
-
             email_subj = "{} - {}".format(email_status, SCRIPT_FNAME)
-            platform_node = platform.node()
-
-            # subprocess.call('echo "{}" | mail -s "{}" {}'.format(email_body, email_subj, email_addr), shell=True)
-            msg = MIMEText(email_body)
-            msg['Subject'] = email_subj
-            msg['From'] = platform_node if platform_node is not None else 'your-computer'
-            msg['To'] = args.get(ARGSTR_EMAIL)
-            s = smtplib.SMTP('localhost')
-            s.sendmail(args.get(ARGSTR_EMAIL), [args.get(ARGSTR_EMAIL)], msg.as_string())
-            s.quit()
+            script_utils.send_email(args.get(ARGSTR_EMAIL), email_subj, email_body)
 
         if error_trace is not None:
             sys.exit(1)

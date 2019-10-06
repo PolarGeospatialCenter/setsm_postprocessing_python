@@ -20,7 +20,7 @@ import numpy as np
 import skimage.morphology as sk_morphology
 from scipy import ndimage as sp_ndimage
 
-from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag, selectBestOrtho
+from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatchtag, selectBestOrtho, selectBestOrtho2
 from testing import TESTDIR
 if sys.version_info[0] < 3:
     import raster_array_tools as rat

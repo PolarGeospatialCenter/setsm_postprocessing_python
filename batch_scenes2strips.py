@@ -2,52 +2,40 @@
 # Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2019
 
 
-class VersionError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
+from __future__ import division
+from lib import script_utils
 
-import platform
-from lib.batch_handler import VersionString
-PYTHON_VERSION = VersionString(platform.python_version())
-
-PYTHON_VERSION_ACCEPTED_MIN = VersionString(2.7)
-if PYTHON_VERSION < PYTHON_VERSION_ACCEPTED_MIN:
-    raise VersionError("Python version ({}) is below accepted minimum ({})".format(
-        PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
+PYTHON_VERSION_ACCEPTED_MIN = "2.7"  # supports multiple dot notation
+if script_utils.PYTHON_VERSION < script_utils.VersionString(PYTHON_VERSION_ACCEPTED_MIN):
+    raise script_utils.VersionError("Python version ({}) is below accepted minimum ({})".format(
+        script_utils.PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
 
 
 import argparse
-import contextlib
 import copy
 import filecmp
-import functools
 import gc
 import glob
 import os
 import re
-import smtplib
 import subprocess
 import sys
 import traceback
 import warnings
-from email.mime.text import MIMEText
 from time import sleep
 from datetime import datetime
-if PYTHON_VERSION < VersionString(3):
-    from StringIO import StringIO
-else:
-    from io import StringIO
 
 import numpy as np
 
-from lib import batch_handler
+from lib import script_utils
+from lib.script_utils import ScriptArgumentError, ExternalError
 
 
 ##############################
 
 ## Core globals
 
-SCRIPT_VERSION_NUM = 3.2
+SCRIPT_VERSION_NUM = 4
 
 # Script paths and execution
 SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
@@ -150,7 +138,8 @@ JOB_ABBREV = 's2s'
 
 SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
 SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
-SUFFIX_PRIORITY_ORTHO = ['ortho_image1.tif', 'ortho_image2.tif', 'ortho1.tif', 'ortho2.tif', 'ortho.tif']
+SUFFIX_PRIORITY_ORTHO1 = ['ortho_image1.tif', 'ortho_image_1.tif', 'ortho1.tif', 'ortho_1.tif', 'ortho.tif']
+SUFFIX_PRIORITY_ORTHO2 = ['ortho_image2.tif', 'ortho_image_2.tif', 'ortho2.tif', 'ortho_2.tif']
 
 DEM_TYPE_SUFFIX_DICT = {
     ARGCHO_DEM_TYPE_LSF: 'dem_smooth.tif',
@@ -163,55 +152,15 @@ RE_STRIPID = re.compile(RE_STRIPID_STR)
 ##############################
 
 
-class ScriptArgumentError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
-
 class MetaReadError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
-class ExternalError(Exception):
-    def __init__(self, msg=""):
-        super(Exception, self).__init__(msg)
-
-
-@contextlib.contextmanager
-def capture_stdout_stderr():
-    oldout, olderr = sys.stdout, sys.stderr
-    out = [StringIO(), StringIO()]
-    try:
-        sys.stdout, sys.stderr = out
-        yield out
-    finally:
-        sys.stdout, sys.stderr = oldout, olderr
-        out[0] = out[0].getvalue()
-        out[1] = out[1].getvalue()
-
-
-class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
-
-def argtype_path_handler(path, argstr,
-                         abspath_fn=os.path.abspath,
-                         existcheck_fn=None, existcheck_reqval=None):
-    if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
-        if existcheck_fn is os.path.isfile:
-            existtype_str = 'file'
-        elif existcheck_fn is os.path.isdir:
-            existtype_str = 'directory'
-        elif existcheck_fn is os.path.exists:
-            existtype_str = 'file/directory'
-        existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
-        raise ScriptArgumentError("argument {}: {} {}: {}".format(argstr, existtype_str, existresult_str, path))
-    return abspath_fn(path) if abspath_fn is not None else path
-
-ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
-ARGTYPE_BOOL_PLUS = functools.partial(functools.partial, batch_handler.argtype_bool_plus)
 
 def argparser_init():
 
     parser = argparse.ArgumentParser(
-        formatter_class=RawTextArgumentDefaultsHelpFormatter,
+        formatter_class=script_utils.RawTextArgumentDefaultsHelpFormatter,
         description=' '.join([
             "Filters scene DEMs in a source directory,",
             "then mosaics them into strips and saves the results.",
@@ -224,7 +173,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_SRC,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_SRC,
             existcheck_fn=os.path.isdir,
             existcheck_reqval=True),
@@ -244,7 +193,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_DST,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_DST,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -256,7 +205,7 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_META_TRANS_DIR,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_META_TRANS_DIR,
             existcheck_fn=os.path.isdir,
             existcheck_reqval=True),
@@ -388,13 +337,13 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_SCHEDULER,
         type=str,
-        choices=batch_handler.SCHED_SUPPORTED,
+        choices=script_utils.SCHED_SUPPORTED,
         default=None,
         help="Submit tasks to job scheduler."
     )
     parser.add_argument(
         ARGSTR_JOBSCRIPT,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_JOBSCRIPT,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=True),
@@ -406,7 +355,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_LOGDIR,
-        type=ARGTYPE_PATH(
+        type=script_utils.ARGTYPE_PATH(
             argstr=ARGSTR_LOGDIR,
             existcheck_fn=os.path.isfile,
             existcheck_reqval=False),
@@ -421,7 +370,7 @@ def argparser_init():
     )
     parser.add_argument(
         ARGSTR_EMAIL,
-        type=ARGTYPE_BOOL_PLUS(
+        type=script_utils.ARGTYPE_BOOL_PLUS(
             parse_fn=str),
         nargs='?',
         help="Send email to user upon end or abort of the LAST SUBMITTED task."
@@ -483,7 +432,7 @@ def main():
     # Invoke argparse argument parsing.
     arg_parser = argparser_init()
     try:
-        args = batch_handler.ArgumentPasser(PYTHON_EXE, SCRIPT_FILE, arg_parser, sys.argv)
+        args = script_utils.ArgumentPasser(PYTHON_EXE, SCRIPT_FILE, arg_parser, sys.argv)
     except ScriptArgumentError as e:
         arg_parser.error(e)
 
@@ -635,7 +584,7 @@ def main():
         elif os.path.isfile(args.get(ARGSTR_STRIPID)):
 
             # Assume file is a list of strip-pair IDs, one per line.
-            stripids = set(batch_handler.read_task_bundle(args.get(ARGSTR_STRIPID)))
+            stripids = set(script_utils.read_task_bundle(args.get(ARGSTR_STRIPID)))
 
             # Check that source scenes exist for each strip-pair ID, else exclude and notify user.
             stripids_to_process = [
@@ -693,14 +642,15 @@ def main():
 
 
         # Pause for user review.
-        wait_seconds = 5
-        print("Sleeping {} seconds before task submission".format(wait_seconds))
-        sleep(wait_seconds)
+        if not args.get(ARGSTR_REMOVE_INCOMPLETE):
+            wait_seconds = 5
+            print("Sleeping {} seconds before task submission".format(wait_seconds))
+            sleep(wait_seconds)
 
 
         ## Batch process each strip-pair ID.
 
-        jobnum_fmt = batch_handler.get_jobnum_fmtstr(stripids)
+        jobnum_fmt = script_utils.get_jobnum_fmtstr(stripids)
         last_job_email = args.get(ARGSTR_EMAIL)
 
         args_batch = args
@@ -726,10 +676,10 @@ def main():
             )
             dst_sID_ffile_glob = glob.glob(os.path.join(
                 strip_dfull,
-                '{}_seg*_{}_{}*'.format(
+                '{}_{}{}_seg*_*'.format(
                     sID,
                     res_str,
-                    'lsf_' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
+                    '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
                 )
             ))
 
@@ -751,13 +701,14 @@ def main():
                         if not args.get(ARGSTR_DRYRUN):
                             os.rmdir(strip_dfull)
 
-                    if not args.get(ARGSTR_RESTART):
-                        continue
                 else:
                     print("{}, {} {} :: {} ({}) output files exist ".format(
                         job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
                           + "(potentially unfinished since no *.fin file), skipping")
                     continue
+
+            if args.get(ARGSTR_REMOVE_INCOMPLETE):
+                continue
 
             args_single.set(ARGSTR_STRIPID, sID)
             if last_job_email and job_num == num_jobs:
@@ -796,6 +747,8 @@ def main():
             print('')
 
             # Parse arguments in context of strip.
+
+            stripid_is_xtrack = args.get(ARGSTR_STRIPID)[1].isdigit()
 
             use_old_trans = True if args.get(ARGSTR_META_TRANS_DIR) is not None else False
 
@@ -905,6 +858,9 @@ def main():
                 if selectBestOrtho(scenedem_ffile) is None:
                     print("ortho file for {} missing, skipping".format(scenedem_ffile))
                     src_scenefile_missing_flag = True
+                if stripid_is_xtrack and selectBestOrtho2(scenedem_ffile) is None:
+                    print("ortho2 file for {} missing (stripid is xtrack), skipping".format(scenedem_ffile))
+                    src_scenefile_missing_flag = True
                 if not os.path.isfile(scenedem_ffile.replace(demSuffix, 'meta.txt')):
                     print("meta file for {} missing, skipping".format(scenedem_ffile))
                     src_scenefile_missing_flag = True
@@ -997,11 +953,11 @@ def main():
                     all_data_masked = False
 
                     # Determine output strip segment DEM file paths.
-                    stripdem_fname = "{}_seg{}_{}{}_{}".format(
+                    stripdem_fname = "{}_{}{}_seg{}_{}".format(
                         args.get(ARGSTR_STRIPID),
-                        segnum,
                         res_str,
                         '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
+                        segnum,
                         stripDemSuffix
                     )
                     stripdem_ffile = os.path.join(strip_dfull, stripdem_fname)
@@ -1144,7 +1100,7 @@ def main():
 
 
         except:
-            with capture_stdout_stderr() as out:
+            with script_utils.capture_stdout_stderr() as out:
                 traceback.print_exc()
             caught_out, caught_err = out
             error_trace = caught_err
@@ -1152,26 +1108,14 @@ def main():
 
         if type(args.get(ARGSTR_EMAIL)) is str:
             # Send email notification of script completion.
-
             email_body = SCRIPT_RUNCMD
-
             if error_trace is not None:
                 email_status = "ERROR"
                 email_body += "\n{}\n".format(error_trace)
             else:
                 email_status = "COMPLETE"
-
             email_subj = "{} - {}".format(email_status, SCRIPT_FNAME)
-            platform_node = platform.node()
-
-            # subprocess.call('echo "{}" | mail -s "{}" {}'.format(email_body, email_subj, email_addr), shell=True)
-            msg = MIMEText(email_body)
-            msg['Subject'] = email_subj
-            msg['From'] = platform_node if platform_node is not None else 'your-computer'
-            msg['To'] = args.get(ARGSTR_EMAIL)
-            s = smtplib.SMTP('localhost')
-            s.sendmail(args.get(ARGSTR_EMAIL), [args.get(ARGSTR_EMAIL)], msg.as_string())
-            s.quit()
+            script_utils.send_email(args.get(ARGSTR_EMAIL), email_subj, email_body)
 
         if error_trace is not None:
             sys.exit(1)
@@ -1229,7 +1173,7 @@ def saveStripBrowse(strip_demFile, demSuffix):
 
     for cmd in commands:
         print(cmd)
-        batch_handler.exec_cmd(cmd)
+        script_utils.exec_cmd(cmd)
 
     if not os.path.isfile(strip_demFile_10m):
         raise ExternalError("`gdal_translate` program did not create "
@@ -1257,7 +1201,13 @@ def getMatchtagSuffix(matchFile):
 
 
 def getOrthoSuffix(orthoFile):
-    for orthoSuffix in SUFFIX_PRIORITY_ORTHO:
+    for orthoSuffix in SUFFIX_PRIORITY_ORTHO1:
+        if orthoFile.endswith(orthoSuffix):
+            return orthoSuffix
+    return None
+
+def getOrtho2Suffix(orthoFile):
+    for orthoSuffix in SUFFIX_PRIORITY_ORTHO2:
         if orthoFile.endswith(orthoSuffix):
             return orthoSuffix
     return None
@@ -1274,7 +1224,15 @@ def selectBestMatchtag(demFile):
 
 def selectBestOrtho(demFile):
     demSuffix = getDemSuffix(demFile)
-    for orthoSuffix in SUFFIX_PRIORITY_ORTHO:
+    for orthoSuffix in SUFFIX_PRIORITY_ORTHO1:
+        orthoFile = demFile.replace(demSuffix, orthoSuffix)
+        if os.path.isfile(orthoFile):
+            return orthoFile
+    return None
+
+def selectBestOrtho2(demFile):
+    demSuffix = getDemSuffix(demFile)
+    for orthoSuffix in SUFFIX_PRIORITY_ORTHO2:
         orthoFile = demFile.replace(demSuffix, orthoSuffix)
         if os.path.isfile(orthoFile):
             return orthoFile

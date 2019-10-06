@@ -1,39 +1,47 @@
 #!/usr/bin/env python2
 
-# Version 0.9; Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
+# Version 1.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
+
+PYTHON_VERSION_REQUIRED_MIN = "2.7"
 
 
 import argparse
+import contextlib
 import copy
+import functools
 import math
 import numpy as np
 import operator
 import os
+import platform
+import smtplib
 import subprocess
+import sys
 from datetime import datetime
-from glob import glob
+from email.mime.text import MIMEText
 
 
-SCHED_SUPPORTED = []
-SCHED_PBS = 'pbs'
-SCHED_SLURM = 'slurm'
-SCHED_NAME_TESTCMD_DICT = {
-    SCHED_PBS: 'pbsnodes',
-    SCHED_SLURM: 'sinfo'
-}
-for sched_name in sorted(SCHED_NAME_TESTCMD_DICT.keys()):
-    try:
-        child = subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdoutdata, stderrdata = child.communicate()
-        if child.returncode == 0:
-            SCHED_SUPPORTED.append(sched_name)
-    except OSError:
-        pass
-if len(SCHED_SUPPORTED) == 0:
-    SCHED_SUPPORTED.append(None)
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
+
+class VersionError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+class DeveloperError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+class ScriptArgumentError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
 
 class InvalidArgumentError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
+class ExternalError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
@@ -78,6 +86,182 @@ class VersionString:
         return self.__compare_relative(other, operator.lt, allow_equal=False)
     def __le__(self, other):
         return self.__compare_relative(other, operator.le, allow_equal=True)
+
+PYTHON_VERSION = VersionString(platform.python_version())
+if PYTHON_VERSION < VersionString(PYTHON_VERSION_REQUIRED_MIN):
+    raise VersionError("Python version ({}) is below required minimum ({})".format(
+        PYTHON_VERSION, PYTHON_VERSION_REQUIRED_MIN))
+
+if PYTHON_VERSION < VersionString(3):
+    from StringIO import StringIO
+else:
+    from io import StringIO
+
+
+SCHED_SUPPORTED = []
+SCHED_PBS = 'pbs'
+SCHED_SLURM = 'slurm'
+SCHED_NAME_TESTCMD_DICT = {
+    SCHED_PBS: 'pbsnodes',
+    SCHED_SLURM: 'sinfo'
+}
+for sched_name in sorted(SCHED_NAME_TESTCMD_DICT.keys()):
+    try:
+        child = subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdoutdata, stderrdata = child.communicate()
+        if child.returncode == 0:
+            SCHED_SUPPORTED.append(sched_name)
+    except OSError:
+        pass
+if len(SCHED_SUPPORTED) == 0:
+    SCHED_SUPPORTED.append(None)
+
+
+@contextlib.contextmanager
+def capture_stdout_stderr():
+    oldout, olderr = sys.stdout, sys.stderr
+    out = [StringIO(), StringIO()]
+    try:
+        sys.stdout, sys.stderr = out
+        yield out
+    finally:
+        sys.stdout, sys.stderr = oldout, olderr
+        out[0] = out[0].getvalue()
+        out[1] = out[1].getvalue()
+
+
+def exec_cmd(cmd):
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    (so, se) = p.communicate()
+    rc = p.wait()
+    print("RETURN CODE: {}".format(rc))
+    if so != '':
+        print("STDOUT:\n{}".format(so.rstrip()))
+    if se != '':
+        print("STDERR:\n{}".format(se.rstrip()))
+    return rc
+
+
+def send_email(to_addr, subject, body, from_addr=None):
+    if from_addr is None:
+        platform_node = platform.node()
+        from_addr = platform_node if platform_node is not None else 'your-computer'
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = from_addr
+    msg['To'] = to_addr
+    s = smtplib.SMTP('localhost')
+    s.sendmail(to_addr, [to_addr], msg.as_string())
+    s.quit()
+
+
+class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter): pass
+
+def argtype_path_handler(path, argstr,
+                         abspath_fn=os.path.realpath,
+                         existcheck_fn=None, existcheck_reqval=None):
+    path = os.path.expanduser(path)
+    if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
+        if existcheck_fn is os.path.isfile:
+            existtype_str = 'file'
+        elif existcheck_fn is os.path.isdir:
+            existtype_str = 'directory'
+        elif existcheck_fn is os.path.exists:
+            existtype_str = 'file/directory'
+        existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
+        raise ScriptArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
+    return abspath_fn(path) if abspath_fn is not None else path
+ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
+
+def argtype_num_encode(num):
+    num_str = str(num)
+    if num_str.startswith('-') or num_str.startswith('+'):
+        num_str = "'({})' ".format(num_str)
+    return num_str
+def argtype_num_decode(num_str):
+    num_str = ''.join(num_str.split())
+    return num_str.strip("'").strip('"').lstrip('(').rstrip(')')
+def argtype_num_handler(num_str, argstr,
+                        numeric_type=float,
+                        allow_pos=True, allow_neg=True, allow_zero=True,
+                        allow_inf=False, allow_nan=False,
+                        allowed_min=None, allowed_max=None,
+                        allowed_min_incl=True, allowed_max_incl=True):
+    num_str = argtype_num_decode(num_str)
+    if (   (allowed_min is not None and ((allowed_min < 0 and not allow_neg) or (allowed_min == 0 and not allow_zero) or (allowed_min > 0 and not allow_pos)))
+        or (allowed_max is not None and ((allowed_max < 0 and not allow_neg) or (allowed_max == 0 and not allow_zero) or (allowed_max > 0 and not allow_pos)))):
+        raise DeveloperError("Allowed min/max value does not align with allowed pos/neg/zero settings")
+    dtype_name_dict = {
+        int: 'integer',
+        float: 'decimal'
+    }
+    lt_min_op = operator.lt if allowed_min_incl else operator.le
+    gt_max_op = operator.gt if allowed_max_incl else operator.ge
+    errmsg = None
+    try:
+        number_float = float(num_str)
+    except ValueError:
+        errmsg = "input could not be parsed as a valid (floating point) number"
+    if errmsg is None:
+        if number_float != number_float:  # assume number is NaN
+            number_true = number_float
+            if not allow_nan:
+                errmsg = "NaN is not allowed"
+        else:
+            if number_float in (float('inf'), float('-inf')):
+                number_true = number_float
+                if not allow_inf:
+                    errmsg = "+/-infinity is not allowed"
+            else:
+                try:
+                    number_true = numeric_type(number_float)
+                    if number_true != number_float:
+                        errmsg = "number must be of {}type {}".format(
+                            dtype_name_dict[numeric_type]+' ' if numeric_type in dtype_name_dict else '', numeric_type)
+                except ValueError:
+                    errmsg = "input could not be parsed as a designated {} number".format(numeric_type)
+            if errmsg is None:
+                if (   (not allow_pos and number_true > 0) or (not allow_neg and number_true < 0) or (not allow_zero and number_true == 0)
+                    or (allowed_min is not None and lt_min_op(number_true, allowed_min)) or (allowed_max is not None and gt_max_op(number_true, allowed_max))):
+                    input_cond = ' '.join([
+                        "input must be a",
+                        'positive'*allow_pos, 'or'*(allow_pos&allow_neg), 'negative'*allow_neg, 'non-zero'*(not allow_zero),
+                        '{} number'.format(dtype_name_dict[numeric_type]) if numeric_type in dtype_name_dict else 'number of type {}'.format(numeric_type),
+                        (allow_inf|allow_nan)*' ({} allowed)'.format(' '.join([
+                            '{}infinity'.format('/'.join(['+'*allow_pos, '-'*allow_neg]).strip('/'))*allow_inf, 'and'*(allow_inf&allow_nan), 'NaN'*allow_nan]))
+                    ])
+                    if allowed_min is not None or allowed_max is not None:
+                        if allowed_min is not None and allowed_max is not None:
+                            input_cond_range = "in the range {}{}, {}{}".format(
+                                '[' if allowed_min_incl else '(', allowed_min, allowed_max, ']' if allowed_max_incl else ']')
+                        else:
+                            if allowed_min is not None:
+                                cond_comp = 'greater'
+                                cond_value = allowed_min
+                                cond_bound_incl = allowed_min_incl
+                            elif allowed_max is not None:
+                                cond_comp = 'less'
+                                cond_value = allowed_max
+                                cond_bound_incl = allowed_max_incl
+                            input_cond_range = '{} than {} ({})'.format(
+                                cond_comp, cond_value, 'inclusive' if cond_bound_incl else 'exclusive')
+                        input_cond = ' '.join([input_cond, input_cond_range])
+                    input_cond = ' '.join(input_cond.split())
+                    errmsg = input_cond
+    if errmsg is not None:
+        raise ScriptArgumentError("argument {}: {}".format(argstr, errmsg))
+    else:
+        return number_true
+ARGTYPE_NUM = functools.partial(functools.partial, argtype_num_handler)
+ARGNUM_POS_INF = argtype_num_encode(float('inf'))
+ARGNUM_NEG_INF = argtype_num_encode(float('-inf'))
+ARGNUM_NAN = argtype_num_encode(float('nan'))
+
+def argtype_bool_plus(value, parse_fn=None):
+    if parse_fn is not None:
+        return parse_fn(value)
+    return value
+ARGTYPE_BOOL_PLUS = functools.partial(functools.partial, argtype_bool_plus)
 
 
 class ArgumentPasser:
@@ -356,12 +540,6 @@ class ArgumentPasser:
         return out_type(condopt_expr)
 
 
-def argtype_bool_plus(value, parse_fn=None):
-    if parse_fn is not None:
-        return parse_fn(value)
-    return value
-
-
 def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s', task_delim=' '):
     bundle_prefix = os.path.join(dstdir, '{}_{}'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
     jobnum_total = int(math.ceil(len(task_list) / float(tasks_per_bundle)))
@@ -384,15 +562,3 @@ def read_task_bundle(bundle_file, args_dtype=np.dtype(str), args_delim=' '):
 
 def get_jobnum_fmtstr(processing_list, min_digits=3):
     return '{:0>'+str(max(min_digits, len(str(len(processing_list)))))+'}'
-
-
-def exec_cmd(cmd):
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-    (so, se) = p.communicate()
-    rc = p.wait()
-    print("RETURN CODE: {}".format(rc))
-    if so != '':
-        print("STDOUT:\n{}".format(so.rstrip()))
-    if se != '':
-        print("STDERR:\n{}".format(se.rstrip()))
-    return rc
