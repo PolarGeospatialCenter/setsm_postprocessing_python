@@ -1,10 +1,8 @@
-#!/usr/bin/env python2
 
 # Version 1.0; Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
 
-PYTHON_VERSION_REQUIRED_MIN = "2.7"
 
-
+from __future__ import print_function
 import argparse
 import contextlib
 import copy
@@ -19,6 +17,9 @@ import subprocess
 import sys
 from datetime import datetime
 from email.mime.text import MIMEText
+
+
+PYTHON_VERSION_REQUIRED_MIN = "2.7"  # supports multiple dot notation
 
 
 def eprint(*args, **kwargs):

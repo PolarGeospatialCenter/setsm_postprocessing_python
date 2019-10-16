@@ -4,6 +4,7 @@
 
 
 from __future__ import division
+import os
 import sys
 import traceback
 import warnings
@@ -43,11 +44,16 @@ class RasterDimensionError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
+class MetadataError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
 
 def scenes2strips(demFiles,
                   maskSuffix=None, filter_options=(), max_coreg_rmse=1,
                   trans_guess=None, trans_err_guess=None, rmse_guess=None,
-                  hold_guess=HOLD_GUESS_OFF, check_guess=True):
+                  hold_guess=HOLD_GUESS_OFF, check_guess=True,
+                  use_second_ortho=False):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -80,7 +86,7 @@ def scenes2strips(demFiles,
     respectively, will be applied.
 
     """
-    from batch_scenes2strips import getDemSuffix, selectBestMatchtag, selectBestOrtho
+    from batch_scenes2strips import getDemSuffix, selectBestMatchtag, selectBestOrtho, selectBestOrtho2
     demSuffix = getDemSuffix(demFiles[0])
 
     cmin = 1000  # Minimum data cluster area for 2m.
@@ -143,19 +149,23 @@ def scenes2strips(demFiles,
 
         # Construct filenames.
         demFile = demFiles_ordered[i]
-        matchFile = selectBestMatchtag(demFile)
-        orthoFile = selectBestOrtho(demFile)
-        metaFile  = demFile.replace(demSuffix, 'meta.txt')
+        matchFile  = selectBestMatchtag(demFile)
+        orthoFile  = selectBestOrtho(demFile)
+        ortho2File = selectBestOrtho2(demFile) if use_second_ortho else None
+        metaFile   = demFile.replace(demSuffix, 'meta.txt')
         if maskSuffix is None:
             print("No mask applied")
             maskFile = None
         else:
             maskFile = demFile.replace(demSuffix, maskSuffix)
 
+        if use_second_ortho and ortho2File is None:
+            raise InvalidArgumentError("`use_second_ortho=True`, but second ortho could not be found")
+
         print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
 
         # try:
-        x, y, z, m, o, md = loadData(demFile, matchFile, orthoFile, maskFile, metaFile)
+        x, y, z, m, o, o2, md = loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile)
         # except:
         #     print("Data read error:")
         #     traceback.print_exc()
@@ -163,7 +173,7 @@ def scenes2strips(demFiles,
         #     continue
 
         # Apply masks.
-        x, y, z, m, o, md = applyMasks(x, y, z, m, o, md, filter_options, maskSuffix)
+        x, y, z, m, o, o2, md = applyMasks(x, y, z, m, o, o2, md, filter_options, maskSuffix)
 
         # Check for redundant scene.
         if np.count_nonzero(~np.isnan(z)) <= cmin:
@@ -177,20 +187,21 @@ def scenes2strips(demFiles,
         # Fix grid so that x, y coordinates of
         # pixels in overlapping scenes will match up.
         if ((x[1] / dx) % 1 != 0) or ((y[1] / dy) % 1 != 0):
-            x, y, z, m, o, md = regrid(x, y, z, m, o, md)
+            x, y, z, m, o, o2, md = regrid(x, y, z, m, o, o2, md)
 
         # If this is the first scene in strip,
         # set as strip and continue to next scene.
         if 'X' not in vars():
-            X, Y, Z, M, O, MD = x, y, z, m, o, md
-            del x, y, z, m, o, md
+            X, Y, Z, M, O, O2, MD = x, y, z, m, o, o2, md
+            del x, y, z, m, o, o2, md
             continue
 
         # Pad new arrays to stabilize interpolation.
         buff = int(10*dx + 1)
-        z = np.pad(z, buff, 'constant', constant_values=np.nan)
-        m = np.pad(m, buff, 'constant', constant_values=0)
-        o = np.pad(o, buff, 'constant', constant_values=0)
+        z  = np.pad(z,  buff, 'constant', constant_values=np.nan)
+        m  = np.pad(m,  buff, 'constant', constant_values=0)
+        o  = np.pad(o,  buff, 'constant', constant_values=0)
+        o2 = np.pad(o2, buff, 'constant', constant_values=0) if o2 is not None else None
         md = np.pad(md, buff, 'constant', constant_values=1)
         x = np.concatenate((x[0]  - dx*np.arange(buff, 0, -1), x,
                             x[-1] + dx*np.arange(1, buff+1)))
@@ -201,22 +212,22 @@ def scenes2strips(demFiles,
         if x[0] < X[0]:
             X1 = np.arange(x[0], X[0], dx)
             X = np.concatenate((X1, X))
-            Z, M, O, MD = expandCoverage(Z, M, O, MD, X1, direction='left')
+            Z, M, O, O2, MD = expandCoverage(Z, M, O, O2, MD, X1, direction='left')
             del X1
         if x[-1] > X[-1]:
             X1 = np.arange(X[-1]+dx, x[-1]+dx, dx)
             X = np.concatenate((X, X1))
-            Z, M, O, MD = expandCoverage(Z, M, O, MD, X1, direction='right')
+            Z, M, O, O2, MD = expandCoverage(Z, M, O, O2, MD, X1, direction='right')
             del X1
         if y[0] > Y[0]:
             Y1 = np.arange(y[0], Y[0], -dx)
             Y = np.concatenate((Y1, Y))
-            Z, M, O, MD = expandCoverage(Z, M, O, MD, Y1, direction='up')
+            Z, M, O, O2, MD = expandCoverage(Z, M, O, O2, MD, Y1, direction='up')
             del Y1
         if y[-1] < Y[-1]:
             Y1 = np.arange(Y[-1]-dx, y[-1]-dx, -dx)
             Y = np.concatenate((Y, Y1))
-            Z, M, O, MD = expandCoverage(Z, M, O, MD, Y1, direction='down')
+            Z, M, O, O2, MD = expandCoverage(Z, M, O, O2, MD, Y1, direction='down')
             del Y1
 
         # Map new DEM pixels to swath. These must return integers. If not,
@@ -227,11 +238,12 @@ def scenes2strips(demFiles,
         r1 = np.where(y[-1] == Y)[0][0] + 1
 
         # Crop to overlap.
-        Xsub = np.copy(X[c0:c1])
-        Ysub = np.copy(Y[r0:r1])
-        Zsub = np.copy(Z[r0:r1, c0:c1])
-        Msub = np.copy(M[r0:r1, c0:c1])
-        Osub = np.copy(O[r0:r1, c0:c1])
+        Xsub  = np.copy( X[c0:c1])
+        Ysub  = np.copy( Y[r0:r1])
+        Zsub  = np.copy( Z[r0:r1, c0:c1])
+        Msub  = np.copy( M[r0:r1, c0:c1])
+        Osub  = np.copy( O[r0:r1, c0:c1])
+        O2sub = np.copy(O2[r0:r1, c0:c1]) if O2 is not None else None
         MDsub = np.copy(MD[r0:r1, c0:c1])
 
         # NEW MOSAICKING CODE
@@ -348,12 +360,16 @@ def scenes2strips(demFiles,
         Zsub[strip_nodata] = np.nan
         Msub[strip_nodata] = 0
         Osub[strip_nodata] = 0
+        if O2sub is not None:
+            O2sub[strip_nodata] = 0
         MDsub[strip_nodata] = 0
 
         scene_nodata = (W == 1)
         z[scene_nodata] = np.nan
         m[scene_nodata] = 0
         o[scene_nodata] = 0
+        if o2 is not None:
+            o2[scene_nodata] = 0
         md[scene_nodata] = 0
 
         del strip_nodata, scene_nodata
@@ -457,6 +473,15 @@ def scenes2strips(demFiles,
         oi = rat.interp2_gdal(xi, yi, oi, Xsub, Ysub, 'cubic')
         del o
 
+        if o2 is not None:
+            # Interpolate ortho2 to same grid.
+            o2i = o2.astype(np.float32)
+            o2i[o2i == 0] = np.nan  # Set border to NaN so it won't be interpolated.
+            o2i = rat.interp2_gdal(xi, yi, o2i, Xsub, Ysub, 'cubic')
+            del o2
+        else:
+            o2i = None
+
         # Interpolate mask to the same grid.
         mdi = rat.interp2_gdal(xi, yi, md.astype(np.float32), Xsub, Ysub, 'nearest')
         mdi[np.isnan(mdi)] = 0  # convert back to uint8
@@ -472,11 +497,18 @@ def scenes2strips(demFiles,
         mi[~M3] = 0  # also apply to matchtag
         del M3
 
-        # Remove border on orthos separately.
+        # Remove border on ortho separately.
         M4 = ~np.isnan(oi)
         M4 = rat.imerode(M4, 6)
         oi[~M4] = np.nan
         del M4
+
+        if o2i is not None:
+            # Remove border on ortho2 separately.
+            M5 = ~np.isnan(o2i)
+            M5 = rat.imerode(M5, 6)
+            o2i[~M5] = np.nan
+            del M5
 
         # Make weighted elevation grid.
         A = Zsub*W + zi*(1-W)
@@ -499,7 +531,7 @@ def scenes2strips(demFiles,
         Osub[Osub == 0] = np.nan
         A = Osub*W + oi*(1-W)
 
-        del W
+        # del W
 
         Osub_only = ~np.isnan(Osub) &  np.isnan(oi)
         oi_only   =  np.isnan(Osub) & ~np.isnan(oi)
@@ -512,6 +544,28 @@ def scenes2strips(demFiles,
 
         O[r0:r1, c0:c1] = A
         del A
+
+        if O2sub is not None:
+            # Make weighted ortho2 grid.
+            O2sub = O2sub.astype(np.float32)
+            O2sub[O2sub == 0] = np.nan
+            A = O2sub*W + o2i*(1-W)
+
+            # del W
+
+            O2sub_only = ~np.isnan(O2sub) &  np.isnan(o2i)
+            o2i_only   =  np.isnan(O2sub) & ~np.isnan(o2i)
+            A[O2sub_only] = O2sub[O2sub_only]
+            A[o2i_only]   =   o2i[o2i_only]
+            del O2sub, o2i, O2sub_only, o2i_only
+
+            A[np.isnan(A)] = 0  # convert back to uint16
+            A = A.astype(np.uint16)
+
+            O2[r0:r1, c0:c1] = A
+            del A
+
+        del W
 
         # For the mask, bitwise combination.
         MD[r0:r1, c0:c1] = np.bitwise_or(MDsub, mdi)
@@ -526,17 +580,18 @@ def scenes2strips(demFiles,
     if 'Z' in vars() and ~np.all(np.isnan(Z)):
         rcrop, ccrop = cropBorder(Z, np.nan)
         if rcrop is not None:
-            X = X[ccrop[0]:ccrop[1]]
-            Y = Y[rcrop[0]:rcrop[1]]
-            Z = Z[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
-            M = M[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
-            O = O[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
+            X  =  X[ccrop[0]:ccrop[1]]
+            Y  =  Y[rcrop[0]:rcrop[1]]
+            Z  =  Z[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
+            M  =  M[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
+            O  =  O[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
+            O2 = O2[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]] if O2 is not None else None
             MD = MD[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             Z[np.isnan(Z)] = -9999
     else:
-        X, Y, Z, M, O, MD = None, None, None, None, None, None
+        X, Y, Z, M, O, O2, MD = None, None, None, None, None, None, None
 
-    return X, Y, Z, M, O, MD, trans, trans_err, rmse, demFiles_ordered, __STRIP_SPAT_REF__
+    return X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, demFiles_ordered, __STRIP_SPAT_REF__
 
 
 def coregisterdems(x1, y1, z1,
@@ -826,7 +881,7 @@ def rectFootprint(*geoms):
     return ogr.Geometry(wkt=fp_wkt)
 
 
-def loadData(demFile, matchFile, orthoFile, maskFile, metaFile):
+def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     """
     Load data files and perform basic conversions.
     """
@@ -850,37 +905,74 @@ def loadData(demFile, matchFile, orthoFile, maskFile, metaFile):
         m[np.isnan(m)] = 0  # Convert back to bool/uint8.
         m = m.astype(np.bool)
 
-    o = rat.extractRasterData(orthoFile, 'array')
-    if o.shape != z.shape:
-        warnings.warn("Ortho '{}' dimensions differ from DEM dimensions".format(orthoFile)
-                     +"\nInterpolating to DEM dimensions")
-        x, y = rat.extractRasterData(orthoFile, 'x', 'y')
-        o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
-        o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
-        o[np.isnan(o)] = 0  # Convert back to uint16.
-        o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
+    ortho_arrays = []
+    for i, ortho_file in enumerate([orthoFile, ortho2File]):
+        ortho_num = i+1
+        if ortho_file is None:
+            o = None
+        else:
+            o = rat.extractRasterData(ortho_file, 'array')
+            if o.shape != z.shape:
+                warnings.warn("Ortho{} '{}' dimensions differ from DEM dimensions".format(ortho_num if ortho_num > 1 else '', ortho_file)
+                             +"\nInterpolating to DEM dimensions")
+                x, y = rat.extractRasterData(ortho_file, 'x', 'y')
+                o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
+                o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
+                o[np.isnan(o)] = 0  # Convert back to uint16.
+                o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
+        ortho_arrays.append(o)
+    o1, o2 = ortho_arrays
 
     if maskFile is None:
         md = np.zeros_like(z, dtype=np.uint8)
     else:
         md = rat.extractRasterData(maskFile, 'array').astype(np.uint8)
         if md.shape != z.shape:
-            raise RasterDimensionError("maskFile '{}' dimensions {} do not match dem dimensions {}".format(
+            raise RasterDimensionError("Mask '{}' dimensions {} do not match DEM dimensions {}".format(
                                        maskFile, md.shape, z.shape))
 
     # Re-scale ortho data if WorldView correction is detected in the meta file.
+    # Allow for inconsistent Image 1/2 paths in SETSM metadata, making sure that
+    # first ortho 'o' corresponds to first catalogid in strip pairname and that
+    # second ortho 'o2' (optional, xtrack only) corresponds to second catalogid.
     meta = readSceneMeta(metaFile)
-    wv_correct_flag = meta['image_1_wv_correct']
-    maxDN = meta['image_1_max'] if wv_correct_flag else None
-    if maxDN is not None:
-        print("Ortho had wv_correct applied, rescaling values to range [0, {}]".format(maxDN))
-        o = rescaleDN(o, maxDN)
-        o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
 
-    return x_dem, y_dem, z, m, o, md
+    ortho_arrays = []
+    ortho_catids = []
+    for i, o in enumerate([o1, o2]):
+        if o is not None:
+            ortho_num = i+1
+            wv_correct_flag = meta['image_{}_wv_correct'.format(ortho_num)]
+            maxDN = meta['image_{}_max'.format(ortho_num)] if wv_correct_flag else None
+            if maxDN is not None:
+                print("Ortho{} had wv_correct applied, rescaling values to range [0, {}]".format(
+                    ortho_num if ortho_num > 1 else '', maxDN))
+                o = rescaleDN(o, maxDN)
+                o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
+            ortho_image_file = meta['image_{}'.format(ortho_num)]
+            catid = os.path.basename(ortho_image_file).split('_')[2]
+        ortho_arrays.append(o)
+        ortho_catids.append(catid)
+
+    pairname_catids = os.path.basename(orthoFile).split('_')[2:4]
+    if ortho_catids[0] != pairname_catids[0]:
+        if ortho_catids[1] is None:
+            raise MetadataError("Single intrack ortho from Image 1 in '{}' has catalogid ({})"
+                                " that does not match first catalogid of pairname".format(metaFile, ortho_catids[0]))
+        if ortho_catids[0] != pairname_catids[1] or ortho_catids[1] != pairname_catids[0]:
+            raise MetadataError("xtrack orthos from Image 1/2 in '{}' have catalogids ({})"
+                                " that do not match catalogids of pairname".format(metaFile, ortho_catids))
+        # Assume strip pairname is xtrack at this point.
+        assert ortho2File is not None, "`ortho2File` is None"
+        ortho_catids.reverse()
+        ortho_arrays.reverse()
+
+    o, o2 = ortho_arrays
+
+    return x_dem, y_dem, z, m, o, o2, md
 
 
-def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
+def applyMasks(x, y, z, m, o, o2, md, filter_options=(), maskSuffix=None):
     """
     Apply masks to the scene DEM, matchtag, and ortho matrices.
     """
@@ -920,9 +1012,10 @@ def applyMasks(x, y, z, m, o, md, filter_options=(), maskSuffix=None):
         z  =  z[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
         m  =  m[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
         o  =  o[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
+        o2 = o2[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]] if o2 is not None else None
         md = md[rowcrop[0]:rowcrop[1], colcrop[0]:colcrop[1]]
 
-    return x, y, z, m, o, md
+    return x, y, z, m, o, o2, md
 
 
 def cropBorder(matrix, border_val, buff=0):
@@ -962,7 +1055,7 @@ def cropBorder(matrix, border_val, buff=0):
     return (rowcrop_i, rowcrop_j+1), (colcrop_i, colcrop_j+1)
 
 
-def regrid(x, y, z, m, o, md):
+def regrid(x, y, z, m, o, o2, md):
     """
     Interpolate scene DEM, matchtag, and ortho matrices
     to a new set of x-y grid coordinates.
@@ -986,14 +1079,22 @@ def regrid(x, y, z, m, o, md):
     o[np.isnan(o)] = 0  # Convert back to uint16.
     o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
 
+    # Interpolate ortho to same grid.
+    if o2 is not None:
+        o2 = o2.astype(np.float32)
+        o2[np.isnan(z)] = np.nan  # Set border to NaN so it won't be interpolated.
+        o2 = rat.interp2_gdal(x, y, o2, xi, yi, 'cubic')
+        o2[np.isnan(o2)] = 0  # Convert back to uint16.
+        o2 = rat.astype_round_and_crop(o2, np.uint16, allow_modify_array=True)
+
     md = rat.interp2_gdal(x, y, md.astype(np.float32), xi, yi, 'nearest')
     md[np.isnan(md)] = 0  # Convert back to uint8.
     md = md.astype(np.uint8)
 
-    return xi, yi, zi, m, o, md
+    return xi, yi, zi, m, o, o2, md
 
 
-def expandCoverage(Z, M, O, MD, R1, direction):
+def expandCoverage(Z, M, O, O2, MD, R1, direction):
     """
     Expand strip coverage for DEM, matchtag, and ortho matrices
     based upon the direction of expansion.
@@ -1003,24 +1104,33 @@ def expandCoverage(Z, M, O, MD, R1, direction):
     """
     if direction in ('up', 'down'):
         # R1 is Y1.
-        Z1 = np.full((R1.size, Z.shape[1]), np.nan, dtype=np.float32)
-        M1 = np.full((R1.size, M.shape[1]), False,  dtype=np.bool)
-        O1 = np.full((R1.size, O.shape[1]), 0,      dtype=np.uint16)
-        MD1 = np.full((R1.size, MD.shape[1]), 1,    dtype=np.uint8)
+        Z1  = np.full((R1.size,  Z.shape[1]), np.nan, dtype=np.float32)
+        M1  = np.full((R1.size,  M.shape[1]), False,  dtype=np.bool)
+        O1  = np.full((R1.size,  O.shape[1]), 0,      dtype=np.uint16)
+        O21 = np.full((R1.size, O2.shape[1]), 0,      dtype=np.uint16) if O2 is not None else None
+        MD1 = np.full((R1.size, MD.shape[1]), 1,      dtype=np.uint8)
         axis_num = 0
     else:
         # R1 is X1.
-        Z1 = np.full((Z.shape[0], R1.size), np.nan, dtype=np.float32)
-        M1 = np.full((M.shape[0], R1.size), False,  dtype=np.bool)
-        O1 = np.full((O.shape[0], R1.size), 0,      dtype=np.uint16)
-        MD1 = np.full((MD.shape[0], R1.size), 1,    dtype=np.uint8)
+        Z1  = np.full((Z.shape[0],  R1.size), np.nan, dtype=np.float32)
+        M1  = np.full((M.shape[0],  R1.size), False,  dtype=np.bool)
+        O1  = np.full((O.shape[0],  R1.size), 0,      dtype=np.uint16)
+        O21 = np.full((O2.shape[0], R1.size), 0,      dtype=np.uint16) if O2 is not None else None
+        MD1 = np.full((MD.shape[0], R1.size), 1,      dtype=np.uint8)
         axis_num = 1
 
     if direction in ('left', 'up'):
         pairs = [[Z1, Z], [M1, M], [O1, O], [MD1, MD]]
+        if O2 is not None:
+            pairs.append([O21, O2])
     else:
         pairs = [[Z, Z1], [M, M1], [O, O1], [MD, MD1]]
+        if O2 is not None:
+            pairs.append([O2, O21])
 
-    Z, M, O, MD = [np.concatenate(p, axis=axis_num) for p in pairs]
+    if O2 is not None:
+        Z, M, O, MD, O2 = [np.concatenate(p, axis=axis_num) for p in pairs]
+    else:
+        Z, M, O, MD = [np.concatenate(p, axis=axis_num) for p in pairs]
 
-    return Z, M, O, MD
+    return Z, M, O, O2, MD

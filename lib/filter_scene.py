@@ -188,7 +188,8 @@ def isValidArggroups(arggroup_list):
 
 
 def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_masks=False,
-                  save_component_masks=MASK_SEPARATE, debug_component_masks=DEBUG_NONE):
+                  save_component_masks=MASK_SEPARATE, debug_component_masks=DEBUG_NONE,
+                  use_second_ortho=False):
     """
     Create and save scene masks that mask ON regions of bad data.
 
@@ -246,70 +247,91 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
     if dstdir is None:
         dstdir = os.path.dirname(demFile)
 
-    masks = {}
+    mask_sets_to_combine = []
+    combine_image_num = [1]
+    if use_second_ortho:
+        combine_image_num.append(2)
 
-    if mask_version.endswith('maskv1'):
-        masks = mask_v1(demFile, noentropy)
+    for image_num in combine_image_num:
+        masks = dict()
 
-    else:
-        if True in [mask_version.endswith(name) for name in ['mask', 'bitmask', 'maskv2_debug']]:
-            if mask_version == 'mask':
-                save_component_masks = MASK_FLAT
-            elif mask_version == 'bitmask':
-                save_component_masks = MASK_BIT
-            mask = mask_v2(demFile, mask_version,
-                           save_component_masks=(save_component_masks != MASK_FLAT),
-                           debug_component_masks=debug_component_masks)
-        elif mask_version.endswith('mask2a'):
-            mask = mask_v2a(demFile)
-        elif mask_version.endswith('mask8m'):
-            mask = mask8m(demFile)
+        if mask_version.endswith('maskv1'):
+            masks = mask_v1(demFile, noentropy, image_num=image_num)
         else:
-            raise InvalidArgumentError("`mask_version` must be one of {}, "
-                                       "but was {}".format(suffix_choices, mask_version))
+            if True in [mask_version.endswith(name) for name in ['mask', 'bitmask', 'maskv2_debug']]:
+                if mask_version == 'mask':
+                    save_component_masks = MASK_FLAT
+                elif mask_version == 'bitmask':
+                    save_component_masks = MASK_BIT
+                mask = mask_v2(demFile, mask_version,
+                               save_component_masks=(save_component_masks != MASK_FLAT),
+                               debug_component_masks=debug_component_masks,
+                               image_num=image_num)
+            elif mask_version.endswith('mask2a'):
+                mask = mask_v2a(demFile)
+            elif mask_version.endswith('mask8m'):
+                mask = mask8m(demFile)
+            else:
+                raise InvalidArgumentError("`mask_version` must be one of {}, "
+                                           "but was {}".format(suffix_choices, mask_version))
 
-        if type(mask) == dict:
-            component_masks = mask
+            if type(mask) == dict:
+                component_masks = mask
 
-            if save_component_masks == MASK_BIT:
-                mask_bin = component_masks[mask_version]
-                mask_comp = np.zeros_like(mask_bin, dtype=np.uint8)
-                for mask_name, mask_bit in MASKCOMP_NAME_BIT_ZIP:
-                    np.bitwise_or(mask_comp, np.left_shift(component_masks[mask_name].astype(np.uint8), mask_bit), out=mask_comp)
-                try:
-                    if not np.array_equal(mask_comp.astype(np.bool), mask_bin):
-                        raise MaskComponentError("Coverage of edge/water/cloud component mask arrays "
-                                                 "does not match coverage of official binary mask array")
-                except MaskComponentError:
-                    print("Saving mask coverage arrays in question for inspection")
-                    from testing.test import saveImage
-                    saveImage(mask_bin, demFname.replace(demSuffix, mask_version+'_binary.tif'), overwrite=True)
-                    saveImage(mask_comp.astype(np.bool), demFname.replace(demSuffix, mask_version+'_components.tif'), overwrite=True)
-                    raise
-                if debug_component_masks in (DEBUG_MASKS, DEBUG_ALL):
-                    component_masks['binary'] = mask_bin
+                if save_component_masks == MASK_BIT:
+                    mask_bin = component_masks[mask_version]
+                    mask_comp = np.zeros_like(mask_bin, dtype=np.uint8)
+                    for mask_name, mask_bit in MASKCOMP_NAME_BIT_ZIP:
+                        np.bitwise_or(mask_comp, np.left_shift(component_masks[mask_name].astype(np.uint8), mask_bit), out=mask_comp)
+                    try:
+                        if not np.array_equal(mask_comp.astype(np.bool), mask_bin):
+                            raise MaskComponentError("Coverage of edge/water/cloud component mask arrays "
+                                                     "does not match coverage of official binary mask array")
+                    except MaskComponentError:
+                        print("Saving mask coverage arrays in question for inspection")
+                        from testing.test import saveImage
+                        saveImage(mask_bin, demFname.replace(demSuffix, mask_version+'_binary.tif'), overwrite=True)
+                        saveImage(mask_comp.astype(np.bool), demFname.replace(demSuffix, mask_version+'_components.tif'), overwrite=True)
+                        raise
+                    if debug_component_masks in (DEBUG_MASKS, DEBUG_ALL):
+                        component_masks['binary'] = mask_bin
+                        if len(combine_image_num) > 1:
+                            component_masks['{}_image{}'.format(mask_version, image_num)] = mask_comp
+                    else:
+                        for mask_name in (MASKCOMP_EDGE_NAME, MASKCOMP_WATER_NAME, MASKCOMP_CLOUD_NAME):
+                            del component_masks[mask_name]
+                    component_masks[mask_version] = mask_comp
+
+                mask = component_masks[mask_version]
+                masks = {'{}_{}{}'.format(mask_version, 'image{}_'.format(image_num)*(len(combine_image_num) > 1), mask_name): mask_array
+                         for mask_name, mask_array in component_masks.items()
+                         if (mask_name != mask_version)}
+
+            masks[mask_version] = mask
+        mask_sets_to_combine.append(masks)
+
+    if len(mask_sets_to_combine) == 1:
+        masks = mask_sets_to_combine[0]
+    else:
+        masks_merged = dict()
+        for mask_set in mask_sets_to_combine:
+            for mask_name, mask in mask_set.items():
+                if mask_name not in masks_merged:
+                    masks_merged[mask_name] = mask
                 else:
-                    for mask_name in (MASKCOMP_EDGE_NAME, MASKCOMP_WATER_NAME, MASKCOMP_CLOUD_NAME):
-                        del component_masks[mask_name]
-                component_masks[mask_version] = mask_comp
-
-            mask = component_masks[mask_version]
-            masks = {'{}_{}'.format(mask_version, mask_name): mask_array
-                     for mask_name, mask_array in component_masks.items()
-                     if mask_name != mask_version}
-
-        masks[mask_version] = mask
+                    masks_merged[mask_name] = np.bitwise_or(masks_merged[mask_name], mask)
+        masks = masks_merged
 
     nbits = None
-    for mask_name in masks:
-        mask = masks[mask_name]
+    for mask_name, mask in masks.items():
         maskFile = os.path.join(dstdir, demFname.replace(demSuffix, mask_name+'.tif'))
         if mask_dtype == 'n-bit':
             nbits = 3 if (save_component_masks == MASK_BIT and mask_name == mask_version) else 1
         rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=mask_dtype, nbits=nbits)
 
 
-def mask_v1(demFile, noentropy=False):
+def mask_v1(demFile, noentropy=False,
+            image_num=1):
     """
     Creates an edgemask and datamask masking ON regions of bad data in
     a scene from a matchtag image and saves the two mask files to disk.
@@ -345,7 +367,10 @@ def mask_v1(demFile, noentropy=False):
     component_masks = {}
 
     matchFile = selectBestMatchtag(demFile)
-    orthoFile = selectBestOrtho(demFile)
+    if image_num == 1:
+        orthoFile = selectBestOrtho(demFile)
+    elif image_num == 2:
+        orthoFile = selectBestOrtho2(demFile)
     metaFile = matchFile.replace(getMatchtagSuffix(matchFile), 'meta.txt')
 
     # Find SETSM version.
@@ -421,7 +446,8 @@ def mask_v1(demFile, noentropy=False):
 def mask_v2(demFile=None, mask_version='mask',
             ddm_kernel_size=21, processing_res=8, min_data_cluster=500,
             save_component_masks=False, debug_component_masks=DEBUG_NONE,
-            postprocess_mask=None, postprocess_res=None):
+            postprocess_mask=None, postprocess_res=None,
+            image_num=1):
     # TODO: Write documentation for post-processing option.
     """
     Create a single mask masking ON regions of bad data in a scene,
@@ -514,17 +540,20 @@ def mask_v2(demFile=None, mask_version='mask',
 
     demSuffix = getDemSuffix(demFile)
     matchFile = selectBestMatchtag(demFile)
-    orthoFile = selectBestOrtho(demFile)
-    metaFile  = demFile.replace(demSuffix, 'meta.txt')
+    if image_num == 1:
+        orthoFile = selectBestOrtho(demFile)
+    elif image_num == 2:
+        orthoFile = selectBestOrtho2(demFile)
+    metaFile = demFile.replace(demSuffix, 'meta.txt')
 
     meta = readSceneMeta(metaFile)
     try:
-        satID              = meta['image_1_satID']
-        wv_correct_flag    = meta['image_1_wv_correct']
-        effbw              = meta['image_1_effbw']
-        abscalfact         = meta['image_1_abscalfact']
-        mean_sun_elevation = meta['image_1_mean_sun_elevation']
-        maxDN = meta['image_1_max'] if wv_correct_flag else None
+        satID              = meta['image_{}_sensor'.format(image_num)]
+        wv_correct_flag    = meta['image_{}_wv_correct'.format(image_num)]
+        effbw              = meta['image_{}_effbw'.format(image_num)]
+        abscalfact         = meta['image_{}_abscalfact'.format(image_num)]
+        mean_sun_elevation = meta['image_{}_mean_sun_elevation'.format(image_num)]
+        maxDN = meta['image_{}_max'.format(image_num)] if wv_correct_flag else None
     except KeyError as e:
         print(e)
         raise MetadataError("Scene metadata file ({}) is missing critical information for filtering step; "
@@ -1679,7 +1708,7 @@ def clean_mask(mask, remove_pix=1000, fill_pix=10000, in_place=False):
     return ~rat.bwareaopen(~cleaned_mask, fill_pix, in_place=True)
 
 
-def readSceneMeta(metaFile, trying_repaired_version=False):
+def readSceneMeta(metaFile):
     # TODO: Write my own docstring.
     """
     Source file: readSceneMeta.m
@@ -1718,272 +1747,18 @@ def readSceneMeta(metaFile, trying_repaired_version=False):
 
     # Detect scenes produced with flawed SETSM version 3.4.2 and quit building strip.
     if meta['setsm_version'] == '3.4.2':
-        raise MetadataError("SETSM version is 3.4.2; scenes must be re-run to newest SETSM version")
+        raise MetadataError("SETSM version is 3.4.2; strip must be re-run to newest SETSM version")
 
     # Get satID and check for cross track naming convention.
     try:
-        for left_image_tag in ['image_0', 'image_1']:
-            if left_image_tag in meta:
-                break
-        if left_image_tag == 'image_0':
-            raise MetadataError("Scene metadata file ({}) was affected by Image 0/1 SETSM bug".format(metaFile))
-        satID = os.path.basename(meta[left_image_tag])[0:4].upper()
-        # image_2 = meta['image_2']
+        for image_num in (1, 2):
+            image_path = meta['image_{}'.format(image_num)]
+            meta['image_{}_sensor'.format(image_num)] = os.path.basename(image_path)[0:4].upper()
     except KeyError as e:
         traceback.print_exc()
-        warn("Scene metadata file ({}) is missing key information".format(metaFile))
-        if RUNNING_AT_PGC and not trying_repaired_version:
-            metaFile_repaired = pgc_find_repaired_metafile(metaFile)
-            if metaFile_repaired is not None:
-                return readSceneMeta(metaFile_repaired, trying_repaired_version=True)
-        raise MetadataError("Scene metadata file ({}) is missing key information; cannot proceed".format(metaFile))
-
-    satID_abbrev = satID[0:2]
-    if   satID_abbrev == 'W1':
-        satID = 'WV01'
-    elif satID_abbrev == 'W2':
-        satID = 'WV02'
-    elif satID_abbrev == 'W3':
-        satID = 'WV03'
-    elif satID_abbrev == 'G1':
-        satID = 'GE01'
-    elif satID_abbrev == 'Q1':
-        satID = 'QB01'
-    elif satID_abbrev == 'Q2':
-        satID = 'QB02'
-    elif satID_abbrev == 'I1':
-        satID = 'IK01'
-    meta['image_1_satID'] = satID
-
-    if RUNNING_AT_PGC:
-        meta = pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_version)
+        raise MetadataError("Could not parse sensor from Image 1 tag: {}".format(metaFile))
 
     return meta
-
-
-def pgc_check_for_missing_meta_and_fix(meta, metaFile, satID, trying_repaired_version):
-    # Some metadata fields and their values that are needed by the filtering functions
-    # may be missing from scene meta.txt files that were produced by (hopefully) older versions of SETSM.
-    # If this program is running on PGC's servers, we'll attempt to grab the missing values for this run
-    # by either finding an already-repaired version of the metadata file in its proper place
-    # or by reading straight from the XML metadata file stored alongside the source panchromatic images.
-    # Note: Incomplete scene meta.txt files are not changed during this process.
-
-    field_wvc1_name = 'image_1_wv_correct'
-    field_max1_name = 'image_1_max'
-
-    meta_fieldname_xmltag_dict = {
-        'image_1_effbw': 'EFFECTIVEBANDWIDTH',
-        'image_1_abscalfact': 'ABSCALFACTOR',
-        'image_1_mean_sun_elevation': 'MEANSUNEL',
-    }
-
-    if field_wvc1_name not in meta:
-        meta[field_wvc1_name] = 1 if satID in ('WV01', 'WV02') else 0
-
-    if meta[field_wvc1_name] == 1:
-        meta_fieldname_xmltag_dict[field_max1_name] = None
-
-    missing_fieldnames = set(meta_fieldname_xmltag_dict.keys()).difference(set(meta.keys()))
-    if not missing_fieldnames:
-        return meta
-
-    warn("Scene metadata file ({}) is missing key information: {}".format(metaFile, missing_fieldnames))
-
-    if not trying_repaired_version:
-        meta_repaired = None
-        metaFile_repaired = pgc_find_repaired_metafile(metaFile)
-        if metaFile_repaired is not None:
-            print("Reading repaired scene metadata file: {}".format(metaFile_repaired))
-            try:
-                meta_repaired = readSceneMeta(metaFile_repaired, trying_repaired_version=True)
-            except MetadataError as e:
-                print(e)
-        if meta_repaired is not None:
-            meta_complete = True
-            for field_name in meta_fieldname_xmltag_dict:
-                if field_name not in meta_repaired:
-                    meta_complete = False
-                    break
-            if meta_complete:
-                return meta_repaired
-        if metaFile_repaired is not None:
-            print("Reverting to original incomplete metadata file")
-
-    image_1_metafile = None
-    for pathconstruct_method in [2]:
-        if pathconstruct_method == 1:
-            try_source = 'scene DEM metadata filename'
-            try_path = metaFile
-            re_parser = RE_SCENE_DEM_FNAME_PARTS
-        elif pathconstruct_method == 2:
-            try_source = '"Image 1" field in scene metadata'
-            try:
-                if 'image_0' in meta:
-                    try_path = meta['image_0']
-                else:
-                    try_path = meta['image_1']
-            except KeyError:
-                continue
-            re_parser = RE_SOURCE_IMAGE_FNAME_PARTS
-
-        image_1_metafile = pgc_find_source_image_metafile(try_path, re_parser)
-
-        if image_1_metafile is not None:
-            break
-
-    if image_1_metafile is None:
-        # Give up trying to find original source image.
-        return meta
-
-    if meta[field_wvc1_name] == 1 and field_max1_name not in meta:
-        # TODO: Look for existing stats file or calculate stats.
-        pass
-
-    print("Reading source image metadata file: {}".format(image_1_metafile))
-    with open(image_1_metafile, 'r') as image_1_metafile_fp:
-        image_1_metatxt = image_1_metafile_fp.read()
-
-    for field_name in meta_fieldname_xmltag_dict:
-
-        xmltag = meta_fieldname_xmltag_dict[field_name]
-        if xmltag is None:
-            continue
-
-        print("Looking up info for missing field: {}".format(field_name))
-
-        match = re.search('<{}>(.*?)</{}>'.format(xmltag, xmltag), image_1_metatxt)
-        if match is None:
-            # Give up trying to find a value for this missing metadata field.
-            print("XML tag not found: {} ; skipping".format(xmltag))
-            continue
-        if len(match.groups()) > 1:
-            # XML tag format is not as expected to have multiple tag occurrences.
-            print("Multiple occurrences of XML tag: {} ; skipping".format(xmltag))
-            continue
-        field_value = match.groups()[0]
-        try:
-            field_value = float(field_value)
-        except ValueError:
-            pass
-
-        print("Success! {}={}".format(field_name, field_value))
-        meta[field_name] = field_value
-
-    for field_name in meta_fieldname_xmltag_dict:
-        if field_name not in meta:
-            print("Could not fill in missing metadata field: {}".format(field_name))
-
-    return meta
-
-
-def pgc_find_repaired_metafile(metaFile):
-    scenedir = os.path.dirname(metaFile)
-    metaFname = os.path.basename(metaFile)
-    res_folder = os.path.basename(scenedir)
-    metaFile_repaired = os.path.join(scenedir, '../../meta/{}/{}'.format(res_folder, metaFname))
-    if os.path.isfile(metaFile_repaired):
-        return metaFile_repaired
-    else:
-        print("Repaired metadata file does not exist: {}".format(metaFile_repaired))
-        return None
-
-
-def pgc_find_source_image_metafile(file_path, re_parser, dem_source_image='left'):
-    import glob
-
-    if re_parser is RE_SOURCE_IMAGE_FNAME_PARTS:
-        path_type_str = 'image'
-    elif re_parser is RE_SCENE_DEM_FNAME_PARTS:
-        path_type_str = 'dem {} image'.format(dem_source_image)
-
-    file_name = os.path.basename(file_path)
-
-    match = re.match(re_parser, file_name)
-    if match is None:
-        print("Regex failed to parse necessary bits from {} path: {}".format(path_type_str, file_path))
-        return None
-
-    if re_parser is RE_SOURCE_IMAGE_FNAME_PARTS:
-        satID, year, month, day, time, catID, monthabrev, prodcode, ordnum, partnum = match.groups()
-        lookup_tries_remaining = 1
-
-    elif re_parser is RE_SCENE_DEM_FNAME_PARTS:
-        satID_cross, year, month, day, catID1, catID2, prodcodeex1, ordnum1, partnum1, prodcodeex2, ordnum2, partnum2 = match.groups()
-        prodcode1 = 'P1BS' if prodcodeex1 is None else '{}_{}'.format('P1BS', prodcodeex1.rstrip('-'))
-        prodcode2 = 'P1BS' if prodcodeex2 is None else '{}_{}'.format('P1BS', prodcodeex2.rstrip('-'))
-        monthabrev = None
-
-        satID_abbrev = satID_cross[0:2]
-        if   satID_abbrev == 'W1':
-            satID = 'WV01'
-        elif satID_abbrev == 'W2':
-            satID = 'WV02'
-        elif satID_abbrev == 'W3':
-            satID = 'WV03'
-        elif satID_abbrev == 'G1':
-            satID = 'GE01'
-        elif satID_abbrev == 'Q1':
-            satID = 'QB01'
-        elif satID_abbrev == 'Q2':
-            satID = 'QB02'
-        elif satID_abbrev == 'I1':
-            satID = 'IK01'
-        else:
-            satID = satID_cross
-
-        if dem_source_image == 'left':
-            catID = catID1
-            prodcode = prodcode1
-            ordnum = ordnum1
-            partnum = partnum1
-        elif dem_source_image == 'right':
-            catID = catID2
-            prodcode = prodcode2
-            ordnum = ordnum2
-            partnum = partnum2
-
-        lookup_tries_remaining = 2
-
-    source_metafile = None
-
-    while lookup_tries_remaining > 0:
-
-        source_metafile_pattern = '/mnt/pgc/data/sat/orig/{}/{}/{}/{}_{}/{}_{}_{}_{}/{}_{}{}{}*_{}_*-{}-{}_{}'.format(
-            satID,
-            prodcode[1:3],
-            year,
-            month, monthabrev.lower() if monthabrev is not None else '*',
-            satID, catID, prodcode[0:4], ordnum,
-            satID, year, month, day, catID, prodcode, ordnum, partnum
-        )
-
-        match = glob.glob(source_metafile_pattern+'.xml')
-        if not match:
-            match = glob.glob(source_metafile_pattern+'.XML')
-        lookup_tries_remaining -= 1
-
-        if len(match) == 1:
-            source_metafile = match[0]
-        elif len(match) > 1:
-            print("ERROR: {} matches (for fname '{}') with pattern: {}".format(
-                len(match), file_name, source_metafile_pattern))
-            for i, match_file in enumerate(match):
-                print("MATCH {}: {}".format(i+1, match_file))
-        elif re_parser is RE_SCENE_DEM_FNAME_PARTS and lookup_tries_remaining == 1:
-            if ordnum == ordnum1:
-                prodcode = prodcode2
-                ordnum = ordnum2
-                partnum = partnum2
-            elif ordnum == ordnum2:
-                prodcode = prodcode1
-                ordnum = ordnum1
-                partnum = partnum1
-        else:
-            print("Failed to locate original source image (fname '{}') with pattern: {}".format(
-                file_name, source_metafile_pattern))
-
-    return source_metafile
 
 
 def rescaleDN(ortho_array, dnmax):

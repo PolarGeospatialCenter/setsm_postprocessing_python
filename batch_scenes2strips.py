@@ -186,7 +186,8 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_RES,
         type=float,
-        help="Resolution of target DEMs in meters."
+        nargs='?',
+        help="Resolution of target DEMs in meters or centimeters, like '2m' or '50cm'."
     )
 
     # Optional arguments
@@ -925,8 +926,8 @@ def main():
                 print("Filtering {} of {}: {}".format(i, filter_total, scenedem_ffile))
                 if not args.get(ARGSTR_DRYRUN):
                     generateMasks(scenedem_ffile, scene_mask_name, noentropy=args.get(ARGSTR_NOENTROPY),
-                                  save_component_masks=MASK_BIT, debug_component_masks=DEBUG_NONE,
-                                  nbit_masks=False)
+                                  save_component_masks=MASK_BIT, use_second_ortho=stripid_is_xtrack,
+                                  debug_component_masks=DEBUG_NONE, nbit_masks=False)
 
             if not args.get(ARGSTR_DRYRUN):
                 print('')
@@ -984,9 +985,10 @@ def main():
                     else:
                         print("Running s2s with coregistration filter options: {}".format(
                             ', '.join(filter_options_coreg) if filter_options_coreg else None))
-                        X, Y, Z, M, O, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
+                        X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
                             scenedem_fname_remaining,
-                            sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF))
+                            sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF),
+                            use_second_ortho=stripid_is_xtrack)
                         if X is None:
                             all_data_masked = True
                         coreg_step_attempted = True
@@ -1015,17 +1017,18 @@ def main():
                                                   scene_dfull, scenedem_fname_coregistered, args)
                                 if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                                     saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
-                                                     X, Y, Z, M, O, MD, spat_ref)
+                                                     X, Y, Z, M, O, O2, MD, spat_ref)
                                     if not args.get(ARGSTR_HILLSHADE_OFF):
                                         saveStripBrowse(stripdem_ffile_coreg, stripDemSuffix)
-                            del X, Y, Z, M, O, MD
+                            del X, Y, Z, M, O, O2, MD
                             gc.collect()
 
-                        X, Y, Z, M, O, MD, trans, trans_err, rmse, scenedem_fname_mosaicked, spat_ref = scenes2strips(
+                        X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_mosaicked, spat_ref = scenes2strips(
                             scenedem_fname_coregistered.copy(),
                             sceneMaskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
                             trans_guess=trans, trans_err_guess=trans_err, rmse_guess=rmse,
-                            hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans)
+                            hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans,
+                            use_second_ortho=stripid_is_xtrack)
                         if X is None:
                             all_data_masked = True
                         if use_old_trans and scenedem_fname_mosaicked != scenedem_fname_coregistered:
@@ -1046,10 +1049,10 @@ def main():
                                   X, Y, Z, trans, trans_err, rmse, spat_ref,
                                   scene_dfull, scenedem_fname_mosaicked, args)
                     saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
-                                     X, Y, Z, M, O, MD, spat_ref)
+                                     X, Y, Z, M, O, O2, MD, spat_ref)
                     if not args.get(ARGSTR_HILLSHADE_OFF):
                         saveStripBrowse(stripdem_ffile, stripDemSuffix)
-                    del X, Y, Z, M, O, MD
+                    del X, Y, Z, M, O, O2, MD
 
                     segnum += 1
 
@@ -1139,20 +1142,24 @@ def saveStripMeta(strip_demFile, demSuffix,
 
 
 def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
-                     X, Y, Z, M, O, MD, spat_ref):
+                     X, Y, Z, M, O, O2, MD, spat_ref):
     from lib.raster_array_tools import saveArrayAsTiff
 
-    strip_matchFile = strip_demFile.replace(demSuffix, 'matchtag.tif')
-    strip_orthoFile = strip_demFile.replace(demSuffix, 'ortho.tif')
-    strip_maskFile  = strip_demFile.replace(demSuffix, maskSuffix)
+    strip_matchFile  = strip_demFile.replace(demSuffix, 'matchtag.tif')
+    strip_orthoFile  = strip_demFile.replace(demSuffix, 'ortho.tif')
+    strip_ortho2File = strip_demFile.replace(demSuffix, 'ortho2.tif')
+    strip_maskFile   = strip_demFile.replace(demSuffix, maskSuffix)
 
-    saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999, dtype_out='float32')
+    saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999,   dtype_out='float32')
     del Z
-    saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
+    saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodata_val=0,       dtype_out='uint8')
     del M
-    saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodata_val=0,     dtype_out='int16')
+    saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodata_val=0,       dtype_out='int16')
     del O
-    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=0,     dtype_out='uint8')
+    if O2 is not None:
+        saveArrayAsTiff(O2, strip_ortho2File, X, Y, spat_ref, nodata_val=0, dtype_out='int16')
+        del O2
+    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=0,       dtype_out='uint8')
     del MD
 
 
