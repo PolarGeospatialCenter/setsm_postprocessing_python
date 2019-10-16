@@ -186,8 +186,7 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_RES,
         type=float,
-        nargs='?',
-        help="Resolution of target DEMs in meters or centimeters, like '2m' or '50cm'."
+        help="Resolution of target DEMs in meters."
     )
 
     # Optional arguments
