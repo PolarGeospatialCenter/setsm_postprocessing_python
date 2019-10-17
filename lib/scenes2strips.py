@@ -27,6 +27,11 @@ else:
 # comparison to the spatial references of all other source raster files.
 __STRIP_SPAT_REF__ = None
 
+# The Catalog ID of "Image 1" as parsed from the output scene metadata files for
+# an intrack stereo SETSM DEM strip. It is expected that all ortho scenes in the
+# intrack strip correspond to the same Catalog ID.
+__INTRACK_ORTHO_CATID__ = None
+
 HOLD_GUESS_OFF = 0
 HOLD_GUESS_ALL = 1
 HOLD_GUESS_UPDATE_RMSE = 2
@@ -886,6 +891,7 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     Load data files and perform basic conversions.
     """
     global __STRIP_SPAT_REF__
+    global __INTRACK_ORTHO_CATID__
 
     z, x_dem, y_dem, spat_ref = rat.extractRasterData(demFile, 'array', 'x', 'y', 'spat_ref')
     if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
@@ -940,6 +946,7 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     ortho_arrays = []
     ortho_catids = []
     for i, o in enumerate([o1, o2]):
+        catid = None
         if o is not None:
             ortho_num = i+1
             wv_correct_flag = meta['image_{}_wv_correct'.format(ortho_num)]
@@ -955,13 +962,21 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
         ortho_catids.append(catid)
 
     pairname_catids = os.path.basename(orthoFile).split('_')[2:4]
-    if ortho_catids[0] != pairname_catids[0]:
-        if ortho_catids[1] is None:
-            raise MetadataError("Single intrack ortho from Image 1 in '{}' has catalogid ({})"
-                                " that does not match first catalogid of pairname".format(metaFile, ortho_catids[0]))
+    if ortho_catids[1] is None:
+        # Strip is intrack.
+        intrack_ortho_catid = ortho_catids[0]
+        if __INTRACK_ORTHO_CATID__ is None:
+            __INTRACK_ORTHO_CATID__ = intrack_ortho_catid
+        elif intrack_ortho_catid is None or ortho_catids[0] != __INTRACK_ORTHO_CATID__:
+            raise MetadataError("Catalog ID of Image 1 (assumed ortho) is not consistent across"
+                                " scene metadata files for intrack strip")
+    elif ortho_catids[0] != pairname_catids[0]:
+        # if ortho_catids[1] is None:
+        #     raise MetadataError("Single intrack ortho from Image 1 in '{}' has catalogid ({})"
+        #                         " that does not match first catalogid of pairname".format(metaFile, ortho_catids[0]))
         if ortho_catids[0] != pairname_catids[1] or ortho_catids[1] != pairname_catids[0]:
-            raise MetadataError("xtrack orthos from Image 1/2 in '{}' have catalogids ({})"
-                                " that do not match catalogids of pairname".format(metaFile, ortho_catids))
+            raise MetadataError("xtrack orthos from Image 1/2 in '{}' have Catalog IDs ({})"
+                                " that do not match Catalog IDs of pairname".format(metaFile, ortho_catids))
         # Assume strip pairname is xtrack at this point.
         assert ortho2File is not None, "`ortho2File` is None"
         ortho_catids.reverse()

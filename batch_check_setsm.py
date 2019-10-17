@@ -802,7 +802,7 @@ def checkfile_incomplete(args,
             warnings.warn("Error files were found among source files for a check group")
             if warn_errfile_exists:
                 eprint("Check group {}; {} error files were found among source selection:".format(
-                    checkfile, len(src_raster_errfnames)))
+                    checkfile_root, len(src_raster_errfnames)))
                 for f in sorted(list(src_raster_errfnames)):
                     eprint(f)
             if type(errfile_count) is list and len(errfile_count) == 1:
