@@ -131,16 +131,17 @@ def capture_stdout_stderr():
         out[1] = out[1].getvalue()
 
 
-def exec_cmd(cmd):
+def exec_cmd(cmd, strip_returned_stdout=False, suppress_stdout_in_success=False):
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (so, se) = p.communicate()
     rc = p.wait()
-    print("RETURN CODE: {}".format(rc))
-    if so != '':
+    if rc != 0:
+        print("RETURN CODE: {}".format(rc))
+    if so != '' and (not suppress_stdout_in_success or rc != 0):
         print("STDOUT:\n{}".format(so.rstrip()))
     if se != '':
         print("STDERR:\n{}".format(se.rstrip()))
-    return rc
+    return rc, so.strip() if strip_returned_stdout else so, se
 
 
 def send_email(to_addr, subject, body, from_addr=None):
@@ -160,17 +161,56 @@ class RawTextArgumentDefaultsHelpFormatter(argparse.ArgumentDefaultsHelpFormatte
 
 def argtype_path_handler(path, argstr,
                          abspath_fn=os.path.realpath,
-                         existcheck_fn=None, existcheck_reqval=None):
+                         existcheck_fn=None, existcheck_reqval=None,
+                         accesscheck_reqtrue=None, accesscheck_reqfalse=None):
     path = os.path.expanduser(path)
+    existcheck_fn_desc_dict = {
+        os.path.isfile: 'file',
+        os.path.isdir: 'directory',
+        os.path.exists: 'file/directory'
+    }
+    accesscheck_perm_desc_list = [
+        [os.F_OK, 'existing'],
+        [os.R_OK, 'readable'],
+        [os.W_OK, 'writeable'],
+        [os.X_OK, 'executable']
+    ]
+    pathtype_desc = existcheck_fn_desc_dict[existcheck_fn] if existcheck_fn else 'path'
+    if accesscheck_reqtrue is None:
+        accesscheck_reqtrue = []
+    if accesscheck_reqfalse is None:
+        accesscheck_reqfalse = []
+    if type(accesscheck_reqtrue) not in (set, tuple, list):
+        accesscheck_reqtrue = [accesscheck_reqtrue]
+    if type(accesscheck_reqfalse) not in (set, tuple, list):
+        accesscheck_reqfalse = [accesscheck_reqfalse]
+    accesscheck_reqtrue = set(accesscheck_reqtrue)
+    accesscheck_reqfalse = set(accesscheck_reqfalse)
+    perms_overlap = set(accesscheck_reqtrue).intersection(accesscheck_reqfalse)
+    if len(perms_overlap) > 0:
+        raise DeveloperError("The following permission settings (`os.access` modes)"
+                             " appear in both required True and False lists: {}".format(perms_overlap))
     if existcheck_fn is not None and existcheck_fn(path) != existcheck_reqval:
-        if existcheck_fn is os.path.isfile:
-            existtype_str = 'file'
-        elif existcheck_fn is os.path.isdir:
-            existtype_str = 'directory'
-        elif existcheck_fn is os.path.exists:
-            existtype_str = 'file/directory'
-        existresult_str = 'does not exist' if existcheck_reqval is True else 'already exists'
-        raise ScriptArgumentError("argument {}: {} {}".format(argstr, existtype_str, existresult_str))
+        existresult_desc = 'does not exist' if existcheck_reqval is True else 'already exists'
+        raise ScriptArgumentError("argument {}: {} {}".format(argstr, pathtype_desc, existresult_desc))
+    access_desc_reqtrue_list = [perm_descr for perm, perm_descr in accesscheck_perm_desc_list if perm in accesscheck_reqtrue]
+    access_desc_reqfalse_list = [perm_descr for perm, perm_descr in accesscheck_perm_desc_list if perm in accesscheck_reqfalse]
+    access_desc_reqtrue_err_list = [perm_descr for perm, perm_descr in accesscheck_perm_desc_list if perm in accesscheck_reqtrue and os.access(path, perm) is not True]
+    access_desc_reqfalse_err_list = [perm_descr for perm, perm_descr in accesscheck_perm_desc_list if perm in accesscheck_reqfalse and os.access(path, perm) is not False]
+    if len(access_desc_reqtrue_err_list) > 0 or len(access_desc_reqfalse_err_list) > 0:
+        errmsg = ' '.join([
+            "{} must".format(pathtype_desc),
+            (len(access_desc_reqtrue_list) > 0)*"be ({})".format(' & '.join(access_desc_reqtrue_list)),
+            "and" if (len(access_desc_reqtrue_list) > 0 and len(access_desc_reqfalse_list) > 0) else '',
+            (len(access_desc_reqfalse_list) > 0)*"not be ({})".format(', '.join(access_desc_reqfalse_list)),
+            ", but it",
+            (len(access_desc_reqtrue_err_list) > 0)*"is not ({})".format(', '.join(access_desc_reqtrue_err_list)),
+            "and" if (len(access_desc_reqtrue_err_list) > 0 and len(access_desc_reqfalse_err_list) > 0) else '',
+            (len(access_desc_reqfalse_err_list) > 0)*"is ({})".format(', '.join(access_desc_reqfalse_err_list)),
+        ])
+        errmsg = ' '.join(errmsg.split())
+        errmsg = errmsg.replace(' ,', ',')
+        raise ScriptArgumentError("argument {}: {}".format(argstr, errmsg))
     return abspath_fn(path) if abspath_fn is not None else path
 ARGTYPE_PATH = functools.partial(functools.partial, argtype_path_handler)
 
@@ -248,6 +288,7 @@ def argtype_num_handler(num_str, argstr,
                                 cond_comp, cond_value, 'inclusive' if cond_bound_incl else 'exclusive')
                         input_cond = ' '.join([input_cond, input_cond_range])
                     input_cond = ' '.join(input_cond.split())
+                    input_cond = input_cond.replace(' ,', ',')
                     errmsg = input_cond
     if errmsg is not None:
         raise ScriptArgumentError("argument {}: {}".format(argstr, errmsg))

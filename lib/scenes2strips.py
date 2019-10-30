@@ -968,8 +968,8 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
         if __INTRACK_ORTHO_CATID__ is None:
             __INTRACK_ORTHO_CATID__ = intrack_ortho_catid
         elif intrack_ortho_catid is None or ortho_catids[0] != __INTRACK_ORTHO_CATID__:
-            raise MetadataError("Catalog ID of Image 1 (assumed ortho) is not consistent across"
-                                " scene metadata files for intrack strip")
+            warnings.warn("Catalog ID of Image 1 (assumed ortho) is not consistent across"
+                          " scene metadata files for intrack strip")
     elif ortho_catids[0] != pairname_catids[0]:
         # if ortho_catids[1] is None:
         #     raise MetadataError("Single intrack ortho from Image 1 in '{}' has catalogid ({})"

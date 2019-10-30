@@ -79,6 +79,12 @@ The [3.0 branch of Ian Howat's setsm_postprocessing GitHub repo](https://github.
 #### 3.2
 * Updated the coregistration function to match recent changes to the MATLAB source code. The coregistration function now reports error values for each (x,y,z) component of the returned translation vector. This information will be necessary in future efforts to create a new tile mosaicking process for SETSM DEMs.
 
+#### 4
+When building cross-track ("xtrack") strips:
+* Added requirement that the second scene ortho image exists in source scene pairname folder.
+* For each DEM scene, separate masks will be generated using each of the scene ortho images, and the resulting masks will be combined using logical OR before being written out as the expected single scene mask in the source scene directory.
+* A new *ortho2.tif* second strip ortho image will be created in the output strip pairname folder.
+
 
 ### Turning scenes into strips
 

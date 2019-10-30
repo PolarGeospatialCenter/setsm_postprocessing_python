@@ -35,7 +35,7 @@ from lib.script_utils import ScriptArgumentError, ExternalError
 
 ## Core globals
 
-SCRIPT_VERSION_NUM = 4
+SCRIPT_VERSION_NUM = script_utils.VersionString('4')
 
 # Script paths and execution
 SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
@@ -1056,17 +1056,17 @@ def main():
                     segnum += 1
 
             except:
-                if scene_dfull is not None and sceneMaskSuffix is not None and not args.get(ARGSTR_USE_OLD_MASKS):
-                    src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
-                    if len(src_mask_ffile_glob) > 0:
-                        print("Detected error; deleting incomplete strip results"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                        for f in src_mask_ffile_glob:
-                            cmd = "rm {}".format(f)
-                            print(cmd)
-                            if not args.get(ARGSTR_DRYRUN):
-                                os.remove(f)
+                # if scene_dfull is not None and sceneMaskSuffix is not None and not args.get(ARGSTR_USE_OLD_MASKS):
+                #     src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
+                #     if len(src_mask_ffile_glob) > 0:
+                #         print("Detected error; deleting output scene masks"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                #         for f in src_mask_ffile_glob:
+                #             cmd = "rm {}".format(f)
+                #             print(cmd)
+                #             if not args.get(ARGSTR_DRYRUN):
+                #                 os.remove(f)
                 if strip_dfull is not None:
-                    print("Detected error; deleting incomplete strip results"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                    print("Detected error; deleting incomplete strip output"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
                     for strip_dir in [strip_dfull, strip_dfull_coreg]:
                         if strip_dir is None or not os.path.isdir(strip_dir):
                             continue
@@ -1078,6 +1078,7 @@ def main():
                                 os.remove(f)
                         if not args.get(ARGSTR_OLD_ORG):
                             if not args.get(ARGSTR_DRYRUN):
+                                print("Removing strip output directory: {}".format(strip_dir))
                                 os.rmdir(strip_dir)
                 raise
 
@@ -1266,11 +1267,18 @@ def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
     from lib.filter_scene import BITMASK_VERSION_NUM
 
+    MASK_VER_VERNUM_DICT = {
+        ARGCHO_MASK_VER_MASKV1:  script_utils.VersionString('1'),
+        ARGCHO_MASK_VER_MASKV2:  script_utils.VersionString('1'),
+        ARGCHO_MASK_VER_REMA2A:  script_utils.VersionString('1'),
+        ARGCHO_MASK_VER_MASK8M:  script_utils.VersionString('1'),
+        ARGCHO_MASK_VER_BITMASK: BITMASK_VERSION_NUM
+    }
+
     demSuffix = getDemSuffix(scene_demFnames[0])
     if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
         fp_vertices = fp_vertices.astype(np.int64)
 
-    mask_version = args.get(ARGSTR_MASK_VER)
     nowater, nocloud = args.get(ARGSTR_NOWATER, ARGSTR_NOCLOUD)
     nofilter_coreg = args.get(ARGSTR_NOFILTER_COREG)
 
@@ -1306,9 +1314,10 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
         )
         strip_info += line
 
-        filter_info = "\nFiltering Applied: {} (v{})\n".format(mask_version, BITMASK_VERSION_NUM)
+        filter_info = "\nFiltering Applied: {} (v{})\n".format(
+            args.get(ARGSTR_MASK_VER), MASK_VER_VERNUM_DICT[args.get(ARGSTR_MASK_VER)])
 
-    if mask_version == 'bitmask':
+    if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_BITMASK:
         filter_info += "bit, class, coreg, mosaic\n"
         filter_info_components = (
 """

@@ -183,9 +183,10 @@ ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_STRIPLEVEL = '/'.join([
     'dem_10m.tif/dem_browse.tif'
 ])
 ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META = 'meta.txt'
-ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = "(^[A-Z0-9]{4}_.*?[0-9A-F]{16}_.*?[0-9A-F]{16}_.*?_P[0-9]{3}_.*?_P[0-9]{3}_\d+).*$"
-ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL = "(^[A-Z0-9]{4}_.*?[0-9A-F]{16}_.*?[0-9A-F]{16}).*$"
-ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPSEGMENT = "(^[A-Z0-9]{4}_.*?[0-9A-F]{16}_.*?[0-9A-F]{16}_\d+c?m_seg\d+).*$"
+# ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = "(?P<scenepairname>(?P<strippairname>(?P<sensor>[A-Z0-9]{4})_(?P<timestamp>\d{8})_(?P<catid1>[A-Z0-9]{16})_(?P<catid2>[A-Z0-9]{16}))_(?P<tile1>R\d+C\d+-)?(?P<order1>\d{12}_\d{2})_(?P<part1>P\d{3})_(?P<tile2>R\d+C\d+-)?(?P<order2>\d{12}_\d{2})_(?P<part2>P\d{3})_(?P<res>\d{1}))_(?P<suffix>[_a-z0-9]+)\.(?P<ext>\w+)"
+ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL   = "^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_\d{1})_[a-z0-9_]+\.\w+$"
+ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL   = "^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}).*$"
+ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPSEGMENT = "^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_\d+c?m(_lsf)?_seg\d+)_[a-z0-9_]+\.\w+$"
 
 ARGCHOSET_CHECK_SPECIAL_SETTING_DICT = {
     ARGCHO_CHECK_SPECIAL_ALL_TOGETHER: [
@@ -217,6 +218,14 @@ ARGCHOSET_CHECK_SPECIAL_SETTING_DICT = {
     ARGCHO_CHECK_SPECIAL_STRIPMETA: [
         (ARGSTR_SRC_SUFFIX, ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META),
         (ARGSTR_CHECKFILE_OFF, True),
+    ]
+}
+ARGCHOSET_CHECK_SPECIAL_SUBGROUP_DICT = {
+    ARGCHO_CHECK_SPECIAL_PAIRNAMES: [
+        ARGCHO_CHECK_SPECIAL_SCENEPAIRS
+    ],
+    ARGCHO_CHECK_SPECIAL_STRIPS: [
+        ARGCHO_CHECK_SPECIAL_STRIPSEGMENTS
     ]
 }
 ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT = {
@@ -785,17 +794,63 @@ def checkfile_incomplete(args,
         src_rasters_to_check = True
 
     if src_rasters is not None:
+        check_special_missing_subgroups = [None]
+        if args.get(ARGSTR_CHECK_SPECIAL) is not None and args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOSET_CHECK_SPECIAL_SUBGROUP_DICT:
+            check_special_missing_subgroups = check_special_missing_subgroups + ARGCHOSET_CHECK_SPECIAL_SUBGROUP_DICT[args.get(ARGSTR_CHECK_SPECIAL)]
+
         if type(srcfile_count) is list and len(srcfile_count) == 1:
             srcfile_count[0] = len(src_rasters)
 
-        missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, src_rasters)]
-        if missing_suffixes:
-            warnings.warn("Source file suffixes for a check group were not found")
-            if warn_missing_suffix:
-                eprint("Check group {}; missing the following source file suffixes: {}".format(checkfile_root, missing_suffixes))
-            if type(missing_suffix_flag) is list and len(missing_suffix_flag) == 1:
-                missing_suffix_flag[0] = True
-            delete_files = (delete_files or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX))
+        for check_special_option in check_special_missing_subgroups:
+            if check_special_option is None:
+                cssgroup_ffileroot_srcfname_dict = {checkfile_root: src_rasters}
+                src_suffixes_subgroup = src_suffixes
+            else:
+                cssgroup_ffileroot_srcfname_dict = dict()
+                for check_special_set_argstr, check_special_set_value in ARGCHOSET_CHECK_SPECIAL_SETTING_DICT[check_special_option]:
+                    if check_special_set_argstr == ARGSTR_SRC_SUFFIX:
+                        src_suffixes = [s.strip() for s in check_special_set_value.split('/')]
+                    elif check_special_set_argstr == ARGSTR_CHECKFILE_ROOT_REGEX:
+                        subgroup_root_regex = check_special_set_value
+                        for srcfname in src_rasters:
+                            match = re.match(subgroup_root_regex, srcfname)
+                            if match is None:
+                                eprint("No regex match for check special subgroup {}='{}' setting {}='{}' with filename: {}".format(
+                                    ARGSTR_CHECK_SPECIAL, check_special_option, ARGSTR_CHECKFILE_ROOT_REGEX, subgroup_root_regex.pattern, srcfname
+                                ))
+                            else:
+                                cf_root_name = match.group(1)
+                                cf_root_full = os.path.join(checkfile_dir, cf_root_name)
+                                if cf_root_full not in cssgroup_ffileroot_srcfname_dict:
+                                    cssgroup_ffileroot_srcfname_dict[cf_root_full] = []
+                                cssgroup_ffileroot_srcfname_dict[cf_root_full].append(srcfname)
+                    else:
+                        eprint("No option to handle check special subgroup {}={} setting {}={}, exiting".format(
+                            ARGSTR_CHECK_SPECIAL, check_special_option, check_special_set_argstr, check_special_set_value
+                        ))
+                        sys.exit(1)
+            for checkfile_root_subgroup, src_rasters_subgroup in cssgroup_ffileroot_srcfname_dict.items():
+                if (    (len(src_rasters_subgroup) == 1 and src_rasters_subgroup[0].endswith('meta.txt'))
+                    and (check_special_option is not None and check_special_option == ARGCHO_CHECK_SPECIAL_SCENEPAIRS)):
+                    warnings.warn("Stray metadata file detected in check special 'scene' subgroup."
+                                  " Stray metadata files are ignored for the purpose of flagging"
+                                  " higher-level check special groups as incomplete due to missing suffixes.")
+                    continue
+
+                missing_suffixes = [s for s in src_suffixes_subgroup if not ends_one_of_coll(s, src_rasters_subgroup)]
+                if missing_suffixes:
+                    warnings.warn("Source file suffixes for a check group were not found")
+                    if warn_missing_suffix:
+                        eprint("Check {}group {}; missing the following source file suffixes: {}".format(
+                            "special '{}' sub".format(check_special_option)*(check_special_option is not None),
+                            checkfile_root_subgroup, missing_suffixes
+                        ))
+                    if type(missing_suffix_flag) is list and len(missing_suffix_flag) == 1:
+                        missing_suffix_flag[0] = True
+                    delete_files = (delete_files or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX))
+
+            if missing_suffix_flag[0] and check_special_option is None:
+                break
 
         src_raster_errfnames = [f+errfile_ext for f in src_rasters if os.path.isfile(os.path.join(checkfile_dir, f+errfile_ext))]
         if src_raster_errfnames:

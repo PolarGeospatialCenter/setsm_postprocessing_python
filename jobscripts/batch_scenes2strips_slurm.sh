@@ -42,23 +42,28 @@ fi
 echo ________________________________________
 echo
 echo SLURM Job Log
-echo Start time: `date`
+echo Start time: $(date)
 echo
 echo Submitted by user: $USER
+echo User effective group ID: $(id -ng)
+echo
 echo SLURM account used: $SLURM_ACCOUNT
 echo Hostname of submission: $SLURM_SUBMIT_HOST
-echo
-echo Cluster name: $SLURM_CLUSTER_NAME
-echo Node name: $SLURMD_NODENAME
-echo
-echo CPUs on node: $SLURM_CPUS_ON_NODE
-echo CPUs per task: $SLURM_CPUS_PER_TASK
-echo Time limit: $SBATCH_TIMELIMIT
+echo Submitted to cluster: $SLURM_CLUSTER_NAME
+echo Submitted to node: $SLURMD_NODENAME
+echo Cores on node: $SLURM_CPUS_ON_NODE
+echo Requested cores per task: $SLURM_CPUS_PER_TASK
+echo Requested cores per job: $SLURM_NTASKS
+echo Requested walltime: $SBATCH_TIMELIMIT
+#echo Nodes assigned to job: $SLURM_JOB_NODELIST
+#echo Running node index: $SLURM_NODEID
 echo
 echo Job name: $SLURM_JOB_NAME
 echo Job ID: $SLURM_JOBID
 echo
-echo Hostname: $HOSTNAME
+echo Running on hostname: $HOSTNAME
+echo Parent PID: $PPID
+echo Process PID: $$
 echo
 echo Working directory: $SLURM_SUBMIT_DIR
 echo
@@ -66,20 +71,19 @@ echo Task command: $task_cmd
 echo
 
 # Environment load
-if [ "$env_load_cmd" != "" ]; then
-    echo Environment load command: $env_load_cmd
+if [ -z "$(env | grep '^SPP_ENV_LOAD_CMD=')" ] && [ "$SPP_ENV_LOAD_CMD" != "" ]; then
+    echo Environment load command: $SPP_ENV_LOAD_CMD
     echo
     echo Loading environment
-    eval "$env_load_cmd"
+    eval "$SPP_ENV_LOAD_CMD"
     [ $? -eq 0 ] || exit 1
 fi
 
 # Python version check
 if [ "$py_ver_min" != "" ]; then
     py_ver=$($py_exe -c 'import platform; print(platform.python_version())')
-    IFS='.'
-    read -ra py_ver_nums <<< "$py_ver"
-    read -ra py_ver_min_nums <<< "$py_ver_min"
+    IFS='.' read -ra py_ver_nums <<< "$py_ver"
+    IFS='.' read -ra py_ver_min_nums <<< "$py_ver_min"
     for ((n=0; n < ${#py_ver_nums[*]}; n++)); do
         if [ "${py_ver_nums[n]}" == "" ]; then py_ver_nums[n]=0; fi
         if [ "${py_ver_min_nums[n]}" == "" ]; then py_ver_min_nums[n]=0; fi

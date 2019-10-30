@@ -24,11 +24,13 @@ from batch_scenes2strips import getDemSuffix, getMatchtagSuffix, selectBestMatch
 from testing import TESTDIR
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
+    from script_utils import VersionString
 else:
     from lib import raster_array_tools as rat
+    from lib.script_utils import VersionString
 
 
-BITMASK_VERSION_NUM = 1.2
+BITMASK_VERSION_NUM = VersionString('1.2')
 
 MASK_FLAT = 0
 MASK_SEPARATE = 1

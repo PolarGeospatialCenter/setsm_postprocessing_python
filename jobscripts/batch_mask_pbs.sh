@@ -41,19 +41,27 @@ fi
 echo ________________________________________________________
 echo
 echo PBS Job Log
-echo Start time: `date`
+echo Start time: $(date)
 echo
 echo Submitted by user: $USER
+echo User effective group ID: $(id -ng)
 echo
-echo Server name: $PBS_SERVER
-echo Queue name: $PBS_QUEUE
-echo Node name: $PBS_O_HOST
-echo Node list file: $PBS_NODEFILE
+echo Hostname of submission: $PBS_O_HOST
+echo Submitted to cluster: $PBS_SERVER
+echo Submitted to queue: $PBS_QUEUE
+echo Requested nodes per job: $PBS_NUM_NODES
+echo Requested cores per node: $PBS_NUM_PPN
+echo Requested cores per job: $PBS_NP
+#echo Node list file: $PBS_NODEFILE
+#echo Nodes assigned to job: $(cat $PBS_NODEFILE)
+#echo Running node index: $PBS_O_NODENUM
 echo
 echo Job name: $PBS_JOBNAME
 echo Job ID: $PBS_JOBID
 echo
-echo Hostname: $HOSTNAME
+echo Running on hostname: $HOSTNAME
+echo Parent PID: $PPID
+echo Process PID: $$
 echo
 echo Working directory: $PBS_O_WORKDIR
 echo
@@ -61,20 +69,19 @@ echo Task command: $task_cmd
 echo
 
 # Environment load
-if [ "$env_load_cmd" != "" ]; then
-    echo Environment load command: $env_load_cmd
+if [ -z "$(env | grep '^SPP_ENV_LOAD_CMD=')" ] && [ "$SPP_ENV_LOAD_CMD" != "" ]; then
+    echo Environment load command: $SPP_ENV_LOAD_CMD
     echo
     echo Loading environment
-    eval "$env_load_cmd"
+    eval "$SPP_ENV_LOAD_CMD"
     [ $? -eq 0 ] || exit 1
 fi
 
 # Python version check
 if [ "$py_ver_min" != "" ]; then
     py_ver=$($py_exe -c 'import platform; print(platform.python_version())')
-    IFS='.'
-    read -ra py_ver_nums <<< "$py_ver"
-    read -ra py_ver_min_nums <<< "$py_ver_min"
+    IFS='.' read -ra py_ver_nums <<< "$py_ver"
+    IFS='.' read -ra py_ver_min_nums <<< "$py_ver_min"
     for ((n=0; n < ${#py_ver_nums[*]}; n++)); do
         if [ "${py_ver_nums[n]}" == "" ]; then py_ver_nums[n]=0; fi
         if [ "${py_ver_min_nums[n]}" == "" ]; then py_ver_min_nums[n]=0; fi
