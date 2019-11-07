@@ -94,7 +94,8 @@ def scenes2strips(demFiles,
     from batch_scenes2strips import getDemSuffix, selectBestMatchtag, selectBestOrtho, selectBestOrtho2
     demSuffix = getDemSuffix(demFiles[0])
 
-    cmin = 1000  # Minimum data cluster area for 2m.
+    cluster_min_px = 1000  # Minimum data cluster area for 2m.
+    add_min_px = 50000  # Minimum number of unmasked pixels scene must add to existing segment to not be skipped.
 
     # Order scenes in north-south or east-west direction by aspect ratio.
     num_scenes = len(demFiles)
@@ -181,7 +182,7 @@ def scenes2strips(demFiles,
         x, y, z, m, o, o2, md = applyMasks(x, y, z, m, o, o2, md, filter_options, maskSuffix)
 
         # Check for redundant scene.
-        if np.count_nonzero(~np.isnan(z)) <= cmin:
+        if np.count_nonzero(~np.isnan(z)) <= add_min_px:
             print("Not enough (unmasked) data, skipping")
             skipped_scene = True
             continue
@@ -257,7 +258,7 @@ def scenes2strips(demFiles,
         A = (~np.isnan(Zsub) & ~np.isnan(z))
 
         # Check for segment break.
-        if np.count_nonzero(A) <= cmin:
+        if np.count_nonzero(A) <= cluster_min_px:
             print("Not enough overlap, segment break")
             segment_break = True
             break
@@ -267,18 +268,21 @@ def scenes2strips(demFiles,
         # Make overlap mask removing isolated pixels.
         strip_nodata =  np.isnan(Zsub[r[0]:r[1], c[0]:c[1]])
         scene_data   = ~np.isnan(   z[r[0]:r[1], c[0]:c[1]])
+        strip_mask_water_and_cloud = (MDsub[r[0]:r[1], c[0]:c[1]] > 1)
 
         # Nodata in strip and data in scene is a one.
-        A = rat.bwareaopen(strip_nodata & scene_data, cmin, in_place=True).astype(np.float32)
+        A = rat.bwareaopen(strip_nodata & scene_data, cluster_min_px, in_place=True).astype(np.float32)
 
         # Check for redundant scene.
-        if np.count_nonzero(A) <= cmin:
+        num_px_to_add = np.count_nonzero((A == 1) & ~strip_mask_water_and_cloud)
+        print("Number of unmasked pixels to add to strip: {}".format(num_px_to_add))
+        if num_px_to_add <= add_min_px:
             print("Redundant scene, skipping")
             skipped_scene = True
             continue
 
         # Data in strip and nodata in scene is a two.
-        A[rat.bwareaopen(~strip_nodata & ~scene_data, cmin, in_place=True)] = 2
+        A[rat.bwareaopen(~strip_nodata & ~scene_data, cluster_min_px, in_place=True)] = 2
 
         del strip_nodata, scene_data
 

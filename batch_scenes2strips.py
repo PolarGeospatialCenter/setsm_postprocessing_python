@@ -28,7 +28,7 @@ from datetime import datetime
 import numpy as np
 
 from lib import script_utils
-from lib.script_utils import ScriptArgumentError, ExternalError
+from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgumentError
 
 
 ##############################
@@ -590,7 +590,7 @@ def main():
             stripids_to_process = [
                 sID for sID in stripids if glob.glob(os.path.join(
                     args.get(ARGSTR_SRC),
-                    '{}_{}'.format(sID, res_str)*(not args.get(ARGSTR_OLD_ORG)),
+                    '{}_{}*'.format(sID, res_str)*(not args.get(ARGSTR_OLD_ORG)),
                     '{}*_{}_{}'.format(sID, str(args.get(ARGSTR_RES))[0], demSuffix)
                 ))
             ]
@@ -619,7 +619,7 @@ def main():
             sID for sID in stripids if not os.path.isfile(
                 os.path.join(
                     dstdir,
-                    '{}_{}{}'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG)),
+                    '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG)),
                     '{}_{}{}.fin'.format(
                         sID,
                         res_str,
@@ -662,50 +662,55 @@ def main():
         for sID in stripids_to_process:
             job_num += 1
 
-            strip_dname = '{}_{}{}'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG))
-            strip_dfull = os.path.join(args_batch.get(ARGSTR_DST), strip_dname)
+            strip_dname = '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG))
+            strip_dfull_glob = glob.glob(os.path.join(args_batch.get(ARGSTR_DST), strip_dname))
+            if len(strip_dfull_glob) > 1:
+                raise InvalidArgumentError("Found more than one match for output strip folder in"
+                                           " destination directory with pattern: {}".format(strip_dname))
+            elif len(strip_dfull_glob) == 1:
+                strip_dfull = strip_dfull_glob[0]
 
-            # If output does not already exist, add to task list.
-            stripid_fin_ffile = os.path.join(
-                strip_dfull,
-                '{}_{}{}.fin'.format(
-                    sID,
-                    res_str,
-                    '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
+                # If output does not already exist, add to task list.
+                stripid_fin_ffile = os.path.join(
+                    strip_dfull,
+                    '{}_{}{}.fin'.format(
+                        sID,
+                        res_str,
+                        '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
+                    )
                 )
-            )
-            dst_sID_ffile_glob = glob.glob(os.path.join(
-                strip_dfull,
-                '{}_{}{}_seg*_*'.format(
-                    sID,
-                    res_str,
-                    '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
-                )
-            ))
+                dst_sID_ffile_glob = glob.glob(os.path.join(
+                    strip_dfull,
+                    '{}_{}{}_seg*_*'.format(
+                        sID,
+                        res_str,
+                        '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
+                    )
+                ))
 
-            if os.path.isfile(stripid_fin_ffile):
-                print("{}, {} {} :: ({}) .fin file exists, skipping".format(
-                    job_num, ARGSTR_STRIPID, sID, res_str))
-                continue
-            elif len(dst_sID_ffile_glob) > 0:
-                if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
-                    print("{}, {} {} :: {} ({}) output files exist ".format(
-                        job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
-                          + "(potentially unfinished since no *.fin file), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                    for f in dst_sID_ffile_glob:
-                        cmd = "rm {}".format(f)
-                        print(cmd)
-                        if not args.get(ARGSTR_DRYRUN):
-                            os.remove(f)
-                    if not args.get(ARGSTR_OLD_ORG):
-                        if not args.get(ARGSTR_DRYRUN):
-                            os.rmdir(strip_dfull)
-
-                else:
-                    print("{}, {} {} :: {} ({}) output files exist ".format(
-                        job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
-                          + "(potentially unfinished since no *.fin file), skipping")
+                if os.path.isfile(stripid_fin_ffile):
+                    print("{}, {} {} :: ({}) .fin file exists, skipping".format(
+                        job_num, ARGSTR_STRIPID, sID, res_str))
                     continue
+                elif len(dst_sID_ffile_glob) > 0:
+                    if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
+                        print("{}, {} {} :: {} ({}) output files exist ".format(
+                            job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
+                              + "(potentially unfinished since no *.fin file), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                        for f in dst_sID_ffile_glob:
+                            cmd = "rm {}".format(f)
+                            print(cmd)
+                            if not args.get(ARGSTR_DRYRUN):
+                                os.remove(f)
+                        if not args.get(ARGSTR_OLD_ORG):
+                            if not args.get(ARGSTR_DRYRUN):
+                                os.rmdir(strip_dfull)
+
+                    else:
+                        print("{}, {} {} :: {} ({}) output files exist ".format(
+                            job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
+                              + "(potentially unfinished since no *.fin file), skipping")
+                        continue
 
             if args.get(ARGSTR_REMOVE_INCOMPLETE):
                 continue
@@ -779,9 +784,27 @@ def main():
             else:
                 dstdir_coreg = None
 
-            scene_dname = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)*(not args.get(ARGSTR_OLD_ORG))
-            strip_dname = '{}_{}{}'.format(args.get(ARGSTR_STRIPID), res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG))
-            scene_dfull = os.path.join(args.get(ARGSTR_SRC), scene_dname)
+            if args.get(ARGSTR_OLD_ORG):
+                scene_dfull = args.get(ARGSTR_SRC)
+                scene_dname = ''
+                strip_dname = ''
+            else:
+                scene_dname_root = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)
+
+                scene_dfull_glob = glob.glob(os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*'))
+                if len(scene_dfull_glob) != 1:
+                    raise InvalidArgumentError("Cannot find only one match for input strip folder in"
+                                               " source directory with pattern: {}".format(scene_dname_root+'*'))
+                scene_dfull = scene_dfull_glob[0]
+                scene_dname = os.path.basename(scene_dfull)
+
+                strip_dname = '{}_{}{}{}'.format(
+                    args.get(ARGSTR_STRIPID),
+                    res_str,
+                    '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
+                    scene_dname.replace(scene_dname_root, '')
+                )
+
             strip_dfull = os.path.join(args.get(ARGSTR_DST), strip_dname)
             strip_dfull_coreg = os.path.join(dstdir_coreg, strip_dname) if dstdir_coreg is not None else None
 
