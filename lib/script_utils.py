@@ -15,6 +15,7 @@ import platform
 import smtplib
 import subprocess
 import sys
+import warnings
 from datetime import datetime
 from email.mime.text import MIMEText
 
@@ -129,6 +130,11 @@ def capture_stdout_stderr():
         sys.stdout, sys.stderr = oldout, olderr
         out[0] = out[0].getvalue()
         out[1] = out[1].getvalue()
+
+
+showwarning_stderr = warnings.showwarning
+def showwarning_stdout(message, category, filename, lineno, file=None, line=None):
+    sys.stdout.write(warnings.formatwarning(message, category, filename, lineno))
 
 
 def exec_cmd(cmd, strip_returned_stdout=False, suppress_stdout_in_success=False):

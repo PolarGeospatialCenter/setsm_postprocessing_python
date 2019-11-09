@@ -832,9 +832,11 @@ def checkfile_incomplete(args,
             for checkfile_root_subgroup, src_rasters_subgroup in cssgroup_ffileroot_srcfname_dict.items():
                 if (    (len(src_rasters_subgroup) == 1 and src_rasters_subgroup[0].endswith('meta.txt'))
                     and (check_special_option is not None and check_special_option == ARGCHO_CHECK_SPECIAL_SCENEPAIRS)):
+                    warnings.showwarning = script_utils.showwarning_stdout
                     warnings.warn("Stray metadata file detected in check special 'scene' subgroup."
                                   " Stray metadata files are ignored for the purpose of flagging"
                                   " higher-level check special groups as incomplete due to missing suffixes.")
+                    warnings.showwarning = script_utils.showwarning_stderr
                     continue
 
                 missing_suffixes = [s for s in src_suffixes_subgroup if not ends_one_of_coll(s, src_rasters_subgroup)]
