@@ -8,7 +8,6 @@ import contextlib
 import copy
 import functools
 import math
-import numpy as np
 import operator
 import os
 import platform
@@ -589,6 +588,7 @@ class ArgumentPasser:
 
 
 def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s', task_delim=' '):
+    import numpy as np
     bundle_prefix = os.path.join(dstdir, '{}_{}'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
     jobnum_total = int(math.ceil(len(task_list) / float(tasks_per_bundle)))
     jobnum_fmt = '{:0>'+str(len(str(jobnum_total)))+'}'
@@ -601,7 +601,10 @@ def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s'
     return bundle_file_list
 
 
-def read_task_bundle(bundle_file, args_dtype=np.dtype(str), args_delim=' '):
+def read_task_bundle(bundle_file, args_dtype='numpy_string', args_delim=' '):
+    import numpy as np
+    if args_dtype == 'numpy_string':
+        args_dtype = np.dtype(str)
     task_list = np.loadtxt(bundle_file, dtype=args_dtype, delimiter=args_delim).tolist()
     if type(task_list) is not list:
         task_list = [task_list]

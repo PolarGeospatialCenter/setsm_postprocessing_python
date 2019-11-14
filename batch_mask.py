@@ -21,8 +21,6 @@ import traceback
 import warnings
 from time import sleep
 
-import numpy as np
-
 from lib import script_utils
 from lib.script_utils import ScriptArgumentError
 from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
@@ -772,6 +770,7 @@ def getBitmaskSuffix(bitmaskFile):
 
 
 def get_mask_bitstring(edge, water, cloud):
+    import numpy as np
     maskcomp_state_bit = [
         (MASKCOMP_EDGE_BIT, edge),
         (MASKCOMP_WATER_BIT, water),
@@ -795,6 +794,7 @@ def get_dstFile(rasterFile, args):
 
 
 def mask_rasters(maskFile, suffix_maskval_dict, args):
+    import numpy as np
 
     global SRC_SUFFIX_CATCH_ALL
     nodata_opt = args.get(ARGSTR_DST_NODATA)

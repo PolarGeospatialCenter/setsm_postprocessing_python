@@ -25,8 +25,6 @@ import warnings
 from time import sleep
 from datetime import datetime
 
-import numpy as np
-
 from lib import script_utils
 from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgumentError
 
@@ -737,6 +735,7 @@ def main():
 
 
 def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
+    import numpy as np  # necessary
     from lib.filter_scene import generateMasks
     from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
     from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
@@ -1292,6 +1291,7 @@ def shouldDoMasking(matchFile, mask_name):
 
 def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
                    trans, trans_err, rmse, proj4, fp_vertices, strip_time, args):
+    import numpy as np
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
     from lib.filter_scene import BITMASK_VERSION_NUM
 
@@ -1383,6 +1383,8 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
 
 
 def readStripMeta_stats(metaFile):
+    import numpy as np
+
     metaFile_fp = open(metaFile, 'r')
     try:
         line = metaFile_fp.readline()

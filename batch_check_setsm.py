@@ -27,9 +27,6 @@ if script_utils.PYTHON_VERSION < script_utils.VersionString(3):
 else:
     from io import StringIO
 
-import gdal
-import numpy as np
-
 from lib.script_utils import eprint
 from lib.script_utils import ScriptArgumentError, DeveloperError
 
@@ -352,8 +349,6 @@ del SETSM_META_KEY, SETSM_META_ITEM_RE, SETSM_META_VALUE_RE
 
 ##############################
 
-
-gdal.UseExceptions()
 
 class SETSMMetaParseError(Exception):
     def __init__(self, msg=""):
@@ -1488,6 +1483,10 @@ def main():
 
 
 def check_rasters(raster_ffiles, checkfile, args):
+    import gdal
+    import numpy as np
+    gdal.UseExceptions()
+
     if args.get(ARGSTR_CHECKFILE) is not None:
         checkfile = args.get(ARGSTR_CHECKFILE)
 
