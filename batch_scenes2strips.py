@@ -74,6 +74,7 @@ ARGSTR_USE_OLD_MASKS = '--use-old-masks'
 ARGSTR_OLD_ORG = '--old-org'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
+ARGSTR_SKIP_ORTHO2_ERROR = '--skip-xtrack-missing-ortho2-error'
 
 # Argument choices
 ARGCHO_DEM_TYPE_LSF = 'lsf'
@@ -418,6 +419,15 @@ def argparser_init():
         ])
     )
 
+    parser.add_argument(
+        ARGSTR_SKIP_ORTHO2_ERROR,
+        action='store_true',
+        help=' '.join([
+            "If at least one scene in a cross-track strip is missing the second ortho component raster,",
+            "do not throw an error but instead build the strip as if it were in-track with only one ortho."
+        ])
+    )
+
     return parser
 
 
@@ -754,6 +764,7 @@ def main():
             # Parse arguments in context of strip.
 
             stripid_is_xtrack = args.get(ARGSTR_STRIPID)[1].isdigit()
+            bypass_ortho2 = False
 
             use_old_trans = True if args.get(ARGSTR_META_TRANS_DIR) is not None else False
 
@@ -882,8 +893,12 @@ def main():
                     print("ortho file for {} missing, skipping".format(scenedem_ffile))
                     src_scenefile_missing_flag = True
                 if stripid_is_xtrack and selectBestOrtho2(scenedem_ffile) is None:
-                    print("ortho2 file for {} missing (stripid is xtrack), skipping".format(scenedem_ffile))
-                    src_scenefile_missing_flag = True
+                    print("ortho2 file for {} missing (stripid is xtrack), {}".format(
+                        scenedem_ffile, "bypassing for whole strip" if args.get(ARGSTR_SKIP_ORTHO2_ERROR) else "skipping"))
+                    if args.get(ARGSTR_SKIP_ORTHO2_ERROR):
+                        bypass_ortho2 = True
+                    else:
+                        src_scenefile_missing_flag = True
                 if not os.path.isfile(scenedem_ffile.replace(demSuffix, 'meta.txt')):
                     print("meta file for {} missing, skipping".format(scenedem_ffile))
                     src_scenefile_missing_flag = True
@@ -898,7 +913,7 @@ def main():
                 set([f.replace(demSuffix_opp, demSuffix) for f in src_scenedem_opp_ffile_glob]).difference(
                     set(src_scenedem_ffile_glob)))
             if len(missing_dem_type_ffile) > 0:
-                print("{} DEM version of the following {} DEM scenes does not exist!".format(
+                print("{} DEM version of the following {} DEM scenes does not exist:".format(
                     args.get(ARGSTR_DEM_TYPE), argcho_dem_type_opp))
                 missing_dem_type_ffile.sort()
                 for f in missing_dem_type_ffile:
@@ -948,7 +963,7 @@ def main():
                 print("Filtering {} of {}: {}".format(i, filter_total, scenedem_ffile))
                 if not args.get(ARGSTR_DRYRUN):
                     generateMasks(scenedem_ffile, scene_mask_name, noentropy=args.get(ARGSTR_NOENTROPY),
-                                  save_component_masks=MASK_BIT, use_second_ortho=stripid_is_xtrack,
+                                  save_component_masks=MASK_BIT, use_second_ortho=(stripid_is_xtrack and not bypass_ortho2),
                                   debug_component_masks=DEBUG_NONE, nbit_masks=False)
 
             if not args.get(ARGSTR_DRYRUN):
@@ -1010,7 +1025,7 @@ def main():
                         X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
                             scenedem_fname_remaining,
                             sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF),
-                            use_second_ortho=stripid_is_xtrack)
+                            use_second_ortho=(stripid_is_xtrack and not bypass_ortho2))
                         if X is None:
                             all_data_masked = True
                         coreg_step_attempted = True
@@ -1050,7 +1065,7 @@ def main():
                             sceneMaskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
                             trans_guess=trans, trans_err_guess=trans_err, rmse_guess=rmse,
                             hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans,
-                            use_second_ortho=stripid_is_xtrack)
+                            use_second_ortho=(stripid_is_xtrack and not bypass_ortho2))
                         if X is None:
                             all_data_masked = True
                         if use_old_trans and scenedem_fname_mosaicked != scenedem_fname_coregistered:
