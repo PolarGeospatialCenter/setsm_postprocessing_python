@@ -422,12 +422,6 @@ def argparser_init():
 
 
 def main():
-    from lib.filter_scene import generateMasks
-    from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
-    from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
-    from lib.scenes2strips import scenes2strips
-    from lib.scenes2strips import HOLD_GUESS_OFF, HOLD_GUESS_ALL, HOLD_GUESS_UPDATE_RMSE
-    from batch_mask import get_mask_bitstring
 
     # Invoke argparse argument parsing.
     arg_parser = argparser_init()
@@ -739,412 +733,423 @@ def main():
 
 
     else:
-        error_trace = None
-        sceneMaskSuffix = None
-        dstdir_coreg = None
-        scene_dname = None
-        strip_dname = None
-        scene_dfull = None
-        strip_dfull = None
-        strip_dfull_coreg = None
-        try:
-            ## Process a single strip.
+        run_s2s(args, res_str, argcho_dem_type_opp, demSuffix)
+
+
+def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
+    from lib.filter_scene import generateMasks
+    from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
+    from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
+    from lib.scenes2strips import scenes2strips
+    from lib.scenes2strips import HOLD_GUESS_OFF, HOLD_GUESS_ALL, HOLD_GUESS_UPDATE_RMSE
+    from batch_mask import get_mask_bitstring
+
+    error_trace = None
+    sceneMaskSuffix = None
+    dstdir_coreg = None
+    scene_dname = None
+    strip_dname = None
+    scene_dfull = None
+    strip_dfull = None
+    strip_dfull_coreg = None
+    try:
+        ## Process a single strip.
+        print('')
+
+        # Parse arguments in context of strip.
+
+        stripid_is_xtrack = args.get(ARGSTR_STRIPID)[1].isdigit()
+
+        use_old_trans = True if args.get(ARGSTR_META_TRANS_DIR) is not None else False
+
+        mask_name = 'mask' if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_MASKV2 else args.get(ARGSTR_MASK_VER)
+        scene_mask_name = demSuffix.replace('.tif', '_'+mask_name)
+        strip_mask_name = mask_name
+
+        sceneMaskSuffix = scene_mask_name+'.tif'
+        stripMaskSuffix = strip_mask_name+'.tif'
+        stripDemSuffix = 'dem.tif'
+
+        filter_options_mask = ()
+        if args.get(ARGSTR_NOWATER):
+            filter_options_mask += ('nowater',)
+        if args.get(ARGSTR_NOCLOUD):
+            filter_options_mask += ('nocloud',)
+
+        filter_options_coreg = filter_options_mask if args.get(ARGSTR_NOFILTER_COREG) else ()
+
+        if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
+            dstdir_coreg = os.path.join(
+                os.path.dirname(args.get(ARGSTR_DST)),
+                '{}_coreg_filt{}'.format(
+                    os.path.basename(args.get(ARGSTR_DST)),
+                    get_mask_bitstring(True,
+                                       'nowater' not in filter_options_coreg,
+                                       'nocloud' not in filter_options_coreg)))
+        else:
+            dstdir_coreg = None
+
+        if args.get(ARGSTR_OLD_ORG):
+            scene_dfull = args.get(ARGSTR_SRC)
+            scene_dname = ''
+            strip_dname = ''
+        else:
+            scene_dname_root = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)
+
+            scene_dfull_glob = glob.glob(os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*'))
+            if len(scene_dfull_glob) != 1:
+                raise InvalidArgumentError("Cannot find only one match for input strip folder in"
+                                           " source directory with pattern: {}".format(scene_dname_root+'*'))
+            scene_dfull = scene_dfull_glob[0]
+            scene_dname = os.path.basename(scene_dfull)
+
+            strip_dname = '{}_{}{}{}'.format(
+                args.get(ARGSTR_STRIPID),
+                res_str,
+                '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
+                scene_dname.replace(scene_dname_root, '')
+            )
+
+        strip_dfull = os.path.join(args.get(ARGSTR_DST), strip_dname)
+        strip_dfull_coreg = os.path.join(dstdir_coreg, strip_dname) if dstdir_coreg is not None else None
+
+        # Print arguments for this run.
+        print("stripid: {}".format(args.get(ARGSTR_STRIPID)))
+        print("res: {}".format(res_str))
+        print("src dir: {}".format(args.get(ARGSTR_SRC)))
+        print("dst dir: {}".format(args.get(ARGSTR_DST)))
+        print("scene dir: {}".format(scene_dfull))
+        print("strip dir: {}".format(strip_dfull))
+        print("dst dir for coreg step: {}".format(dstdir_coreg))
+        print("strip dir for coreg step: {}".format(strip_dfull_coreg))
+        print("metadir: {}".format(args.get(ARGSTR_META_TRANS_DIR)))
+        print("dem type: {}".format(args.get(ARGSTR_DEM_TYPE)))
+        print("mask version: {}".format(args.get(ARGSTR_MASK_VER)))
+        print("scene mask name: {}".format(scene_mask_name))
+        print("strip mask name: {}".format(strip_mask_name))
+        print("coreg filter options: {}".format(filter_options_coreg))
+        print("mask filter options: {}".format(filter_options_mask))
+        print("rmse cutoff: {}".format(args.get(ARGSTR_RMSE_CUTOFF)))
+        print("dryrun: {}".format(args.get(ARGSTR_DRYRUN)))
+        print('')
+
+        # Find scene DEMs for this stripid to be merged into strips.
+        src_scenedem_ffile_glob = glob.glob(os.path.join(
+            scene_dfull,
+            '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], demSuffix)))
+        print("Processing strip-pair ID: {}, {} scenes".format(args.get(ARGSTR_STRIPID), len(src_scenedem_ffile_glob)))
+        if not src_scenedem_ffile_glob:
+            print("No scene DEMs found to process, skipping")
+            sys.exit(0)
+        src_scenedem_ffile_glob.sort()
+
+        stripid_fin_fname = '{}_{}{}.fin'.format(
+            args.get(ARGSTR_STRIPID),
+            res_str,
+            '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
+        )
+        stripid_fin_ffile = os.path.join(strip_dfull, stripid_fin_fname)
+        if dstdir_coreg is not None:
+            stripid_fin_ffile_coreg = os.path.join(dstdir_coreg, stripid_fin_fname)
+        else:
+            stripid_fin_ffile_coreg = None
+
+        # Strip output existence check.
+        if os.path.isfile(stripid_fin_ffile):
+            print("{} .fin file exists, strip output finished, skipping".format(stripid_fin_ffile))
+            sys.exit(0)
+        dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, args.get(ARGSTR_STRIPID)+'*'))
+        if len(dstdir_stripFiles) > 0:
+            if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
+                print("Strip output exists (potentially unfinished), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                for f in dstdir_stripFiles:
+                    cmd = "rm {}".format(f)
+                    print(cmd)
+                    if not args.get(ARGSTR_DRYRUN):
+                        os.remove(f)
+                if not args.get(ARGSTR_OLD_ORG):
+                    if not args.get(ARGSTR_DRYRUN):
+                        os.rmdir(strip_dfull)
+
+                if not args.get(ARGSTR_RESTART):
+                    sys.exit(0)
+            else:
+                print("Strip output exists (potentially unfinished), skipping")
+                sys.exit(0)
+
+        # Make sure all DEM component files exist. If missing, skip.
+        src_scenefile_missing_flag = False
+        for scenedem_ffile in src_scenedem_ffile_glob:
+            if selectBestMatchtag(scenedem_ffile) is None:
+                print("matchtag file for {} missing, skipping".format(scenedem_ffile))
+                src_scenefile_missing_flag = True
+            if selectBestOrtho(scenedem_ffile) is None:
+                print("ortho file for {} missing, skipping".format(scenedem_ffile))
+                src_scenefile_missing_flag = True
+            if stripid_is_xtrack and selectBestOrtho2(scenedem_ffile) is None:
+                print("ortho2 file for {} missing (stripid is xtrack), skipping".format(scenedem_ffile))
+                src_scenefile_missing_flag = True
+            if not os.path.isfile(scenedem_ffile.replace(demSuffix, 'meta.txt')):
+                print("meta file for {} missing, skipping".format(scenedem_ffile))
+                src_scenefile_missing_flag = True
+
+        # If working on LSF DEMs, make sure that all DEM scenes for the strip exist in LSF.
+        demSuffix_opp = DEM_TYPE_SUFFIX_DICT[argcho_dem_type_opp]
+        src_scenedem_opp_ffile_glob = glob.glob(os.path.join(
+            scene_dfull,
+            '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], demSuffix_opp)
+        ))
+        missing_dem_type_ffile = list(
+            set([f.replace(demSuffix_opp, demSuffix) for f in src_scenedem_opp_ffile_glob]).difference(
+                set(src_scenedem_ffile_glob)))
+        if len(missing_dem_type_ffile) > 0:
+            print("{} DEM version of the following {} DEM scenes does not exist!".format(
+                args.get(ARGSTR_DEM_TYPE), argcho_dem_type_opp))
+            missing_dem_type_ffile.sort()
+            for f in missing_dem_type_ffile:
+                print(f.replace(demSuffix, demSuffix_opp))
+            print("Skipping this strip")
+            src_scenefile_missing_flag = True
+
+        if src_scenefile_missing_flag:
+            raise FileNotFoundError("Source scene file(s) missing")
+
+        # Clean up old strip results in the coreg folder, if they exist.
+        if strip_dfull_coreg is not None and os.path.isdir(strip_dfull_coreg):
+            dstdir_coreg_stripFiles = glob.glob(os.path.join(strip_dfull_coreg, args.get(ARGSTR_STRIPID)+'*'))
+            if len(dstdir_coreg_stripFiles) > 0:
+                print("Deleting old strip output in dstdir for coreg step"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                for f in dstdir_coreg_stripFiles:
+                    cmd = "rm {}".format(f)
+                    print(cmd)
+                    if not args.get(ARGSTR_DRYRUN):
+                        os.remove(f)
+            if not args.get(ARGSTR_OLD_ORG):
+                if not args.get(ARGSTR_DRYRUN):
+                    os.rmdir(strip_dfull_coreg)
+
+        print('')
+
+        # Filter all scenes in this strip.
+        if args.get(ARGSTR_USE_OLD_MASKS):
+            scenedems_to_filter = [f for f in src_scenedem_ffile_glob if shouldDoMasking(selectBestMatchtag(f), scene_mask_name)]
+        else:
+            src_scenemask_ffile_glob = glob.glob(os.path.join(
+                scene_dfull,
+                '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], sceneMaskSuffix)))
+            if len(src_scenemask_ffile_glob) > 0:
+                print( "Deleting {} existing *_{}.tif scene masks".format(len(src_scenemask_ffile_glob), scene_mask_name)
+                      +" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                for f in src_scenemask_ffile_glob:
+                    cmd = "rm {}".format(f)
+                    print(cmd)
+                    if not args.get(ARGSTR_DRYRUN):
+                        os.remove(f)
+            scenedems_to_filter = src_scenedem_ffile_glob.copy()
+        filter_total = len(scenedems_to_filter)
+        i = 0
+        for scenedem_ffile in scenedems_to_filter:
+            i += 1
+            print("Filtering {} of {}: {}".format(i, filter_total, scenedem_ffile))
+            if not args.get(ARGSTR_DRYRUN):
+                generateMasks(scenedem_ffile, scene_mask_name, noentropy=args.get(ARGSTR_NOENTROPY),
+                              save_component_masks=MASK_BIT, use_second_ortho=stripid_is_xtrack,
+                              debug_component_masks=DEBUG_NONE, nbit_masks=False)
+
+        if not args.get(ARGSTR_DRYRUN):
             print('')
+            print("All *_{}.tif scene masks have been created in source scene directory".format(scene_mask_name))
 
-            # Parse arguments in context of strip.
+        print('')
+        print("Running scenes2strips")
+        print('')
 
-            stripid_is_xtrack = args.get(ARGSTR_STRIPID)[1].isdigit()
+        if args.get(ARGSTR_DRYRUN):
+            print("Exiting dryrun")
+            sys.exit(0)
 
-            use_old_trans = True if args.get(ARGSTR_META_TRANS_DIR) is not None else False
+        ## Mosaic scenes in this strip together.
+        # Output separate segments if there are breaks in overlap.
+        scenedem_fname_remaining = [f for f in src_scenedem_ffile_glob]
+        segnum = 1
+        try:
+            while len(scenedem_fname_remaining) > 0:
 
-            mask_name = 'mask' if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_MASKV2 else args.get(ARGSTR_MASK_VER)
-            scene_mask_name = demSuffix.replace('.tif', '_'+mask_name)
-            strip_mask_name = mask_name
+                print("Building segment {}".format(segnum))
 
-            sceneMaskSuffix = scene_mask_name+'.tif'
-            stripMaskSuffix = strip_mask_name+'.tif'
-            stripDemSuffix = 'dem.tif'
+                coreg_step_attempted = False
+                all_data_masked = False
 
-            filter_options_mask = ()
-            if args.get(ARGSTR_NOWATER):
-                filter_options_mask += ('nowater',)
-            if args.get(ARGSTR_NOCLOUD):
-                filter_options_mask += ('nocloud',)
-
-            filter_options_coreg = filter_options_mask if args.get(ARGSTR_NOFILTER_COREG) else ()
-
-            if args.get(ARGSTR_SAVE_COREG_STEP) != ARGCHO_SAVE_COREG_STEP_OFF:
-                dstdir_coreg = os.path.join(
-                    os.path.dirname(args.get(ARGSTR_DST)),
-                    '{}_coreg_filt{}'.format(
-                        os.path.basename(args.get(ARGSTR_DST)),
-                        get_mask_bitstring(True,
-                                           'nowater' not in filter_options_coreg,
-                                           'nocloud' not in filter_options_coreg)))
-            else:
-                dstdir_coreg = None
-
-            if args.get(ARGSTR_OLD_ORG):
-                scene_dfull = args.get(ARGSTR_SRC)
-                scene_dname = ''
-                strip_dname = ''
-            else:
-                scene_dname_root = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)
-
-                scene_dfull_glob = glob.glob(os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*'))
-                if len(scene_dfull_glob) != 1:
-                    raise InvalidArgumentError("Cannot find only one match for input strip folder in"
-                                               " source directory with pattern: {}".format(scene_dname_root+'*'))
-                scene_dfull = scene_dfull_glob[0]
-                scene_dname = os.path.basename(scene_dfull)
-
-                strip_dname = '{}_{}{}{}'.format(
+                # Determine output strip segment DEM file paths.
+                stripdem_fname = "{}_{}{}_seg{}_{}".format(
                     args.get(ARGSTR_STRIPID),
                     res_str,
                     '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
-                    scene_dname.replace(scene_dname_root, '')
+                    segnum,
+                    stripDemSuffix
                 )
-
-            strip_dfull = os.path.join(args.get(ARGSTR_DST), strip_dname)
-            strip_dfull_coreg = os.path.join(dstdir_coreg, strip_dname) if dstdir_coreg is not None else None
-
-            # Print arguments for this run.
-            print("stripid: {}".format(args.get(ARGSTR_STRIPID)))
-            print("res: {}".format(res_str))
-            print("src dir: {}".format(args.get(ARGSTR_SRC)))
-            print("dst dir: {}".format(args.get(ARGSTR_DST)))
-            print("scene dir: {}".format(scene_dfull))
-            print("strip dir: {}".format(strip_dfull))
-            print("dst dir for coreg step: {}".format(dstdir_coreg))
-            print("strip dir for coreg step: {}".format(strip_dfull_coreg))
-            print("metadir: {}".format(args.get(ARGSTR_META_TRANS_DIR)))
-            print("dem type: {}".format(args.get(ARGSTR_DEM_TYPE)))
-            print("mask version: {}".format(args.get(ARGSTR_MASK_VER)))
-            print("scene mask name: {}".format(scene_mask_name))
-            print("strip mask name: {}".format(strip_mask_name))
-            print("coreg filter options: {}".format(filter_options_coreg))
-            print("mask filter options: {}".format(filter_options_mask))
-            print("rmse cutoff: {}".format(args.get(ARGSTR_RMSE_CUTOFF)))
-            print("dryrun: {}".format(args.get(ARGSTR_DRYRUN)))
-            print('')
-
-            # Find scene DEMs for this stripid to be merged into strips.
-            src_scenedem_ffile_glob = glob.glob(os.path.join(
-                scene_dfull,
-                '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], demSuffix)))
-            print("Processing strip-pair ID: {}, {} scenes".format(args.get(ARGSTR_STRIPID), len(src_scenedem_ffile_glob)))
-            if not src_scenedem_ffile_glob:
-                print("No scene DEMs found to process, skipping")
-                sys.exit(0)
-            src_scenedem_ffile_glob.sort()
-
-            stripid_fin_fname = '{}_{}{}.fin'.format(
-                args.get(ARGSTR_STRIPID),
-                res_str,
-                '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
-            )
-            stripid_fin_ffile = os.path.join(strip_dfull, stripid_fin_fname)
-            if dstdir_coreg is not None:
-                stripid_fin_ffile_coreg = os.path.join(dstdir_coreg, stripid_fin_fname)
-            else:
-                stripid_fin_ffile_coreg = None
-
-            # Strip output existence check.
-            if os.path.isfile(stripid_fin_ffile):
-                print("{} .fin file exists, strip output finished, skipping".format(stripid_fin_ffile))
-                sys.exit(0)
-            dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, args.get(ARGSTR_STRIPID)+'*'))
-            if len(dstdir_stripFiles) > 0:
-                if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
-                    print("Strip output exists (potentially unfinished), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                    for f in dstdir_stripFiles:
-                        cmd = "rm {}".format(f)
-                        print(cmd)
-                        if not args.get(ARGSTR_DRYRUN):
-                            os.remove(f)
-                    if not args.get(ARGSTR_OLD_ORG):
-                        if not args.get(ARGSTR_DRYRUN):
-                            os.rmdir(strip_dfull)
-
-                    if not args.get(ARGSTR_RESTART):
-                        sys.exit(0)
-                else:
-                    print("Strip output exists (potentially unfinished), skipping")
-                    sys.exit(0)
-
-            # Make sure all DEM component files exist. If missing, skip.
-            src_scenefile_missing_flag = False
-            for scenedem_ffile in src_scenedem_ffile_glob:
-                if selectBestMatchtag(scenedem_ffile) is None:
-                    print("matchtag file for {} missing, skipping".format(scenedem_ffile))
-                    src_scenefile_missing_flag = True
-                if selectBestOrtho(scenedem_ffile) is None:
-                    print("ortho file for {} missing, skipping".format(scenedem_ffile))
-                    src_scenefile_missing_flag = True
-                if stripid_is_xtrack and selectBestOrtho2(scenedem_ffile) is None:
-                    print("ortho2 file for {} missing (stripid is xtrack), skipping".format(scenedem_ffile))
-                    src_scenefile_missing_flag = True
-                if not os.path.isfile(scenedem_ffile.replace(demSuffix, 'meta.txt')):
-                    print("meta file for {} missing, skipping".format(scenedem_ffile))
-                    src_scenefile_missing_flag = True
-
-            # If working on LSF DEMs, make sure that all DEM scenes for the strip exist in LSF.
-            demSuffix_opp = DEM_TYPE_SUFFIX_DICT[argcho_dem_type_opp]
-            src_scenedem_opp_ffile_glob = glob.glob(os.path.join(
-                scene_dfull,
-                '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], demSuffix_opp)
-            ))
-            missing_dem_type_ffile = list(
-                set([f.replace(demSuffix_opp, demSuffix) for f in src_scenedem_opp_ffile_glob]).difference(
-                    set(src_scenedem_ffile_glob)))
-            if len(missing_dem_type_ffile) > 0:
-                print("{} DEM version of the following {} DEM scenes does not exist!".format(
-                    args.get(ARGSTR_DEM_TYPE), argcho_dem_type_opp))
-                missing_dem_type_ffile.sort()
-                for f in missing_dem_type_ffile:
-                    print(f.replace(demSuffix, demSuffix_opp))
-                print("Skipping this strip")
-                src_scenefile_missing_flag = True
-
-            if src_scenefile_missing_flag:
-                raise FileNotFoundError("Source scene file(s) missing")
-
-            # Clean up old strip results in the coreg folder, if they exist.
-            if strip_dfull_coreg is not None and os.path.isdir(strip_dfull_coreg):
-                dstdir_coreg_stripFiles = glob.glob(os.path.join(strip_dfull_coreg, args.get(ARGSTR_STRIPID)+'*'))
-                if len(dstdir_coreg_stripFiles) > 0:
-                    print("Deleting old strip output in dstdir for coreg step"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                    for f in dstdir_coreg_stripFiles:
-                        cmd = "rm {}".format(f)
-                        print(cmd)
-                        if not args.get(ARGSTR_DRYRUN):
-                            os.remove(f)
+                stripdem_ffile = os.path.join(strip_dfull, stripdem_fname)
                 if not args.get(ARGSTR_OLD_ORG):
-                    if not args.get(ARGSTR_DRYRUN):
-                        os.rmdir(strip_dfull_coreg)
-
-            print('')
-
-            # Filter all scenes in this strip.
-            if args.get(ARGSTR_USE_OLD_MASKS):
-                scenedems_to_filter = [f for f in src_scenedem_ffile_glob if shouldDoMasking(selectBestMatchtag(f), scene_mask_name)]
-            else:
-                src_scenemask_ffile_glob = glob.glob(os.path.join(
-                    scene_dfull,
-                    '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], sceneMaskSuffix)))
-                if len(src_scenemask_ffile_glob) > 0:
-                    print( "Deleting {} existing *_{}.tif scene masks".format(len(src_scenemask_ffile_glob), scene_mask_name)
-                          +" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                    for f in src_scenemask_ffile_glob:
-                        cmd = "rm {}".format(f)
-                        print(cmd)
-                        if not args.get(ARGSTR_DRYRUN):
-                            os.remove(f)
-                scenedems_to_filter = src_scenedem_ffile_glob.copy()
-            filter_total = len(scenedems_to_filter)
-            i = 0
-            for scenedem_ffile in scenedems_to_filter:
-                i += 1
-                print("Filtering {} of {}: {}".format(i, filter_total, scenedem_ffile))
-                if not args.get(ARGSTR_DRYRUN):
-                    generateMasks(scenedem_ffile, scene_mask_name, noentropy=args.get(ARGSTR_NOENTROPY),
-                                  save_component_masks=MASK_BIT, use_second_ortho=stripid_is_xtrack,
-                                  debug_component_masks=DEBUG_NONE, nbit_masks=False)
-
-            if not args.get(ARGSTR_DRYRUN):
-                print('')
-                print("All *_{}.tif scene masks have been created in source scene directory".format(scene_mask_name))
-
-            print('')
-            print("Running scenes2strips")
-            print('')
-
-            if args.get(ARGSTR_DRYRUN):
-                print("Exiting dryrun")
-                sys.exit(0)
-
-            ## Mosaic scenes in this strip together.
-            # Output separate segments if there are breaks in overlap.
-            scenedem_fname_remaining = [f for f in src_scenedem_ffile_glob]
-            segnum = 1
-            try:
-                while len(scenedem_fname_remaining) > 0:
-
-                    print("Building segment {}".format(segnum))
-
-                    coreg_step_attempted = False
-                    all_data_masked = False
-
-                    # Determine output strip segment DEM file paths.
-                    stripdem_fname = "{}_{}{}_seg{}_{}".format(
-                        args.get(ARGSTR_STRIPID),
-                        res_str,
-                        '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
-                        segnum,
-                        stripDemSuffix
-                    )
-                    stripdem_ffile = os.path.join(strip_dfull, stripdem_fname)
+                    if not os.path.isdir(strip_dfull):
+                        os.makedirs(strip_dfull)
+                if dstdir_coreg is not None:
+                    stripdem_ffile_coreg = os.path.join(strip_dfull_coreg, stripdem_fname)
                     if not args.get(ARGSTR_OLD_ORG):
-                        if not os.path.isdir(strip_dfull):
-                            os.makedirs(strip_dfull)
-                    if dstdir_coreg is not None:
-                        stripdem_ffile_coreg = os.path.join(strip_dfull_coreg, stripdem_fname)
-                        if not args.get(ARGSTR_OLD_ORG):
-                            if not os.path.isdir(strip_dfull_coreg):
-                                os.makedirs(strip_dfull_coreg)
+                        if not os.path.isdir(strip_dfull_coreg):
+                            os.makedirs(strip_dfull_coreg)
 
 
-                    ## COREGISTER/mosaic scenes in this strip segment.
-                    if use_old_trans:
-                        # Attempt to parse RMSE and translation vector from
-                        # strip metadata text file from prior strip creation.
-                        stripmeta_ffile_old = os.path.join(args.get(ARGSTR_META_TRANS_DIR),
-                                                           stripdem_fname.replace(stripDemSuffix, 'meta.txt'))
-                        scenedem_fname_coregistered, rmse, trans, trans_err = readStripMeta_stats(stripmeta_ffile_old)
-                        if not set(scenedem_fname_coregistered).issubset(set(scenedem_fname_remaining)):
-                            print("Current source DEMs do not include source DEMs referenced in old strip meta file")
-                            use_old_trans = False
-                    else:
-                        print("Running s2s with coregistration filter options: {}".format(
-                            ', '.join(filter_options_coreg) if filter_options_coreg else None))
-                        X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
-                            scenedem_fname_remaining,
-                            sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF),
-                            use_second_ortho=stripid_is_xtrack)
-                        if X is None:
-                            all_data_masked = True
-                        coreg_step_attempted = True
+                ## COREGISTER/mosaic scenes in this strip segment.
+                if use_old_trans:
+                    # Attempt to parse RMSE and translation vector from
+                    # strip metadata text file from prior strip creation.
+                    stripmeta_ffile_old = os.path.join(args.get(ARGSTR_META_TRANS_DIR),
+                                                       stripdem_fname.replace(stripDemSuffix, 'meta.txt'))
+                    scenedem_fname_coregistered, rmse, trans, trans_err = readStripMeta_stats(stripmeta_ffile_old)
+                    if not set(scenedem_fname_coregistered).issubset(set(scenedem_fname_remaining)):
+                        print("Current source DEMs do not include source DEMs referenced in old strip meta file")
+                        use_old_trans = False
+                else:
+                    print("Running s2s with coregistration filter options: {}".format(
+                        ', '.join(filter_options_coreg) if filter_options_coreg else None))
+                    X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
+                        scenedem_fname_remaining,
+                        sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF),
+                        use_second_ortho=stripid_is_xtrack)
+                    if X is None:
+                        all_data_masked = True
+                    coreg_step_attempted = True
 
 
-                    if (   (filter_options_mask == filter_options_coreg and not use_old_trans)
-                        or all_data_masked):
-                        # No need to run second pass of scenes2strips.
-                        scenedem_fname_mosaicked = scenedem_fname_coregistered
+                if (   (filter_options_mask == filter_options_coreg and not use_old_trans)
+                    or all_data_masked):
+                    # No need to run second pass of scenes2strips.
+                    scenedem_fname_mosaicked = scenedem_fname_coregistered
 
-                    else:
-                        ## Apply translation vector values to MOSAIC scenes in this strip segment.
+                else:
+                    ## Apply translation vector values to MOSAIC scenes in this strip segment.
 
-                        print("Running s2s with masking filter options: {}".format(
-                            ', '.join(filter_options_mask) if filter_options_mask else None))
+                    print("Running s2s with masking filter options: {}".format(
+                        ', '.join(filter_options_mask) if filter_options_mask else None))
 
-                        if coreg_step_attempted:
-                            if dstdir_coreg is not None:
-                                if not os.path.isdir(dstdir_coreg):
-                                    print("Creating dstdir for coreg step directory: {}".format(dstdir_coreg))
-                                    os.makedirs(dstdir_coreg)
-                                print("Saving output from coregistration step")
-                                if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
-                                    saveStripMeta(stripdem_ffile_coreg, stripDemSuffix,
-                                                  X, Y, Z, trans, trans_err, rmse, spat_ref,
-                                                  scene_dfull, scenedem_fname_coregistered, args)
-                                if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
-                                    saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
-                                                     X, Y, Z, M, O, O2, MD, spat_ref)
-                                    if not args.get(ARGSTR_HILLSHADE_OFF):
-                                        saveStripBrowse(stripdem_ffile_coreg, stripDemSuffix)
-                            del X, Y, Z, M, O, O2, MD
-                            gc.collect()
+                    if coreg_step_attempted:
+                        if dstdir_coreg is not None:
+                            if not os.path.isdir(dstdir_coreg):
+                                print("Creating dstdir for coreg step directory: {}".format(dstdir_coreg))
+                                os.makedirs(dstdir_coreg)
+                            print("Saving output from coregistration step")
+                            if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
+                                saveStripMeta(stripdem_ffile_coreg, stripDemSuffix,
+                                              X, Y, Z, trans, trans_err, rmse, spat_ref,
+                                              scene_dfull, scenedem_fname_coregistered, args)
+                            if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
+                                saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
+                                                 X, Y, Z, M, O, O2, MD, spat_ref)
+                                if not args.get(ARGSTR_HILLSHADE_OFF):
+                                    saveStripBrowse(stripdem_ffile_coreg, stripDemSuffix)
+                        del X, Y, Z, M, O, O2, MD
+                        gc.collect()
 
-                        X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_mosaicked, spat_ref = scenes2strips(
-                            scenedem_fname_coregistered.copy(),
-                            sceneMaskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
-                            trans_guess=trans, trans_err_guess=trans_err, rmse_guess=rmse,
-                            hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans,
-                            use_second_ortho=stripid_is_xtrack)
-                        if X is None:
-                            all_data_masked = True
-                        if use_old_trans and scenedem_fname_mosaicked != scenedem_fname_coregistered:
-                            print("Current strip segmentation does not match that found in old strip meta file")
-                            print("Rerunning s2s to get new coregistration translation values")
-                            use_old_trans = False
-                            continue
-
-
-                    scenedem_fname_remaining = list(set(scenedem_fname_remaining).difference(set(scenedem_fname_mosaicked)))
-                    if all_data_masked:
+                    X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_mosaicked, spat_ref = scenes2strips(
+                        scenedem_fname_coregistered.copy(),
+                        sceneMaskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
+                        trans_guess=trans, trans_err_guess=trans_err, rmse_guess=rmse,
+                        hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans,
+                        use_second_ortho=stripid_is_xtrack)
+                    if X is None:
+                        all_data_masked = True
+                    if use_old_trans and scenedem_fname_mosaicked != scenedem_fname_coregistered:
+                        print("Current strip segmentation does not match that found in old strip meta file")
+                        print("Rerunning s2s to get new coregistration translation values")
+                        use_old_trans = False
                         continue
 
 
-                    print("Writing output strip segment with DEM: {}".format(stripdem_ffile))
-
-                    saveStripMeta(stripdem_ffile, stripDemSuffix,
-                                  X, Y, Z, trans, trans_err, rmse, spat_ref,
-                                  scene_dfull, scenedem_fname_mosaicked, args)
-                    saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
-                                     X, Y, Z, M, O, O2, MD, spat_ref)
-                    if not args.get(ARGSTR_HILLSHADE_OFF):
-                        saveStripBrowse(stripdem_ffile, stripDemSuffix)
-                    del X, Y, Z, M, O, O2, MD
-
-                    segnum += 1
-
-            except:
-                # if scene_dfull is not None and sceneMaskSuffix is not None and not args.get(ARGSTR_USE_OLD_MASKS):
-                #     src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
-                #     if len(src_mask_ffile_glob) > 0:
-                #         print("Detected error; deleting output scene masks"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                #         for f in src_mask_ffile_glob:
-                #             cmd = "rm {}".format(f)
-                #             print(cmd)
-                #             if not args.get(ARGSTR_DRYRUN):
-                #                 os.remove(f)
-                if strip_dfull is not None:
-                    print("Detected error; deleting incomplete strip output"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                    for strip_dir in [strip_dfull, strip_dfull_coreg]:
-                        if strip_dir is None or not os.path.isdir(strip_dir):
-                            continue
-                        dst_strip_ffile_glob = sorted(glob.glob(os.path.join(strip_dir, args.get(ARGSTR_STRIPID))+'*'))
-                        for f in dst_strip_ffile_glob:
-                            cmd = "rm {}".format(f)
-                            print(cmd)
-                            if not args.get(ARGSTR_DRYRUN):
-                                os.remove(f)
-                        if not args.get(ARGSTR_OLD_ORG):
-                            if not args.get(ARGSTR_DRYRUN):
-                                print("Removing strip output directory: {}".format(strip_dir))
-                                os.rmdir(strip_dir)
-                raise
-
-            print('')
-            print("Completed processing for this strip-pair ID")
-
-            with open(stripid_fin_ffile, 'w') as stripid_fin_fp:
-                for scenedem_ffile in src_scenedem_ffile_glob:
-                    stripid_fin_fp.write(os.path.basename(scenedem_ffile)+'\n')
-
-            if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
-                with open(stripid_fin_ffile_coreg, 'w') as stripid_fin_coreg_fp:
-                    for scenedem_ffile in src_scenedem_ffile_glob:
-                        stripid_fin_coreg_fp.write(os.path.basename(scenedem_ffile)+'\n')
-
-            print(".fin finished indicator file created: {}".format(stripid_fin_ffile))
-            print('')
+                scenedem_fname_remaining = list(set(scenedem_fname_remaining).difference(set(scenedem_fname_mosaicked)))
+                if all_data_masked:
+                    continue
 
 
-        except KeyboardInterrupt:
-            raise
+                print("Writing output strip segment with DEM: {}".format(stripdem_ffile))
 
+                saveStripMeta(stripdem_ffile, stripDemSuffix,
+                              X, Y, Z, trans, trans_err, rmse, spat_ref,
+                              scene_dfull, scenedem_fname_mosaicked, args)
+                saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
+                                 X, Y, Z, M, O, O2, MD, spat_ref)
+                if not args.get(ARGSTR_HILLSHADE_OFF):
+                    saveStripBrowse(stripdem_ffile, stripDemSuffix)
+                del X, Y, Z, M, O, O2, MD
+
+                segnum += 1
 
         except:
-            with script_utils.capture_stdout_stderr() as out:
-                traceback.print_exc()
-            caught_out, caught_err = out
-            error_trace = caught_err
-            print(error_trace)
+            # if scene_dfull is not None and sceneMaskSuffix is not None and not args.get(ARGSTR_USE_OLD_MASKS):
+            #     src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
+            #     if len(src_mask_ffile_glob) > 0:
+            #         print("Detected error; deleting output scene masks"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+            #         for f in src_mask_ffile_glob:
+            #             cmd = "rm {}".format(f)
+            #             print(cmd)
+            #             if not args.get(ARGSTR_DRYRUN):
+            #                 os.remove(f)
+            if strip_dfull is not None:
+                print("Detected error; deleting incomplete strip output"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                for strip_dir in [strip_dfull, strip_dfull_coreg]:
+                    if strip_dir is None or not os.path.isdir(strip_dir):
+                        continue
+                    dst_strip_ffile_glob = sorted(glob.glob(os.path.join(strip_dir, args.get(ARGSTR_STRIPID))+'*'))
+                    for f in dst_strip_ffile_glob:
+                        cmd = "rm {}".format(f)
+                        print(cmd)
+                        if not args.get(ARGSTR_DRYRUN):
+                            os.remove(f)
+                    if not args.get(ARGSTR_OLD_ORG):
+                        if not args.get(ARGSTR_DRYRUN):
+                            print("Removing strip output directory: {}".format(strip_dir))
+                            os.rmdir(strip_dir)
+            raise
 
-        if type(args.get(ARGSTR_EMAIL)) is str:
-            # Send email notification of script completion.
-            email_body = SCRIPT_RUNCMD
-            if error_trace is not None:
-                email_status = "ERROR"
-                email_body += "\n{}\n".format(error_trace)
-            else:
-                email_status = "COMPLETE"
-            email_subj = "{} - {}".format(email_status, SCRIPT_FNAME)
-            script_utils.send_email(args.get(ARGSTR_EMAIL), email_subj, email_body)
+        print('')
+        print("Completed processing for this strip-pair ID")
 
+        with open(stripid_fin_ffile, 'w') as stripid_fin_fp:
+            for scenedem_ffile in src_scenedem_ffile_glob:
+                stripid_fin_fp.write(os.path.basename(scenedem_ffile)+'\n')
+
+        if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
+            with open(stripid_fin_ffile_coreg, 'w') as stripid_fin_coreg_fp:
+                for scenedem_ffile in src_scenedem_ffile_glob:
+                    stripid_fin_coreg_fp.write(os.path.basename(scenedem_ffile)+'\n')
+
+        print(".fin finished indicator file created: {}".format(stripid_fin_ffile))
+        print('')
+
+
+    except KeyboardInterrupt:
+        raise
+
+
+    except:
+        with script_utils.capture_stdout_stderr() as out:
+            traceback.print_exc()
+        caught_out, caught_err = out
+        error_trace = caught_err
+        print(error_trace)
+
+    if type(args.get(ARGSTR_EMAIL)) is str:
+        # Send email notification of script completion.
+        email_body = SCRIPT_RUNCMD
         if error_trace is not None:
-            sys.exit(1)
+            email_status = "ERROR"
+            email_body += "\n{}\n".format(error_trace)
+        else:
+            email_status = "COMPLETE"
+        email_subj = "{} - {}".format(email_status, SCRIPT_FNAME)
+        script_utils.send_email(args.get(ARGSTR_EMAIL), email_subj, email_body)
+
+    if error_trace is not None:
+        sys.exit(1)
 
 
 def saveStripMeta(strip_demFile, demSuffix,
