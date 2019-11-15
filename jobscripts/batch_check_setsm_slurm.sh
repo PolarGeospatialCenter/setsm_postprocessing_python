@@ -10,9 +10,9 @@
 #CONDOPT_SBATCH --mail-user=%EMAIL IF type(%EMAIL) is str
 
 # Load environment specific to jobscript
-#env_load_cmd="module load mod_name"  # example load system module
-#env_load_cmd="source /path/to/env_root/bin/activate"  # example load virtual environment
-#env_load_cmd="conda activate env_name"  # example load conda environment
+#SPP_ENV_LOAD_CMD="module load mod_name"  # example load system module
+#SPP_ENV_LOAD_CMD="source /path/to/env_root/bin/activate"  # example load virtual environment
+#SPP_ENV_LOAD_CMD="conda activate env_name"  # example load conda environment
 
 ## Expected environment variables (passed with -v argument)
 # p1 :: task command
