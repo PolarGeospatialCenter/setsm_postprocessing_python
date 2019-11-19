@@ -14,6 +14,7 @@ import platform
 import smtplib
 import subprocess
 import sys
+import time
 import warnings
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -495,28 +496,63 @@ class ArgumentPasser:
     def get_cmd(self):
         return self.cmd
 
-    def get_jobsubmit_cmd(self, scheduler, jobscript, jobname, *jobscript_subs):
-        if not os.path.isfile(jobscript):
-            raise InvalidArgumentError('`jobscript` file does not exist: {}'.format(jobscript))
-
+    def get_jobsubmit_cmd(self, scheduler,
+                          jobscript=None, jobname=None,
+                          time_hr=None, time_min=None, time_sec=None,
+                          memory_gb=None, node=None, email=None,
+                          envvars=None):
         cmd = None
+        cmd_envvars = None
         jobscript_optkey = None
 
+        total_sec = 0
+        if time_hr is not None:
+            total_sec += time_hr*3600
+        if time_min is not None:
+            total_sec += time_min*60
+        if time_sec is not None:
+            total_sec += time_sec
+
+        if total_sec == 0:
+            time_hms = None
+        else:
+            m, s = divmod(total_sec, 60)
+            h, m = divmod(m, 60)
+            time_hms = '{:d}:{:02d}:{:02d}'.format(h, m, s)
+
+        if envvars is not None:
+            if type(envvars) in (tuple, list):
+                cmd_envvars = ','.join(['p{}="{}"'.format(i, a) for i, a in enumerate(envvars)])
+            elif type(envvars) == dict:
+                cmd_envvars = ','.join(['{}="{}"'.format(var_name, var_val) for var_name, var_val in envvars.items()])
+
         if scheduler == SCHED_PBS:
-            cmd = 'qsub'
+            cmd = ' '.join([
+                'qsub',
+                "-N {}".format(jobname) * (jobname is not None),
+                "-l {}".format(
+                    ','.join([
+                        "nodes={}".format(node) if node is not None else '',
+                        "walltime={}".format(time_hms) if time_hms is not None else '',
+                        "mem={}gb".format(memory_gb) if memory_gb is not None else ''
+                    ]).strip(',')
+                ) if (time_hms is not None and memory_gb is not None) else '',
+                "-v {}".format(cmd_envvars) if cmd_envvars is not None else ''
+                "-m ae" if email else ''
+            ])
             jobscript_optkey = '#PBS'
-            if jobscript_subs is not None:
-                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs) if a is not None])
-                cmd = r'{} -v {}'.format(cmd, cmd_subs)
-            cmd = r'{} -N {}'.format(cmd, jobname)
 
         elif scheduler == SCHED_SLURM:
-            cmd = 'sbatch'
+            cmd = ' '.join([
+                'sbatch',
+                "--job-name {}".format(jobname) if jobname is not None else '',
+                "--time {}".format(time_hms) if time_hms is not None else '',
+                "--mem {}G".format(memory_gb) if memory_gb is not None else '',
+                "-v {}".format(cmd_envvars) if cmd_envvars is not None else ''
+                "--mail-type FAIL,END" if email else '',
+                "--mail-user {}".format(email) if type(email) is str else None
+            ])
             jobscript_optkey = '#SBATCH'
-            if jobscript_subs is not None:
-                cmd_subs = ','.join(['p{}="{}"'.format(i+1, a) for i, a in enumerate(jobscript_subs) if a is not None])
-                cmd = r'{} --export={}'.format(cmd, cmd_subs)
-            cmd = r'{} -J {}'.format(cmd, jobname)
 
         if jobscript_optkey is not None:
             jobscript_condoptkey = jobscript_optkey.replace('#', '#CONDOPT_')

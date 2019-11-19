@@ -128,8 +128,9 @@ ARGGRP_UNFILTERED = [ARGSTR_NOWATER, ARGSTR_NOCLOUD]
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
-JOBSCRIPT_INIT_FILE = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
+JOB_WALLTIME_HR = 40
+JOB_MEMORY_GB = 30
 
 ##############################
 
@@ -478,10 +479,8 @@ def main():
         print("via provided argument {}, arguments {} set automatically".format(ARGSTR_UNFILTERED, ARGGRP_UNFILTERED))
 
     if args.get(ARGSTR_SCHEDULER) is not None:
-        jobscript_use_init = (args.get(ARGSTR_JOBSCRIPT) is None)
         if args.get(ARGSTR_JOBSCRIPT) is None:
-            jobscript_default = os.path.join(JOBSCRIPT_DIR,
-                                             '{}_{}.sh'.format(SCRIPT_NAME, args.get(ARGSTR_SCHEDULER)))
+            jobscript_default = os.path.join(JOBSCRIPT_DIR, 'head_{}.sh'.format(args.get(ARGSTR_SCHEDULER)))
             if not os.path.isfile(jobscript_default):
                 arg_parser.error(
                     "Default jobscript ({}) does not exist, ".format(jobscript_default)
@@ -618,7 +617,7 @@ def main():
         ## Existence check. Filter out strips with existing .fin output file.
         dstdir = args.get(ARGSTR_DST)
         stripids_to_process = [
-            sID for sID in stripids if not os.path.isfile(
+            sID for sID in stripids if not glob.glob(
                 os.path.join(
                     dstdir,
                     '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG)),
@@ -724,11 +723,12 @@ def main():
 
             if args_batch.get(ARGSTR_SCHEDULER) is not None:
                 job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
-                cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
-                                                    args_batch.get(ARGSTR_JOBSCRIPT),
-                                                    job_name, cmd_single,
-                                                    PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN,
-                                                    JOBSCRIPT_INIT_FILE if jobscript_use_init else None)
+                cmd = args_single.get_jobsubmit_cmd(
+                    args_batch.get(ARGSTR_SCHEDULER),
+                    jobscript=args_batch.get(ARGSTR_JOBSCRIPT),
+                    jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, email=args.get(ARGSTR_EMAIL),
+                    envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
+                )
             else:
                 cmd = cmd_single
 

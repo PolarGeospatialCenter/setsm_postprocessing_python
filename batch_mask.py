@@ -101,8 +101,9 @@ ARGGRP_FILTER_COMP = [ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD]
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
-JOBSCRIPT_INIT_FILE = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Mask'
+JOB_WALLTIME_HR = 40
+JOB_MEMORY_GB = 15
 
 ##############################
 
@@ -416,10 +417,8 @@ def main():
 
 
     if args.get(ARGSTR_SCHEDULER) is not None:
-        jobscript_use_init = (args.get(ARGSTR_JOBSCRIPT) is None)
         if args.get(ARGSTR_JOBSCRIPT) is None:
-            jobscript_default = os.path.join(JOBSCRIPT_DIR,
-                                             '{}_{}.sh'.format(SCRIPT_NAME, args.get(ARGSTR_SCHEDULER)))
+            jobscript_default = os.path.join(JOBSCRIPT_DIR, 'head_{}.sh'.format(args.get(ARGSTR_SCHEDULER)))
             if not os.path.isfile(jobscript_default):
                 arg_parser.error(
                     "Default jobscript ({}) does not exist, ".format(jobscript_default)
@@ -709,11 +708,12 @@ def main():
             cmd_single = args_single.get_cmd()
 
             job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
-            cmd = args_single.get_jobsubmit_cmd(args_batch.get(ARGSTR_SCHEDULER),
-                                                args_batch.get(ARGSTR_JOBSCRIPT),
-                                                job_name, cmd_single,
-                                                PYTHON_EXE, PYTHON_VERSION_ACCEPTED_MIN,
-                                                JOBSCRIPT_INIT_FILE if jobscript_use_init else None)
+            cmd = args_single.get_jobsubmit_cmd(
+                args_batch.get(ARGSTR_SCHEDULER),
+                jobscript=args_batch.get(ARGSTR_JOBSCRIPT),
+                jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, email=args.get(ARGSTR_EMAIL),
+                envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
+            )
 
             print(cmd)
             if not args_batch.get(ARGSTR_DRYRUN):
