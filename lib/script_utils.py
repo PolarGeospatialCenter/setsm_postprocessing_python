@@ -623,8 +623,12 @@ class ArgumentPasser:
         return out_type(condopt_expr)
 
 
-def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s', task_delim=' '):
-    import numpy as np
+def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s', task_delim=','):
+    try:
+        import numpy as np
+    except ImportError:
+        if task_fmt != '%s':
+            raise
     bundle_prefix = os.path.join(dstdir, '{}_{}'.format(descr, datetime.now().strftime("%Y%m%d%H%M%S")))
     jobnum_total = int(math.ceil(len(task_list) / float(tasks_per_bundle)))
     jobnum_fmt = '{:0>'+str(len(str(jobnum_total)))+'}'
@@ -632,18 +636,40 @@ def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s'
     print("Writing task bundle text files in directory: {}".format(dstdir))
     for jobnum, tasknum in enumerate(range(0, len(task_list), tasks_per_bundle)):
         bundle_file = '{}_{}.txt'.format(bundle_prefix, jobnum_fmt.format(jobnum+1))
-        np.savetxt(bundle_file, task_list[tasknum:tasknum+tasks_per_bundle], fmt=task_fmt, delimiter=task_delim)
+        task_bundle = task_list[tasknum:tasknum+tasks_per_bundle]
+        if len(task_bundle) == 0:
+            with open(bundle_file, 'w'):
+                pass
+        elif 'numpy' not in sys.modules and task_fmt == '%s':
+            join_task_items = type(task_bundle[0]) in (tuple, list)
+            with open(bundle_file, 'w') as bundle_file_fp:
+                for task in task_bundle:
+                    task_line = str(task) if not join_task_items else task_delim.join([str(arg) for arg in task])
+                    bundle_file_fp.write(task_line+'\n')
+        else:
+            np.savetxt(bundle_file, task_bundle, fmt=task_fmt, delimiter=task_delim)
         bundle_file_list.append(bundle_file)
     return bundle_file_list
 
 
-def read_task_bundle(bundle_file, args_dtype='numpy_string', args_delim=' '):
-    import numpy as np
-    if args_dtype == 'numpy_string':
-        args_dtype = np.dtype(str)
-    task_list = np.loadtxt(bundle_file, dtype=args_dtype, delimiter=args_delim).tolist()
-    if type(task_list) is not list:
-        task_list = [task_list]
+def read_task_bundle(bundle_file, args_dtype=str, args_delim=','):
+    try:
+        import numpy as np
+    except ImportError:
+        pass
+    if 'numpy' in sys.modules:
+        if args_dtype is str:
+            args_dtype = np.dtype(str)
+        task_list = np.loadtxt(bundle_file, dtype=args_dtype, delimiter=args_delim).tolist()
+        if type(task_list) is not list:
+            task_list = [task_list]
+    else:
+        with open(bundle_file, 'r') as bundle_file_fp:
+            task_list = bundle_file_fp.read().splitlines()
+        if len(task_list) > 0 and args_delim in task_list[0]:
+            task_list = [[args_dtype(arg) for arg in task.split(args_delim)] for task in task_list]
+        else:
+            task_list = [args_dtype(arg) for arg in task_list]
     return task_list
 
 

@@ -745,7 +745,7 @@ def main():
 
 
 def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
-    import numpy as np  # necessary
+    import numpy as np  # necessary check for later requirement
     from lib.filter_scene import generateMasks
     from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
     from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
