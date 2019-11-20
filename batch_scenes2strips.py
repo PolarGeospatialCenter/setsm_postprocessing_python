@@ -128,6 +128,7 @@ ARGGRP_UNFILTERED = [ARGSTR_NOWATER, ARGSTR_NOCLOUD]
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
 JOB_WALLTIME_HR = 40
 JOB_MEMORY_GB = 30
@@ -745,13 +746,6 @@ def main():
 
 
 def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
-    import numpy as np  # necessary check for later requirement
-    from lib.filter_scene import generateMasks
-    from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
-    from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
-    from lib.scenes2strips import scenes2strips
-    from lib.scenes2strips import HOLD_GUESS_OFF, HOLD_GUESS_ALL, HOLD_GUESS_UPDATE_RMSE
-    from batch_mask import get_mask_bitstring
 
     error_trace = None
     sceneMaskSuffix = None
@@ -762,6 +756,14 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
     strip_dfull = None
     strip_dfull_coreg = None
     try:
+        import numpy as np  # necessary check for later requirement
+        from lib.filter_scene import generateMasks
+        from lib.filter_scene import MASK_FLAT, MASK_SEPARATE, MASK_BIT
+        from lib.filter_scene import DEBUG_NONE, DEBUG_ALL, DEBUG_MASKS, DEBUG_ITHRESH
+        from lib.scenes2strips import scenes2strips
+        from lib.scenes2strips import HOLD_GUESS_OFF, HOLD_GUESS_ALL, HOLD_GUESS_UPDATE_RMSE
+        from batch_mask import get_mask_bitstring
+
         ## Process a single strip.
         print('')
 
@@ -1143,13 +1145,18 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
     except KeyboardInterrupt:
         raise
 
-
-    except:
+    except Exception as e:
         with script_utils.capture_stdout_stderr() as out:
             traceback.print_exc()
         caught_out, caught_err = out
         error_trace = caught_err
         print(error_trace)
+        if e.__class__ is ImportError:
+            print("\nFailed to import necessary module(s)")
+            print("If running on a Linux system where the jobscripts/init.sh file has been properly"
+                  " set up, try running the following command to activate a working environment"
+                  " in your current shell session:\n{}".format("source {} {}".format(JOBSCRIPT_INIT, JOB_ABBREV)))
+            print('')
 
     if type(args.get(ARGSTR_EMAIL)) is str:
         # Send email notification of script completion.

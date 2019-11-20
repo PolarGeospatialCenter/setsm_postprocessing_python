@@ -244,6 +244,7 @@ ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles'
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Check'
 BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
 JOB_WALLTIME_HR = 40
@@ -1460,12 +1461,18 @@ def main():
         except KeyboardInterrupt:
             raise
 
-        except:
+        except Exception as e:
             with script_utils.capture_stdout_stderr() as out:
                 traceback.print_exc()
             caught_out, caught_err = out
             error_trace = caught_err
             eprint(error_trace)
+            if e.__class__ is ImportError:
+                print("\nFailed to import necessary module(s)")
+                print("If running on a Linux system where the jobscripts/init.sh file has been properly"
+                      " set up, try running the following command to activate a working environment"
+                      " in your current shell session:\n{}".format("source {} {}".format(JOBSCRIPT_INIT, JOB_ABBREV)))
+                print('')
 
         if type(args.get(ARGSTR_EMAIL)) is str:
             # Send email notification of script completion.

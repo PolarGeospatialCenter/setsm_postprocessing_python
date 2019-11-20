@@ -20,9 +20,8 @@ env_load_cmd=''
 #    env_load_cmd="module load mod_name"
 #fi
 
-## Set default environment load command for all batch scripts (fallback if no specific
-#default_env_load_cmd=''
-default_env_load_cmd="source /mnt/pgc/data/scratch/erik/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/build/miniconda3/envs/s2s"
+## Set default environment load command for all batch scripts (fallback if no specific script setting)
+default_env_load_cmd=''
 
 
 # Don't modify the following two code blocks

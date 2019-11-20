@@ -23,8 +23,10 @@ from time import sleep
 
 from lib import script_utils
 from lib.script_utils import ScriptArgumentError
-from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
-import lib.raster_array_tools as rat
+# from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
+MASKCOMP_EDGE_BIT = 0
+MASKCOMP_WATER_BIT = 1
+MASKCOMP_CLOUD_BIT = 2
 
 
 ##############################
@@ -101,6 +103,7 @@ ARGGRP_FILTER_COMP = [ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD]
 ## Batch settings
 
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Mask'
 JOB_WALLTIME_HR = 40
 JOB_MEMORY_GB = 15
@@ -732,12 +735,18 @@ def main():
         except KeyboardInterrupt:
             raise
 
-        except:
+        except Exception as e:
             with script_utils.capture_stdout_stderr() as out:
                 traceback.print_exc()
             caught_out, caught_err = out
             error_trace = caught_err
             print(error_trace)
+            if e.__class__ is ImportError:
+                print("\nFailed to import necessary module(s)")
+                print("If running on a Linux system where the jobscripts/init.sh file has been properly"
+                      " set up, try running the following command to activate a working environment"
+                      " in your current shell session:\n{}".format("source {} {}".format(JOBSCRIPT_INIT, JOB_ABBREV)))
+                print('')
 
         if type(args.get(ARGSTR_EMAIL)) is str:
             # Send email notification of script completion.
@@ -795,6 +804,7 @@ def get_dstFile(rasterFile, args):
 
 def mask_rasters(maskFile, suffix_maskval_dict, args):
     import numpy as np
+    import lib.raster_array_tools as rat
 
     global SRC_SUFFIX_CATCH_ALL
     nodata_opt = args.get(ARGSTR_DST_NODATA)
