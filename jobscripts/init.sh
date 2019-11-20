@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 set -u
 job_class="$1"  # e.g. 's2s', 'Mask', 'Check'
 set +u
