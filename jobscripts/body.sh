@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 set -uo pipefail
 
 ### NOTE: Modify environment settings for specific batch scripts in the 'init.sh' file! ###
