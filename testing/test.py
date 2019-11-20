@@ -113,7 +113,7 @@ def cv():
         'Xsub', 'Ysub', 'Zsub', 'Msub', 'Osub'
     )
 
-    print()
+    print('')
     for cv_test_var in cv_test_vars:
         if cv_test_var in vars():
 
@@ -135,7 +135,7 @@ def cv():
         elif cv_test_var == '-':
             print('------------------')
 
-    print()
+    print('')
 
     del cv_test_vars, cv_test_var, cv_test_var_shape, cv_test_expr
 
