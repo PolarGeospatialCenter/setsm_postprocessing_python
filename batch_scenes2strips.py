@@ -130,8 +130,8 @@ ARGGRP_UNFILTERED = [ARGSTR_NOWATER, ARGSTR_NOCLOUD]
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
-JOB_WALLTIME_HR = 40
-JOB_MEMORY_GB = 30
+JOB_WALLTIME_HR = 30
+JOB_MEMORY_GB = 40
 
 ##############################
 

@@ -105,8 +105,8 @@ ARGGRP_FILTER_COMP = [ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD]
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Mask'
-JOB_WALLTIME_HR = 40
-JOB_MEMORY_GB = 15
+JOB_WALLTIME_HR = 30
+JOB_MEMORY_GB = 20
 
 ##############################
 

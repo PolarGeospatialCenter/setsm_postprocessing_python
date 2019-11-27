@@ -247,8 +247,8 @@ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Check'
 BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
-JOB_WALLTIME_HR = 40
-JOB_MEMORY_GB = 15
+JOB_WALLTIME_HR = 30
+JOB_MEMORY_GB = 20
 
 ##############################
 
