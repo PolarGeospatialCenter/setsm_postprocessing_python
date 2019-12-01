@@ -69,6 +69,7 @@ ARGSTR_EMAIL = '--email'
 ARGSTR_RESTART = '--restart'
 ARGSTR_REMOVE_INCOMPLETE = '--remove-incomplete'
 ARGSTR_USE_OLD_MASKS = '--use-old-masks'
+ARGSTR_CLEANUP_ON_FAILURE = '--cleanup-on-failure'
 ARGSTR_OLD_ORG = '--old-org'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
@@ -100,6 +101,16 @@ ARGCHO_SAVE_COREG_STEP = [
     ARGCHO_SAVE_COREG_STEP_OFF,
     ARGCHO_SAVE_COREG_STEP_META,
     ARGCHO_SAVE_COREG_STEP_ALL
+]
+ARGCHO_CLEANUP_ON_FAILURE_MASKS = 'masks'
+ARGCHO_CLEANUP_ON_FAILURE_STRIP = 'strip'
+ARGCHO_CLEANUP_ON_FAILURE_OUTPUT = 'output'
+ARGCHO_CLEANUP_ON_FAILURE_NONE = 'none'
+ARGCHO_CLEANUP_ON_FAILURE = [
+    ARGCHO_CLEANUP_ON_FAILURE_MASKS,
+    ARGCHO_CLEANUP_ON_FAILURE_STRIP,
+    ARGCHO_CLEANUP_ON_FAILURE_OUTPUT,
+    ARGCHO_CLEANUP_ON_FAILURE_NONE
 ]
 
 # Segregation of argument choices
@@ -392,6 +403,14 @@ def argparser_init():
         ARGSTR_USE_OLD_MASKS,
         action='store_true',
         help="Use existing scene masks instead of deleting and re-filtering."
+    )
+
+    parser.add_argument(
+        ARGSTR_CLEANUP_ON_FAILURE,
+        type=str,
+        choices=ARGCHO_CLEANUP_ON_FAILURE,
+        default=ARGCHO_CLEANUP_ON_FAILURE_OUTPUT,
+        help="Which type of output files should be automatically removed upon encountering an error."
     )
 
     parser.add_argument(
@@ -1062,7 +1081,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                                 saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
                                                  X, Y, Z, M, O, O2, MD, spat_ref)
                                 if not args.get(ARGSTR_HILLSHADE_OFF):
-                                    saveStripBrowse(stripdem_ffile_coreg, stripDemSuffix)
+                                    saveStripBrowse(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix)
                         del X, Y, Z, M, O, O2, MD
                         gc.collect()
 
@@ -1094,22 +1113,22 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
                                  X, Y, Z, M, O, O2, MD, spat_ref)
                 if not args.get(ARGSTR_HILLSHADE_OFF):
-                    saveStripBrowse(stripdem_ffile, stripDemSuffix)
+                    saveStripBrowse(stripdem_ffile, stripDemSuffix, stripMaskSuffix)
                 del X, Y, Z, M, O, O2, MD
 
                 segnum += 1
 
         except:
-            # if scene_dfull is not None and sceneMaskSuffix is not None and not args.get(ARGSTR_USE_OLD_MASKS):
-            #     src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
-            #     if len(src_mask_ffile_glob) > 0:
-            #         print("Detected error; deleting output scene masks"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-            #         for f in src_mask_ffile_glob:
-            #             cmd = "rm {}".format(f)
-            #             print(cmd)
-            #             if not args.get(ARGSTR_DRYRUN):
-            #                 os.remove(f)
-            if strip_dfull is not None:
+            if scene_dfull is not None and sceneMaskSuffix is not None and args.get(ARGSTR_CLEANUP_ON_FAILURE) in (ARGCHO_CLEANUP_ON_FAILURE_MASKS, ARGCHO_CLEANUP_ON_FAILURE_OUTPUT):
+                src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
+                if len(src_mask_ffile_glob) > 0:
+                    print("Detected error; deleting output scene masks"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                    for f in src_mask_ffile_glob:
+                        cmd = "rm {}".format(f)
+                        print(cmd)
+                        if not args.get(ARGSTR_DRYRUN):
+                            os.remove(f)
+            if strip_dfull is not None and args.get(ARGSTR_CLEANUP_ON_FAILURE) in (ARGCHO_CLEANUP_ON_FAILURE_STRIP, ARGCHO_CLEANUP_ON_FAILURE_OUTPUT):
                 print("Detected error; deleting incomplete strip output"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
                 for strip_dir in [strip_dfull, strip_dfull_coreg]:
                     if strip_dir is None or not os.path.isdir(strip_dir):
@@ -1208,38 +1227,96 @@ def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
     if O2 is not None:
         saveArrayAsTiff(O2, strip_ortho2File, X, Y, spat_ref, nodata_val=0, dtype_out='int16')
         del O2
-    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=0,       dtype_out='uint8')
+    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=None,    dtype_out='uint8')
     del MD
 
 
-def saveStripBrowse(strip_demFile, demSuffix):
+def saveStripBrowse(demFile, demSuffix, maskSuffix):
 
-    strip_demFile_10m    = strip_demFile.replace(demSuffix, 'dem_10m.tif')
-    strip_demFile_browse = strip_demFile.replace(demSuffix, 'dem_browse.tif')
+    maskFile           = demFile.replace(demSuffix, maskSuffix)
+    orthoFile          = demFile.replace(demSuffix, 'ortho.tif')
+    maskFile_10m       = demFile.replace(demSuffix, 'bitmask_10m.tif')
+    orthoFile_10m      = demFile.replace(demSuffix, 'ortho_10m.tif')
+    demFile_10m        = demFile.replace(demSuffix, 'dem_10m.tif')
+    demFile_10m_masked = demFile.replace(demSuffix, 'dem_10m_masked.tif')
+    demFile_10m_shade  = demFile.replace(demSuffix, 'dem_10m_shade.tif')
+    demFile_shade_mask = demFile.replace(demSuffix, 'dem_10m_shade_masked.tif')
+    demFile_40m_masked = demFile.replace(demSuffix, 'dem_40m_masked.tif')
+    demFile_coverage   = demFile.replace(demSuffix, 'dem_40m_coverage.tif')
+
+    output_files = [
+        # maskFile_10m,
+        # orthoFile_10m,
+        demFile_10m,
+        demFile_10m_shade,
+        # demFile_10m_masked,
+        # demFile_shade_mask,
+        # demFile_40m_masked,
+        # demFile_coverage
+    ]
+
+    keep_files = [
+        maskFile_10m,
+        orthoFile_10m,
+        demFile_10m,
+        demFile_10m_shade,
+        demFile_10m_masked,
+        demFile_shade_mask,
+        demFile_40m_masked,
+        demFile_coverage
+    ]
 
     commands = []
-    commands.append(
-        ('gdal_translate "{0}" "{1}" -q -tr {2} {2} -r bilinear -a_nodata -9999 '
-         '-co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(strip_demFile, strip_demFile_10m, 10))
-    )
-    commands.append(
-        ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff '
-         '-co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(strip_demFile_10m, strip_demFile_browse))
-    )
+    if maskFile_10m in output_files:
+        commands.append(
+            ('gdalwarp "{0}" "{1}" -q -tr {2} {2} -r near '
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(maskFile, maskFile_10m, 10))
+        )
+    if orthoFile_10m in output_files:
+        commands.append(
+            ('gdalwarp "{0}" "{1}" -q -tr {2} {2} -r cubic -dstnodata 0'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(orthoFile, orthoFile_10m, 10))
+        )
+    if demFile_10m in output_files:
+        commands.append(
+            ('gdalwarp "{0}" "{1}" -q -tr {2} {2} -r bilinear -dstnodata -9999'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(demFile, demFile_10m, 10))
+        )
+    if demFile_10m_shade in output_files:
+        commands.append(
+            ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(demFile_10m, demFile_10m_shade))
+        )
+    if demFile_10m_masked in output_files:
+        commands.append(
+            ('gdal_calc.py --quiet -A "{0}" -B "{1}" --outfile="{2}" --calc="A*(B==0)+(-9999)*(B!=0)" --NoDataValue=-9999'
+             ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW'.format(demFile_10m, maskFile_10m, demFile_10m_masked))
+        )
+    if demFile_shade_mask in output_files:
+        commands.append(
+            ('gdal_calc.py --quiet -A "{0}" -B "{1}" --outfile="{2}" --calc="A*(B==0)" --NoDataValue=0'
+             ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW'.format(demFile_10m_shade, maskFile_10m, demFile_shade_mask))
+        )
+    if demFile_40m_masked in output_files:
+        commands.append(
+            ('gdalwarp "{0}" "{1}" -q -tr {2} {2} -tap -r bilinear -dstnodata -9999'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(demFile_10m_masked, demFile_40m_masked, 40))
+        )
+    if demFile_coverage in output_files:
+        commands.append(
+            ('gdal_calc.py --quiet -A "{0}" --outfile="{1}" --type Byte --calc="A!=-9999" --NoDataValue=0'
+             ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW'.format(demFile_40m_masked, demFile_coverage))
+        )
 
     for cmd in commands:
         print(cmd)
         script_utils.exec_cmd(cmd)
 
-    if not os.path.isfile(strip_demFile_10m):
-        raise ExternalError("`gdal_translate` program did not create "
-                            "output 10m strip DEM file: {}".format(strip_demFile_10m))
-    if not os.path.isfile(strip_demFile_browse):
-        raise ExternalError("`gdaldem hillshade` program did not create "
-                            "output 10m DEM hillshade file: {}".format(strip_demFile_browse))
-
-    # if os.path.isfile(strip_demFile_10m):
-    #     os.remove(strip_demFile_10m)
+    for outfile in output_files:
+        if not os.path.isfile(outfile):
+            raise ExternalError("External program call did not create output file: {}".format(outfile))
+        if outfile not in keep_files:
+            os.remove(outfile)
 
 
 def getDemSuffix(demFile):
