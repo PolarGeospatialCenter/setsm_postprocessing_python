@@ -20,6 +20,8 @@ from datetime import datetime
 from email.mime.text import MIMEText
 
 
+SYSTYPE = platform.system()
+
 PYTHON_VERSION_REQUIRED_MIN = "2.7"  # supports multiple dot notation
 
 
@@ -107,14 +109,15 @@ SCHED_NAME_TESTCMD_DICT = {
     SCHED_PBS: 'pbsnodes',
     SCHED_SLURM: 'sinfo'
 }
-for sched_name in sorted(SCHED_NAME_TESTCMD_DICT.keys()):
-    try:
-        child = subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdoutdata, stderrdata = child.communicate()
-        if child.returncode == 0:
-            SCHED_SUPPORTED.append(sched_name)
-    except OSError:
-        pass
+if SYSTYPE == 'Linux':
+    for sched_name in sorted(SCHED_NAME_TESTCMD_DICT.keys()):
+        try:
+            child = subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdoutdata, stderrdata = child.communicate()
+            if child.returncode == 0:
+                SCHED_SUPPORTED.append(sched_name)
+        except OSError:
+            pass
 if len(SCHED_SUPPORTED) == 0:
     SCHED_SUPPORTED.append(None)
 

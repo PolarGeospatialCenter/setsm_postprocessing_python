@@ -1245,14 +1245,14 @@ def saveStripBrowse(demFile, demSuffix, maskSuffix):
     demFile_coverage   = demFile.replace(demSuffix, 'dem_40m_coverage.tif')
 
     output_files = [
-        # maskFile_10m,
-        # orthoFile_10m,
+        maskFile_10m,
+        orthoFile_10m,
         demFile_10m,
         demFile_10m_shade,
-        # demFile_10m_masked,
-        # demFile_shade_mask,
-        # demFile_40m_masked,
-        # demFile_coverage
+        demFile_10m_masked,
+        demFile_shade_mask,
+        demFile_40m_masked,
+        demFile_coverage
     ]
 
     keep_files = [
