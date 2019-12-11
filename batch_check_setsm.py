@@ -72,6 +72,7 @@ ARGSTR_CHECK_SPECIAL_DEMTYPE = '--check-special-demtype'
 ARGSTR_CHECKFILE_EXT = '--checkfile-ext'
 ARGSTR_ERRFILE_EXT = '--errfile-ext'
 ARGSTR_ALLOW_MISSING_SUFFIX = '--allow-missing-suffix'
+ARGSTR_ALLOW_MISSING_ORTHO2 = '--allow-missing-ortho2'
 ARGSTR_RETRY_ERRORS = '--retry-errors'
 ARGSTR_KEEP_CHECKFILE_WITH_ERRORS = '--keep-checkfile-with-errors'
 ARGSTR_SUPPRESS_ERRFILE_EXISTS = '--suppress-errfile-exists'
@@ -152,34 +153,64 @@ ARGCHO_REMOVE_TYPE = [
 ]
 
 # Argument choice groups
-ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM = [
-    ARGCHO_CHECK_SPECIAL_SCENEPAIRS,
-    ARGCHO_CHECK_SPECIAL_PAIRNAMES,
-    ARGCHO_CHECK_SPECIAL_STRIPSEGMENTS,
-    ARGCHO_CHECK_SPECIAL_STRIPS,
-]
-ARGCHOGRP_CHECK_SPECIAL_SETSM = ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM + [
-    ARGCHO_CHECK_SPECIAL_SCENEMETA,
-    ARGCHO_CHECK_SPECIAL_STRIPMETA
-]
-ARGCHOGRP_CHECK_SPECIAL_SETSM_SCENELEVEL = [
-    ARGCHO_CHECK_SPECIAL_SCENEMETA,
+ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_SCENELEVEL = [
     ARGCHO_CHECK_SPECIAL_SCENEPAIRS,
     ARGCHO_CHECK_SPECIAL_PAIRNAMES
 ]
-ARGCHOGRP_CHECK_SPECIAL_SETSM_STRIPLEVEL = [
-    ARGCHO_CHECK_SPECIAL_STRIPMETA,
+ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_STRIPLEVEL = [
     ARGCHO_CHECK_SPECIAL_STRIPSEGMENTS,
     ARGCHO_CHECK_SPECIAL_STRIPS
 ]
+ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM = (
+      ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_SCENELEVEL
+    + ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_STRIPLEVEL
+)
+ARGCHOGRP_CHECK_SPECIAL_SETSM_SCENELEVEL = ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_SCENELEVEL + [
+    ARGCHO_CHECK_SPECIAL_SCENEMETA
+]
+ARGCHOGRP_CHECK_SPECIAL_SETSM_STRIPLEVEL = ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_STRIPLEVEL + [
+    ARGCHO_CHECK_SPECIAL_STRIPMETA
+]
+ARGCHOGRP_CHECK_SPECIAL_SETSM = (
+      ARGCHOGRP_CHECK_SPECIAL_SETSM_SCENELEVEL
+    + ARGCHOGRP_CHECK_SPECIAL_SETSM_STRIPLEVEL
+)
 
 # Argument choice settings
-ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL = 'matchtag.tif/ortho.tif/meta.txt'
-ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_STRIPLEVEL = '/'.join([
-    ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL,
-    'dem_10m.tif/dem_browse.tif'
-])
+CHECK_SPECIAL_DEM_SUFFIX_ORTHO2 = 'ortho2.tif'
+CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL_MATCHTAG_SET = {'matchtag_mt.tif', 'meta_mt.txt'}
+CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_SCENELEVEL_SET = {
+    'meta_or.txt'
+}
+CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET = {
+    'bitmask_10m.tif',
+    'ortho_10m.tif',
+    'dem_10m.tif',
+    'dem_10m_masked.tif',
+    'dem_10m_shade.tif',
+    'dem_10m_shade_masked.tif',
+    'dem_40m_masked.tif',
+    'dem_40m_coverage.tif'
+}
 ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META = 'meta.txt'
+ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL = '/'.join([
+    # DEM suffix(es) will be set by --check-special-demtype script argument
+    'matchtag.tif',
+    'ortho.tif',
+    CHECK_SPECIAL_DEM_SUFFIX_ORTHO2,
+    ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META,
+    '/'.join(CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL_MATCHTAG_SET),
+    '/'.join(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_SCENELEVEL_SET)
+])
+ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_STRIPLEVEL = '/'.join([
+    'dem.tif',
+    'matchtag.tif',
+    'ortho.tif',
+    CHECK_SPECIAL_DEM_SUFFIX_ORTHO2,
+    'bitmask.tif',
+    ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META,
+    '/'.join(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET)
+])
 # ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = "(?P<scenepairname>(?P<strippairname>(?P<sensor>[A-Z0-9]{4})_(?P<timestamp>\d{8})_(?P<catid1>[A-Z0-9]{16})_(?P<catid2>[A-Z0-9]{16}))_(?P<tile1>R\d+C\d+-)?(?P<order1>\d{12}_\d{2})_(?P<part1>P\d{3})_(?P<tile2>R\d+C\d+-)?(?P<order2>\d{12}_\d{2})_(?P<part2>P\d{3})_(?P<res>\d{1}))_(?P<suffix>[_a-z0-9]+)\.(?P<ext>\w+)"
 ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL   = "^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_\d{1})_[a-z0-9_]+\.\w+$"
 ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL   = "^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}).*$"
@@ -227,7 +258,7 @@ ARGCHOSET_CHECK_SPECIAL_SUBGROUP_DICT = {
 }
 ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT = {
     ARGCHO_CHECK_SPECIAL_DEMTYPE_REGULAR: 'dem.tif',
-    ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH: 'dem_smooth.tif',
+    ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH: 'dem_smooth.tif/smooth_result.txt',
 }
 ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT[ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH] = '/'.join(
     ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT.values())
@@ -529,6 +560,15 @@ def argparser_init():
         ])
     )
     parser.add_argument(
+        ARGSTR_ALLOW_MISSING_ORTHO2,
+        action='store_true',
+        help=' '.join([
+            "Allow checking of SETSM DEM check groups that are missing the '{}' source file.".format(
+                CHECK_SPECIAL_DEM_SUFFIX_ORTHO2
+            )
+        ])
+    )
+    parser.add_argument(
         ARGSTR_RETRY_ERRORS,
         action='store_true',
         help=' '.join([
@@ -750,6 +790,9 @@ def checkfile_incomplete(args,
     if src_rasters is not None and type(src_rasters) is list:
         src_rasters = set(src_rasters)
 
+    checkfname = os.path.basename(checkfile)
+    check_group_is_xtrack = checkfname[1].isdigit()
+
     find_src_rasters = (   return_incomplete_src_rasters
                         or warn_missing_suffix or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX)
                         or warn_errfile_exists or args.get(ARGSTR_RMWHERE_ERRFILE_EXISTS))
@@ -819,15 +862,15 @@ def checkfile_incomplete(args,
                                 cf_root_name = match.group(1)
                                 cf_root_full = os.path.join(checkfile_dir, cf_root_name)
                                 if cf_root_full not in cssgroup_ffileroot_srcfname_dict:
-                                    cssgroup_ffileroot_srcfname_dict[cf_root_full] = []
-                                cssgroup_ffileroot_srcfname_dict[cf_root_full].append(srcfname)
+                                    cssgroup_ffileroot_srcfname_dict[cf_root_full] = set()
+                                cssgroup_ffileroot_srcfname_dict[cf_root_full].add(srcfname)
                     else:
                         eprint("No option to handle check special subgroup {}={} setting {}={}, exiting".format(
                             ARGSTR_CHECK_SPECIAL, check_special_option, check_special_set_argstr, check_special_set_value
                         ))
                         sys.exit(1)
             for checkfile_root_subgroup, src_rasters_subgroup in cssgroup_ffileroot_srcfname_dict.items():
-                if (    (len(src_rasters_subgroup) == 1 and src_rasters_subgroup[0].endswith('meta.txt'))
+                if (    (len(src_rasters_subgroup) == 1 and src_rasters_subgroup.pop().endswith('meta.txt'))
                     and (check_special_option is not None and check_special_option == ARGCHO_CHECK_SPECIAL_SCENEPAIRS)):
                     warnings.showwarning = script_utils.showwarning_stdout
                     warnings.warn("Stray metadata file detected in check special 'scene' subgroup."
@@ -837,6 +880,20 @@ def checkfile_incomplete(args,
                     continue
 
                 missing_suffixes = [s for s in src_suffixes_subgroup if not ends_one_of_coll(s, src_rasters_subgroup)]
+                if missing_suffixes and args.get(ARGSTR_CHECK_SPECIAL) is not None:
+                    missing_suffixes_set = set(missing_suffixes)
+                    if args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_SCENELEVEL:
+                        if CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL_MATCHTAG_SET.issubset(missing_suffixes_set):
+                            missing_suffixes_set.difference_update(CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL_MATCHTAG_SET)
+                        missing_suffixes_set.difference_update(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_SCENELEVEL_SET)
+                    if missing_suffixes_set and args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM:
+                        if (    CHECK_SPECIAL_DEM_SUFFIX_ORTHO2 in missing_suffixes_set
+                            and ((not check_group_is_xtrack) or args.get(ARGSTR_ALLOW_MISSING_ORTHO2))):
+                            missing_suffixes_set.remove(CHECK_SPECIAL_DEM_SUFFIX_ORTHO2)
+                    if missing_suffixes_set and args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_STRIPLEVEL:
+                        missing_suffixes_set.difference_update(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET)
+                    missing_suffixes = [s for s in missing_suffixes if s in missing_suffixes_set]
+
                 if missing_suffixes:
                     warnings.warn("Source file suffixes for a check group were not found")
                     if warn_missing_suffix:
@@ -951,7 +1008,7 @@ def main():
         for check_special_set_argstr, check_special_set_value in ARGCHOSET_CHECK_SPECIAL_SETTING_DICT[check_special_option]:
             if args.provided(check_special_set_argstr):
                 continue
-            if check_special_option in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM and check_special_set_argstr == ARGSTR_SRC_SUFFIX:
+            if check_special_option in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_SCENELEVEL and check_special_set_argstr == ARGSTR_SRC_SUFFIX:
                 check_special_set_value = '/'.join([
                     ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT[args.get(ARGSTR_CHECK_SPECIAL_DEMTYPE)],
                     check_special_set_value
