@@ -74,6 +74,7 @@ ARGSTR_OLD_ORG = '--old-org'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
 ARGSTR_SKIP_ORTHO2_ERROR = '--skip-xtrack-missing-ortho2-error'
+ARGSTR_SCENE_MASKS_ONLY = '--build-scene-masks-only'
 
 # Argument choices
 ARGCHO_DEM_TYPE_LSF = 'lsf'
@@ -444,6 +445,14 @@ def argparser_init():
         help=' '.join([
             "If at least one scene in a cross-track strip is missing the second ortho component raster,",
             "do not throw an error but instead build the strip as if it were in-track with only one ortho."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_SCENE_MASKS_ONLY,
+        action='store_true',
+        help=' '.join([
+            "Build scene masks and then exit before proceeding to strip-building steps."
         ])
     )
 
@@ -994,6 +1003,9 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         if not args.get(ARGSTR_DRYRUN):
             print('')
             print("All *_{}.tif scene masks have been created in source scene directory".format(scene_mask_name))
+
+        if args.get(ARGSTR_SCENE_MASKS_ONLY):
+            sys.exit(0)
 
         print('')
         print("Running scenes2strips")
