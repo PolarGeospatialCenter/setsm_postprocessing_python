@@ -151,6 +151,7 @@ def scenes2strips(demFiles,
             or (rmse_guess is not None and np.isnan(rmse_guess[0, i]))):
             # State of scene is somewhere between naturally redundant
             # or redundant by masking, as classified by prior s2s run.
+            skipped_scene = True
             continue
 
         # Construct filenames.
