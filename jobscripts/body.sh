@@ -67,7 +67,7 @@ if [ "$scheduler" == "PBS" ]; then
     mem_report_cmd="free -g"
     echo "Memory report [GB] ('${mem_report_cmd}'):"
     echo -------------------------------------------------------------------------
-    free -g
+    ${mem_report_cmd}
     echo -------------------------------------------------------------------------
     echo
     working_dir=$PBS_O_WORKDIR
@@ -102,7 +102,7 @@ elif [ "$scheduler" == "SLURM" ]; then
     mem_report_cmd="free -g"
     echo "Memory report [GB] ('${mem_report_cmd}'):"
     echo -------------------------------------------------------------------------
-    free -g
+    ${mem_report_cmd}
     echo -------------------------------------------------------------------------
     echo
     working_dir=$SLURM_SUBMIT_DIR

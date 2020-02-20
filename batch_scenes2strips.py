@@ -932,6 +932,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                     bypass_ortho2 = True
                 else:
                     src_scenefile_missing_flag = True
+                    print("If you want to bypass this error and filter the strip with only one of the two orthos,"
+                          " pass the {} argument".format(ARGSTR_SKIP_ORTHO2_ERROR))
             if not os.path.isfile(scenedem_ffile.replace(demSuffix, 'meta.txt')):
                 print("meta file for {} missing, skipping".format(scenedem_ffile))
                 src_scenefile_missing_flag = True
