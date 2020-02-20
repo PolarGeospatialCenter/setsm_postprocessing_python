@@ -52,7 +52,7 @@ ARGSTR_SRC = 'src'
 ARGSTR_RES = 'res'
 ARGSTR_DST = '--dst'
 ARGSTR_META_TRANS_DIR = '--meta-trans-dir'
-ARGSTR_HILLSHADE_OFF = '--skip-browse'
+ARGSTR_BUILD_BROWSE = '--build-browse'
 ARGSTR_DEM_TYPE = '--dem-type'
 ARGSTR_MASK_VER = '--mask-ver'
 ARGSTR_NOENTROPY = '--noentropy'
@@ -228,11 +228,10 @@ def argparser_init():
     )
 
     parser.add_argument(
-        ARGSTR_HILLSHADE_OFF,
+        ARGSTR_BUILD_BROWSE,
         action='store_true',
         help=' '.join([
-            "TURN OFF building of 10m hillshade *_dem_browse.tif browse images of all output",
-            "DEM strip segments after they are created inside {} directory.".format(ARGSTR_DST)
+            "Build downsampled browse images alongside output DEM strip segments.",
         ])
     )
 
@@ -1080,7 +1079,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                             if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                                 saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
                                                  X, Y, Z, M, O, O2, MD, spat_ref)
-                                if not args.get(ARGSTR_HILLSHADE_OFF):
+                                if args.get(ARGSTR_BUILD_BROWSE):
                                     saveStripBrowse(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix)
                         del X, Y, Z, M, O, O2, MD
                         gc.collect()
@@ -1112,7 +1111,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                               scene_dfull, scenedem_fname_mosaicked, args)
                 saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
                                  X, Y, Z, M, O, O2, MD, spat_ref)
-                if not args.get(ARGSTR_HILLSHADE_OFF):
+                if args.get(ARGSTR_BUILD_BROWSE):
                     saveStripBrowse(stripdem_ffile, stripDemSuffix, stripMaskSuffix)
                 del X, Y, Z, M, O, O2, MD
 
