@@ -53,6 +53,7 @@ ARGSTR_RES = 'res'
 ARGSTR_DST = '--dst'
 ARGSTR_META_TRANS_DIR = '--meta-trans-dir'
 ARGSTR_BUILD_BROWSE = '--build-browse'
+ARGSTR_BUILD_AUX = '--build-aux'
 ARGSTR_DEM_TYPE = '--dem-type'
 ARGSTR_MASK_VER = '--mask-ver'
 ARGSTR_NOENTROPY = '--noentropy'
@@ -232,7 +233,16 @@ def argparser_init():
         ARGSTR_BUILD_BROWSE,
         action='store_true',
         help=' '.join([
-            "Build downsampled browse images alongside output DEM strip segments.",
+            "Build 10m hillshade '*_dem_browse.tif' images alongside output DEM strip segments.",
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_BUILD_AUX,
+        action='store_true',
+        help=' '.join([
+            "Build a suite of downsampled browse images alongside output DEM strip segments.",
+            "These images are primarily useful to PGC in tile mosaicking efforts."
         ])
     )
 
@@ -1093,8 +1103,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                             if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                                 saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
                                                  X, Y, Z, M, O, O2, MD, spat_ref)
-                                if args.get(ARGSTR_BUILD_BROWSE):
-                                    saveStripBrowse(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix)
+                                saveStripBrowse(args, stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix)
                         del X, Y, Z, M, O, O2, MD
                         gc.collect()
 
@@ -1125,8 +1134,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                               scene_dfull, scenedem_fname_mosaicked, args)
                 saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
                                  X, Y, Z, M, O, O2, MD, spat_ref)
-                if args.get(ARGSTR_BUILD_BROWSE):
-                    saveStripBrowse(stripdem_ffile, stripDemSuffix, stripMaskSuffix)
+                saveStripBrowse(args, stripdem_ffile, stripDemSuffix, stripMaskSuffix)
                 del X, Y, Z, M, O, O2, MD
 
                 segnum += 1
@@ -1244,10 +1252,11 @@ def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
     del MD
 
 
-def saveStripBrowse(demFile, demSuffix, maskSuffix):
+def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
 
     maskFile           = demFile.replace(demSuffix, maskSuffix)
     orthoFile          = demFile.replace(demSuffix, 'ortho.tif')
+    dem_browse         = demFile.replace(demSuffix, 'dem_browse.tif')
     maskFile_10m       = demFile.replace(demSuffix, 'bitmask_10m.tif')
     orthoFile_10m      = demFile.replace(demSuffix, 'ortho_10m.tif')
     demFile_10m        = demFile.replace(demSuffix, 'dem_10m.tif')
@@ -1257,27 +1266,37 @@ def saveStripBrowse(demFile, demSuffix, maskSuffix):
     demFile_40m_masked = demFile.replace(demSuffix, 'dem_40m_masked.tif')
     demFile_coverage   = demFile.replace(demSuffix, 'dem_40m_coverage.tif')
 
-    output_files = [
-        maskFile_10m,
-        orthoFile_10m,
-        demFile_10m,
-        demFile_10m_shade,
-        demFile_10m_masked,
-        demFile_shade_mask,
-        demFile_40m_masked,
-        demFile_coverage
-    ]
+    output_files = set()
+    keep_files = set()
 
-    keep_files = [
-        maskFile_10m,
-        orthoFile_10m,
-        demFile_10m,
-        demFile_10m_shade,
-        demFile_10m_masked,
-        demFile_shade_mask,
-        demFile_40m_masked,
-        demFile_coverage
-    ]
+    if args.get(ARGSTR_BUILD_BROWSE):
+        output_files.update([
+            demFile_10m,
+            dem_browse
+        ])
+        keep_files.add(dem_browse)
+
+    if args.get(ARGSTR_BUILD_AUX):
+        output_files.update([
+            maskFile_10m,
+            orthoFile_10m,
+            demFile_10m,
+            demFile_10m_shade,
+            demFile_10m_masked,
+            demFile_shade_mask,
+            demFile_40m_masked,
+            demFile_coverage
+        ])
+        keep_files.update([
+            maskFile_10m,
+            orthoFile_10m,
+            demFile_10m,
+            demFile_10m_shade,
+            demFile_10m_masked,
+            demFile_shade_mask,
+            demFile_40m_masked,
+            demFile_coverage
+        ])
 
     commands = []
     if maskFile_10m in output_files:
@@ -1299,6 +1318,11 @@ def saveStripBrowse(demFile, demSuffix, maskSuffix):
         commands.append(
             ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff'
              ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(demFile_10m, demFile_10m_shade))
+        )
+    if dem_browse in output_files:
+        commands.append(
+            ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(demFile_10m, dem_browse))
         )
     if demFile_10m_masked in output_files:
         commands.append(
