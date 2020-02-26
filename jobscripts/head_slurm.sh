@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --time 1:00:00
-#SBATCH --nodes 2
-#SBATCH --ntasks 1
+#SBATCH --nodes 1
+#SBATCH --ntasks 2
 #SBATCH --mem=5G
 
 #SBATCH -o %x.o%j
