@@ -892,11 +892,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             sys.exit(0)
         src_scenedem_ffile_glob.sort()
 
-        stripid_fin_fname = '{}_{}{}.fin'.format(
-            args.get(ARGSTR_STRIPID),
-            res_str,
-            '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
-        )
+        stripid_fin_fname = strip_dname+'.fin'
         stripid_fin_ffile = os.path.join(strip_dfull, stripid_fin_fname)
         if dstdir_coreg is not None:
             stripid_fin_ffile_coreg = os.path.join(dstdir_coreg, stripid_fin_fname)
