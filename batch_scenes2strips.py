@@ -594,7 +594,8 @@ def main():
             src_scenedem_ffile_glob = glob.glob(os.path.join(
                 args.get(ARGSTR_SRC),
                 '*'*(not args.get(ARGSTR_OLD_ORG)),
-                '*_{}_{}'.format(str(args.get(ARGSTR_RES))[0], demSuffix)
+                # '*_{}_{}'.format(str(args.get(ARGSTR_RES))[0], demSuffix)
+                demSuffix
             ))
             if not src_scenedem_ffile_glob:
                 print("No scene DEMs found to process, exiting")
@@ -630,7 +631,7 @@ def main():
                 sID for sID in stripids if glob.glob(os.path.join(
                     args.get(ARGSTR_SRC),
                     '{}_{}*'.format(sID, res_str)*(not args.get(ARGSTR_OLD_ORG)),
-                    '{}*_{}_{}'.format(sID, str(args.get(ARGSTR_RES))[0], demSuffix)
+                    '{}_*_{}'.format(sID, demSuffix)
                 ))
             ]
 
@@ -885,7 +886,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         # Find scene DEMs for this stripid to be merged into strips.
         src_scenedem_ffile_glob = glob.glob(os.path.join(
             scene_dfull,
-            '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], demSuffix)))
+            '{}_*_{}'.format(args.get(ARGSTR_STRIPID), demSuffix)))
         print("Processing strip-pair ID: {}, {} scenes".format(args.get(ARGSTR_STRIPID), len(src_scenedem_ffile_glob)))
         if not src_scenedem_ffile_glob:
             print("No scene DEMs found to process, skipping")
@@ -948,7 +949,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         demSuffix_opp = DEM_TYPE_SUFFIX_DICT[argcho_dem_type_opp]
         src_scenedem_opp_ffile_glob = glob.glob(os.path.join(
             scene_dfull,
-            '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], demSuffix_opp)
+            '{}_*_{}'.format(args.get(ARGSTR_STRIPID), demSuffix_opp)
         ))
         missing_dem_type_ffile = list(
             set([f.replace(demSuffix_opp, demSuffix) for f in src_scenedem_opp_ffile_glob]).difference(
@@ -987,7 +988,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         else:
             src_scenemask_ffile_glob = glob.glob(os.path.join(
                 scene_dfull,
-                '{}*_{}_{}'.format(args.get(ARGSTR_STRIPID), str(args.get(ARGSTR_RES))[0], sceneMaskSuffix)))
+                '{}_*_{}'.format(args.get(ARGSTR_STRIPID), sceneMaskSuffix)))
             if len(src_scenemask_ffile_glob) > 0:
                 print( "Deleting {} existing *_{}.tif scene masks".format(len(src_scenemask_ffile_glob), scene_mask_name)
                       +" (dryrun)"*args.get(ARGSTR_DRYRUN))
