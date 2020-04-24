@@ -143,7 +143,7 @@ ARGGRP_UNFILTERED = [ARGSTR_NOWATER, ARGSTR_NOCLOUD]
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
-JOB_WALLTIME_HR = 30
+JOB_WALLTIME_HR = 3
 JOB_MEMORY_GB = 40
 
 ##############################
@@ -594,8 +594,7 @@ def main():
             src_scenedem_ffile_glob = glob.glob(os.path.join(
                 args.get(ARGSTR_SRC),
                 '*'*(not args.get(ARGSTR_OLD_ORG)),
-                # '*_{}_{}'.format(str(args.get(ARGSTR_RES))[0], demSuffix)
-                demSuffix
+                '*_{}'.format(demSuffix)
             ))
             if not src_scenedem_ffile_glob:
                 print("No scene DEMs found to process, exiting")
