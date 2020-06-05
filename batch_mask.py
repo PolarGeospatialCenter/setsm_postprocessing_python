@@ -216,13 +216,13 @@ def argparser_init():
         help=' '.join([
             "Suffix appended to filename of output masked rasters."
             "\nWorks like 'src-raster-fname.tif' -> 'src-raster-fname_[DST_SUFFIX].tif'.",
-            "\nIf not provided, the default output suffix is 'filtXXX', where [XXX] is the",
+            "\nIf not provided, the default output suffix is '{}XXX', where [XXX] is the".format(MASKED_SUFFIX_DEFAULT),
             "bit-code corresponding to the filter components ([cloud, water, edge], respectively)",
             "applied in the masking for this run with the (-c, -w, -e) mask filter options.",
             "\nIf the --filter-off option is instead provided, by default all output filenames",
             "will be the same as input filenames.",
             "\nIf none of the (-c, -w, -e, --filter-off) filter options are provided, all filter",
-            "components are applied and the default output suffix is simply 'filt'."
+            "components are applied and the default output suffix is simply '{}'.".format(MASKED_SUFFIX_DEFAULT),
             "\n"
         ])
     )
