@@ -52,8 +52,9 @@ ARGSTR_SRC = 'src'
 ARGSTR_RES = 'res'
 ARGSTR_DST = '--dst'
 ARGSTR_META_TRANS_DIR = '--meta-trans-dir'
-ARGSTR_BUILD_BROWSE = '--build-browse'
+ARGSTR_NO_BROWSE = '--no-browse'
 ARGSTR_BUILD_AUX = '--build-aux'
+ARGSTR_REBUILD_AUX = '--rebuild-aux'
 ARGSTR_DEM_TYPE = '--dem-type'
 ARGSTR_MASK_VER = '--mask-ver'
 ARGSTR_NOENTROPY = '--noentropy'
@@ -230,10 +231,10 @@ def argparser_init():
     )
 
     parser.add_argument(
-        ARGSTR_BUILD_BROWSE,
+        ARGSTR_NO_BROWSE,
         action='store_true',
         help=' '.join([
-            "Build 10m hillshade '*_dem_browse.tif' images alongside output DEM strip segments.",
+            "Do not build 10m hillshade '*_dem_10m_shade.tif' images alongside output DEM strip segments.",
         ])
     )
 
@@ -243,6 +244,14 @@ def argparser_init():
         help=' '.join([
             "Build a suite of downsampled browse images alongside output DEM strip segments.",
             "These images are primarily useful to PGC in tile mosaicking efforts."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_REBUILD_AUX,
+        action='store_true',
+        help=' '.join([
+            "Rebuild browse images along existing output DEM strip segments."
         ])
     )
 
@@ -516,6 +525,10 @@ def main():
         args.set(ARGGRP_UNFILTERED)
         print("via provided argument {}, arguments {} set automatically".format(ARGSTR_UNFILTERED, ARGGRP_UNFILTERED))
 
+    if args.get(ARGSTR_REBUILD_AUX):
+        args.set(ARGSTR_USE_OLD_MASKS)
+        print("via provided argument {}, argument {} set automatically".format(ARGSTR_REBUILD_AUX, ARGSTR_USE_OLD_MASKS))
+
     if args.get(ARGSTR_SCHEDULER) is not None:
         if args.get(ARGSTR_JOBSCRIPT) is None:
             jobscript_default = os.path.join(JOBSCRIPT_DIR, 'head_{}.sh'.format(args.get(ARGSTR_SCHEDULER)))
@@ -659,11 +672,7 @@ def main():
                 os.path.join(
                     dstdir,
                     '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG)),
-                    '{}_{}{}.fin'.format(
-                        sID,
-                        res_str,
-                        '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
-                    )
+                    '*.fin'
                 )
             )
         ]
@@ -674,6 +683,8 @@ def main():
                 ARGSTR_DEM_TYPE, argcho_dem_type_opp, ARGSTR_OLD_ORG
             ))
         # sys.exit(0)
+        if args.get(ARGSTR_REBUILD_AUX):
+            stripids_to_process = stripids
         if len(stripids_to_process) == 0:
             print("No unfinished strip DEMs found to process, exiting")
             sys.exit(0)
@@ -710,14 +721,10 @@ def main():
                 strip_dfull = strip_dfull_glob[0]
 
                 # If output does not already exist, add to task list.
-                stripid_fin_ffile = os.path.join(
+                stripid_fin_ffile = glob.glob(os.path.join(
                     strip_dfull,
-                    '{}_{}{}.fin'.format(
-                        sID,
-                        res_str,
-                        '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
-                    )
-                )
+                    '*.fin'
+                ))
                 dst_sID_ffile_glob = glob.glob(os.path.join(
                     strip_dfull,
                     '{}_{}{}_seg*_*'.format(
@@ -727,7 +734,7 @@ def main():
                     )
                 ))
 
-                if os.path.isfile(stripid_fin_ffile):
+                if len(stripid_fin_ffile) == 0 and not args.get(ARGSTR_REBUILD_AUX):
                     print("{}, {} {} :: ({}) .fin file exists, skipping".format(
                         job_num, ARGSTR_STRIPID, sID, res_str))
                     continue
@@ -745,7 +752,7 @@ def main():
                             if not args.get(ARGSTR_DRYRUN):
                                 os.rmdir(strip_dfull)
 
-                    else:
+                    elif not args.get(ARGSTR_REBUILD_AUX):
                         print("{}, {} {} :: {} ({}) output files exist ".format(
                             job_num, ARGSTR_STRIPID, sID, len(dst_sID_ffile_glob), res_str)
                               + "(potentially unfinished since no *.fin file), skipping")
@@ -900,7 +907,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             stripid_fin_ffile_coreg = None
 
         # Strip output existence check.
-        if os.path.isfile(stripid_fin_ffile):
+        if os.path.isfile(stripid_fin_ffile) and not args.get(ARGSTR_REBUILD_AUX):
             print("{} .fin file exists, strip output finished, skipping".format(stripid_fin_ffile))
             sys.exit(0)
         dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, args.get(ARGSTR_STRIPID)+'*'))
@@ -918,7 +925,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
                 if not args.get(ARGSTR_RESTART):
                     sys.exit(0)
-            else:
+            elif not args.get(ARGSTR_REBUILD_AUX):
                 print("Strip output exists (potentially unfinished), skipping")
                 sys.exit(0)
 
@@ -1052,6 +1059,14 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                         if not os.path.isdir(strip_dfull_coreg):
                             os.makedirs(strip_dfull_coreg)
 
+                if args.get(ARGSTR_REBUILD_AUX):
+                    if os.path.isfile(stripdem_ffile):
+                        saveStripBrowse(args, stripdem_ffile, stripDemSuffix, stripMaskSuffix)
+                        segnum += 1
+                        continue
+                    else:
+                        break
+
 
                 ## COREGISTER/mosaic scenes in this strip segment.
                 if use_old_trans:
@@ -1165,16 +1180,17 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         print('')
         print("Completed processing for this strip-pair ID")
 
-        with open(stripid_fin_ffile, 'w') as stripid_fin_fp:
-            for scenedem_ffile in src_scenedem_ffile_glob:
-                stripid_fin_fp.write(os.path.basename(scenedem_ffile)+'\n')
-
-        if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
-            with open(stripid_fin_ffile_coreg, 'w') as stripid_fin_coreg_fp:
+        if not args.get(ARGSTR_REBUILD_AUX):
+            with open(stripid_fin_ffile, 'w') as stripid_fin_fp:
                 for scenedem_ffile in src_scenedem_ffile_glob:
-                    stripid_fin_coreg_fp.write(os.path.basename(scenedem_ffile)+'\n')
+                    stripid_fin_fp.write(os.path.basename(scenedem_ffile)+'\n')
 
-        print(".fin finished indicator file created: {}".format(stripid_fin_ffile))
+            if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
+                with open(stripid_fin_ffile_coreg, 'w') as stripid_fin_coreg_fp:
+                    for scenedem_ffile in src_scenedem_ffile_glob:
+                        stripid_fin_coreg_fp.write(os.path.basename(scenedem_ffile)+'\n')
+
+            print(".fin finished indicator file created: {}".format(stripid_fin_ffile))
         print('')
 
 
@@ -1265,12 +1281,12 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     output_files = set()
     keep_files = set()
 
-    if args.get(ARGSTR_BUILD_BROWSE):
+    if not args.get(ARGSTR_NO_BROWSE):
         output_files.update([
             demFile_10m,
-            dem_browse
+            demFile_10m_shade
         ])
-        keep_files.add(dem_browse)
+        keep_files.add(demFile_10m_shade)
 
     if args.get(ARGSTR_BUILD_AUX):
         output_files.update([
