@@ -508,6 +508,8 @@ def main():
                 and filecmp.cmp(args.get(ARGSTR_SRC), args.get(ARGSTR_DST)))):
             arg_parser.error("argument {} directory is the same as "
                              "argument {} directory".format(ARGSTR_SRC, ARGSTR_DST))
+    elif args.get(ARGSTR_SCENE_MASKS_ONLY):
+        args.set(ARGSTR_DST, ARGSTR_SRC)
     else:
         # Set default dst dir.
         split_ind = args.get(ARGSTR_SRC).rfind('tif_results')
