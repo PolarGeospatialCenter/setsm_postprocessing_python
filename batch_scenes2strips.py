@@ -736,7 +736,7 @@ def main():
                     )
                 ))
 
-                if len(stripid_fin_ffile) == 0 and not args.get(ARGSTR_REBUILD_AUX):
+                if len(stripid_fin_ffile) > 0 and not args.get(ARGSTR_REBUILD_AUX):
                     print("{}, {} {} :: ({}) .fin file exists, skipping".format(
                         job_num, ARGSTR_STRIPID, sID, res_str))
                     continue
