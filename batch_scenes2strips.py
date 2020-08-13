@@ -714,11 +714,14 @@ def main():
         for sID in stripids_to_process:
             job_num += 1
 
-            strip_dname = '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG))
-            strip_dfull_glob = glob.glob(os.path.join(args_batch.get(ARGSTR_DST), strip_dname))
+            strip_dname_pattern = os.path.join(
+                args_batch.get(ARGSTR_DST),
+                '{}_{}{}*/'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG))
+            )
+            strip_dfull_glob = glob.glob(strip_dname_pattern)
             if len(strip_dfull_glob) > 1:
                 raise InvalidArgumentError("Found more than one match for output strip folder in"
-                                           " destination directory with pattern: {}".format(strip_dname))
+                                           " destination directory with pattern: {}".format(strip_dname_pattern))
             elif len(strip_dfull_glob) == 1:
                 strip_dfull = strip_dfull_glob[0]
 
@@ -854,10 +857,11 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         else:
             scene_dname_root = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)
 
-            scene_dfull_glob = glob.glob(os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*'))
+            scene_dfull_pattern = os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*/')
+            scene_dfull_glob = glob.glob(scene_dfull_pattern)
             if len(scene_dfull_glob) != 1:
                 raise InvalidArgumentError("Cannot find only one match for input strip folder in"
-                                           " source directory with pattern: {}".format(scene_dname_root+'*'))
+                                           " source directory with pattern: {}".format(scene_dfull_pattern))
             scene_dfull = scene_dfull_glob[0]
             scene_dname = os.path.basename(scene_dfull)
 
