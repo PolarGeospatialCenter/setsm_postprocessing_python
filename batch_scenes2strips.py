@@ -684,7 +684,7 @@ def main():
             print("(Did you mean to pass `{} {}` or `{}` arguments?)".format(
                 ARGSTR_DEM_TYPE, argcho_dem_type_opp, ARGSTR_OLD_ORG
             ))
-        sys.exit(0)
+        # sys.exit(0)
         if args.get(ARGSTR_REBUILD_AUX):
             stripids_to_process = stripids
         if len(stripids_to_process) == 0:
