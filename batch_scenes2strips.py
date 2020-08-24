@@ -684,7 +684,7 @@ def main():
             print("(Did you mean to pass `{} {}` or `{}` arguments?)".format(
                 ARGSTR_DEM_TYPE, argcho_dem_type_opp, ARGSTR_OLD_ORG
             ))
-        # sys.exit(0)
+        sys.exit(0)
         if args.get(ARGSTR_REBUILD_AUX):
             stripids_to_process = stripids
         if len(stripids_to_process) == 0:
@@ -863,7 +863,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 raise InvalidArgumentError("Cannot find only one match for input strip folder in"
                                            " source directory with pattern: {}".format(scene_dfull_pattern))
             scene_dfull = scene_dfull_glob[0]
-            scene_dname = os.path.basename(scene_dfull)
+            scene_dname = os.path.basename(os.path.normpath(scene_dfull))
 
             strip_dname = '{}_{}{}{}'.format(
                 args.get(ARGSTR_STRIPID),
