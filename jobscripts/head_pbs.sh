@@ -22,4 +22,4 @@ if [ ! -f "$jobscript_body" ]; then
     exit 1
 fi
 
-$jobscript_body
+bash $jobscript_body
