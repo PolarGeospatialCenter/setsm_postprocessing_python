@@ -674,7 +674,7 @@ def main():
                 os.path.join(
                     dstdir,
                     '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG)),
-                    '*.fin'
+                    '{}_{}*.fin'.format(sID, res_str)
                 )
             )
         ]
@@ -728,7 +728,7 @@ def main():
                 # If output does not already exist, add to task list.
                 stripid_fin_ffile = glob.glob(os.path.join(
                     strip_dfull,
-                    '*.fin'
+                    '{}_{}*.fin'.format(sID, res_str)
                 ))
                 dst_sID_ffile_glob = glob.glob(os.path.join(
                     strip_dfull,
@@ -852,8 +852,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
         if args.get(ARGSTR_OLD_ORG):
             scene_dfull = args.get(ARGSTR_SRC)
+            scene_dname_root = ''
             scene_dname = ''
-            strip_dname = ''
         else:
             scene_dname_root = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)
 
@@ -865,15 +865,19 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             scene_dfull = scene_dfull_glob[0]
             scene_dname = os.path.basename(os.path.normpath(scene_dfull))
 
-            strip_dname = '{}_{}{}{}'.format(
-                args.get(ARGSTR_STRIPID),
-                res_str,
-                '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
-                scene_dname.replace(scene_dname_root, '')
-            )
+        strip_dname = '{}_{}{}{}'.format(
+            args.get(ARGSTR_STRIPID),
+            res_str,
+            '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
+            scene_dname.replace(scene_dname_root, '')
+        )
 
-        strip_dfull = os.path.join(args.get(ARGSTR_DST), strip_dname)
-        strip_dfull_coreg = os.path.join(dstdir_coreg, strip_dname) if dstdir_coreg is not None else None
+        if args.get(ARGSTR_OLD_ORG):
+            strip_dfull = args.get(ARGSTR_DST)
+            strip_dfull_coreg = dstdir_coreg
+        else:
+            strip_dfull = os.path.join(args.get(ARGSTR_DST), strip_dname)
+            strip_dfull_coreg = os.path.join(dstdir_coreg, strip_dname) if dstdir_coreg is not None else None
 
         # Print arguments for this run.
         print("stripid: {}".format(args.get(ARGSTR_STRIPID)))
