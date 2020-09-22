@@ -1278,9 +1278,11 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
 
     maskFile           = demFile.replace(demSuffix, maskSuffix)
     orthoFile          = demFile.replace(demSuffix, 'ortho.tif')
+    matchFile          = demFile.replace(demSuffix, 'matchtag.tif')
     dem_browse         = demFile.replace(demSuffix, 'dem_browse.tif')
     maskFile_10m       = demFile.replace(demSuffix, 'bitmask_10m.tif')
     orthoFile_10m      = demFile.replace(demSuffix, 'ortho_10m.tif')
+    matchFile_10m      = demFile.replace(demSuffix, 'matchtag_10m.tif')
     demFile_10m        = demFile.replace(demSuffix, 'dem_10m.tif')
     demFile_10m_masked = demFile.replace(demSuffix, 'dem_10m_masked.tif')
     demFile_10m_shade  = demFile.replace(demSuffix, 'dem_10m_shade.tif')
@@ -1302,6 +1304,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
         output_files.update([
             maskFile_10m,
             orthoFile_10m,
+            matchFile_10m,
             demFile_10m,
             demFile_10m_shade,
             demFile_10m_masked,
@@ -1312,6 +1315,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
         keep_files.update([
             maskFile_10m,
             orthoFile_10m,
+            matchFile_10m,
             demFile_10m,
             demFile_10m_shade,
             demFile_10m_masked,
@@ -1334,6 +1338,11 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
              ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(orthoFile, orthoFile_10m, 10))
+        )
+    if matchFile_10m in output_files:
+        commands.append(
+            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r near -dstnodata 0'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(matchFile, matchFile_10m, 10))
         )
     if demFile_10m in output_files:
         commands.append(
