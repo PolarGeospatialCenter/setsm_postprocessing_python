@@ -25,7 +25,7 @@ else:
 # The spatial reference of the strip, set at the beginning of scenes2strips()
 # to the spatial reference of the first scene DEM in order and used for
 # comparison to the spatial references of all other source raster files.
-__STRIP_SPAT_REF__ = None
+__STRIP_SPAT_REF__ = 'NULL'
 
 # The Catalog ID of "Image 1" as parsed from the output scene metadata files for
 # an intrack stereo SETSM DEM strip. It is expected that all ortho scenes in the
@@ -816,9 +816,11 @@ def orderPairs(fnames):
                                      # as OGR geometries, each tupled with the index corresponding to the
                                      # filename of the raster it is extracted from.
 
+    sample_spat_ref = rat.extractRasterData(fnames[0], 'spat_ref')
+
     # Get rectangular parameters and geometries.
     for i in range(len(fnames)):
-        cc, geom = rat.extractRasterData(fnames[i], 'corner_coords', 'geom')
+        cc, geom = rat.extractRasterData(rat.openRaster(fnames[i], sample_spat_ref), 'corner_coords', 'geom')
         cc_x = cc[:, 0]
         cc_y = cc[:, 1]
         R0[i, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]
@@ -895,23 +897,22 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     """
     Load data files and perform basic conversions.
     """
-    global __STRIP_SPAT_REF__
     global __INTRACK_ORTHO_CATID__
 
-    z, x_dem, y_dem, spat_ref = rat.extractRasterData(demFile, 'array', 'x', 'y', 'spat_ref')
+    z, x_dem, y_dem, spat_ref = rat.extractRasterData(rat.openRaster(demFile, __STRIP_SPAT_REF__, 'bilinear'), 'array', 'x', 'y', 'spat_ref')
     if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
         raise SpatialRefError("DEM '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
-                              demFile, spat_ref.ExportToWkt(), __STRIP_SPAT_REF__.ExportToWkt()))
+                              demFile, spat_ref.ExportToProj4(), __STRIP_SPAT_REF__.ExportToProj4()))
 
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
     # TODO: Ask Ian about the following interpretation of nodata values.
     z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
 
-    m = rat.extractRasterData(matchFile, 'array').astype(np.bool)
+    m = rat.extractRasterData(rat.openRaster(matchFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.bool)
     if m.shape != z.shape:
         warnings.warn("Matchtag '{}' dimensions differ from DEM dimensions".format(matchFile)
                      +"\nInterpolating to DEM dimensions")
-        x, y = rat.extractRasterData(matchFile, 'x', 'y')
+        x, y = rat.extractRasterData(rat.openRaster(matchFile, __STRIP_SPAT_REF__, 'nearest'), 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.isnan(m)] = 0  # Convert back to bool/uint8.
         m = m.astype(np.bool)
@@ -922,11 +923,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
         if ortho_file is None:
             o = None
         else:
-            o = rat.extractRasterData(ortho_file, 'array')
+            o = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'array')
             if o.shape != z.shape:
                 warnings.warn("Ortho{} '{}' dimensions differ from DEM dimensions".format(ortho_num if ortho_num > 1 else '', ortho_file)
                              +"\nInterpolating to DEM dimensions")
-                x, y = rat.extractRasterData(ortho_file, 'x', 'y')
+                x, y = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'x', 'y')
                 o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
                 o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
                 o[np.isnan(o)] = 0  # Convert back to uint16.
@@ -937,7 +938,7 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     if maskFile is None:
         md = np.zeros_like(z, dtype=np.uint8)
     else:
-        md = rat.extractRasterData(maskFile, 'array').astype(np.uint8)
+        md = rat.extractRasterData(rat.openRaster(maskFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.uint8)
         if md.shape != z.shape:
             raise RasterDimensionError("Mask '{}' dimensions {} do not match DEM dimensions {}".format(
                                        maskFile, md.shape, z.shape))

@@ -14,7 +14,7 @@ from PIL import Image
 from warnings import warn
 
 import cv2
-import gdal, ogr, osr
+import gdal, ogr, osr, osgeo
 import numpy as np
 import scipy
 import shapely.geometry
@@ -98,7 +98,7 @@ def oneBandImageToArrayZXY_projRef(rasterFile):
     return Z, X, Y, proj_ref
 
 
-def openRaster(file_or_ds, target_EPSG=None):
+def openRaster(file_or_ds, target_srs=None, reproject_resample_method='nearest'):
     """
     Open a raster image as a GDAL dataset object.
 
@@ -134,35 +134,63 @@ def openRaster(file_or_ds, target_EPSG=None):
         raise InvalidArgumentError("Invalid input type for `file_or_ds`: {}".format(
                                    type(file_or_ds)))
 
-    if target_EPSG is not None:
-        target_sr = osr.SpatialReference()
-        target_sr.ImportFromEPSG(target_EPSG)
-        ds = reprojectGDALDataset(ds, target_sr, 'nearest')
+    if target_srs is not None:
+        ds = reprojectGDALDataset(ds, target_srs, reproject_resample_method)
 
     return ds
 
 
-def reprojectGDALDataset(ds_in, sr_out, interp_str):
-    # FIXME: Finish this function.
+def reprojectGDALDataset(ds_in, target_srs, interp_str):
 
-    # dtype_gdal, promote_dtype = dtype_np2gdal(Z.dtype)
-    # if promote_dtype is not None:
-    #     Z = Z.astype(promote_dtype)
+    input_srs_type = type(target_srs)
+
+    if input_srs_type is osgeo.osr.SpatialReference:
+        if not target_srs.IsProjected():
+            raise RasterIOError("`target_srs` is a osgeo.osr.SpatialReference object but is not projected")
+
+    elif input_srs_type is osgeo.gdal.Dataset or input_srs_type is str and os.path.isfile(target_srs):
+        target_srs = extractRasterData(target_srs, 'spat_ref')
+
+    else:
+        target_srs_in = target_srs
+        target_srs_out = osr.SpatialReference()
+
+        if input_srs_type is int:
+            target_srs_out.ImportFromEPSG(target_srs_in)
+
+        elif input_srs_type is str:
+
+            if input_srs_type.upper().startswith('EPSG:'):
+                target_srs_out.ImportFromEPSG(int(target_srs_in.upper().lstrip('EPSG:')))
+
+            elif '+proj' in target_srs_in:
+                target_srs_out.ImportFromProj4(target_srs_in)
+
+            else:
+                target_srs_out.ImportFromWkt(target_srs_in)
+
+        else:
+            raise RasterIOError("`target_srs` type is unsupported: {}".format(input_srs_type))
+
+        target_srs = target_srs_out
 
     interp_gdal = interp_str2gdal(interp_str)
 
-    mem_drv = gdal.GetDriverByName('MEM')
+    source_srs, dx, dy = extractRasterData(ds_in, 'spat_ref', 'dx', 'dy')
 
-    sr_in = osr.SpatialReference()
+    if source_srs.IsSame(target_srs) == 1:
+        return ds_in
 
-    # ds_in = mem_drv.Create('', X.size, Y.size, 1, dtype_gdal)
-    # ds_in.SetGeoTransform((X[0], X[1]-X[0], 0,
-    #                        Y[0], 0, Y[1]-Y[0]))
-    # ds_in.GetRasterBand(1).WriteArray(Z)
+    temp_inmemory_file_path = '/vsimem/reproj.tif'
 
-    ds_out = mem_drv.Create('', ds_in.RasterXSize, ds_in.RasterYSize, 1)
-
-    gdal.ReprojectImage(ds_in, ds_out, '', '', interp_gdal)
+    gdal.Warp(
+        temp_inmemory_file_path, ds_in,
+        dstSRS=target_srs, resampleAlg=interp_gdal,
+        xRes=dx, yRes=dy, targetAlignedPixels=True,
+        format="GTiff"
+    )
+    ds_out = gdal.Open(temp_inmemory_file_path, gdal.GA_ReadOnly)
+    gdal.Unlink(temp_inmemory_file_path)
 
     return ds_out
 
