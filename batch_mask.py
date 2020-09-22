@@ -405,10 +405,16 @@ def main():
         arg_parser.error("argument {} is incompatible with filter options {}".format(ARGSTR_FILTER_OFF, ARGGRP_FILTER_COMP))
 
     if args.get(ARGSTR_DST_SUFFIX) is None:
-        if args.get(ARGGRP_FILTER_COMP).count(True) > 0:
-            args.set(ARGSTR_DST_SUFFIX, MASKED_SUFFIX_DEFAULT+get_mask_bitstring(*args.get(ARGGRP_FILTER_COMP)))
-        else:
+        if args.get(ARGGRP_FILTER_COMP).count(True) in (0, 3):
             args.set(ARGSTR_DST_SUFFIX, MASKED_SUFFIX_DEFAULT*(not args.get(ARGSTR_FILTER_OFF)))
+        elif args.get(ARGGRP_FILTER_COMP).count(True) > 0:
+            masked_suffix = MASKED_SUFFIX_DEFAULT
+            for filter_comp_argstr in ARGGRP_FILTER_COMP:
+                if args.get(filter_comp_argstr):
+                    masked_suffix = "{}-{}".format(filter_comp_argstr.lstrip('-'), masked_suffix)
+            args.set(ARGSTR_DST_SUFFIX, masked_suffix)
+        # elif args.get(ARGGRP_FILTER_COMP).count(True) > 0:
+        #     args.set(ARGSTR_DST_SUFFIX, MASKED_SUFFIX_DEFAULT+get_mask_bitstring(*args.get(ARGGRP_FILTER_COMP)))
         print("argument {} set automatically to: '{}'".format(ARGSTR_DST_SUFFIX, args.get(ARGSTR_DST_SUFFIX)))
     dst_suffix_raw = args.get(ARGSTR_DST_SUFFIX)
     dst_suffix_fixed = '_'+dst_suffix_raw.lstrip('_') if dst_suffix_raw != '' else ''
