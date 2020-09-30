@@ -72,6 +72,7 @@ ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
 ARGSTR_SKIP_ORTHO2_ERROR = '--skip-xtrack-missing-ortho2-error'
 ARGSTR_SCENE_MASKS_ONLY = '--build-scene-masks-only'
+ARGSTR_USE_PIL_IMRESIZE = '--use-pil-imresize'
 
 # Argument choices
 ARGCHO_DEM_TYPE_LSF = 'lsf'
@@ -226,6 +227,17 @@ def argparser_init():
     )
 
     parser.add_argument(
+        ARGSTR_USE_PIL_IMRESIZE,
+        action='store_true',
+        help=' '.join([
+            "Use PIL imresize method over usual fast OpenCV resize method for final resize from ",
+            "8m processing resolution back to native scene raster resolution when generating ",
+            "output bitmask raster. This is to avoid an OpenCV error with unknown cause that ",
+            "can occur when using OpenCV resize on some 50cm scenes at Blue Waters."
+        ])
+    )
+
+    parser.add_argument(
         ARGSTR_DRYRUN,
         action='store_true',
         help="Print actions without executing."
@@ -318,7 +330,8 @@ def main():
     if not args.get(ARGSTR_DRYRUN):
         generateMasks(scenedem_ffile, scene_mask_name, noentropy=args.get(ARGSTR_NOENTROPY),
                       save_component_masks=MASK_BIT, use_second_ortho=(stripid_is_xtrack and not bypass_ortho2),
-                      debug_component_masks=DEBUG_NONE, nbit_masks=False)
+                      debug_component_masks=DEBUG_NONE, nbit_masks=False,
+                      use_pil_imresize=args.get(ARGSTR_USE_PIL_IMRESIZE))
 
     print("Done!")
 

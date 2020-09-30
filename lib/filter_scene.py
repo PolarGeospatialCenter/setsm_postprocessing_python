@@ -191,7 +191,7 @@ def isValidArggroups(arggroup_list):
 
 def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_masks=False,
                   save_component_masks=MASK_SEPARATE, debug_component_masks=DEBUG_NONE,
-                  use_second_ortho=False):
+                  use_second_ortho=False, use_pil_imresize=False):
     """
     Create and save scene masks that mask ON regions of bad data.
 
@@ -324,12 +324,21 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
                     masks_merged[mask_name] = np.bitwise_or(masks_merged[mask_name], mask)
         masks = masks_merged
 
+    image_shape = rat.extractRasterData(demFile, 'shape')
+
     nbits = None
     for mask_name, mask in masks.items():
         maskFile = os.path.join(dstdir, demFname.replace(demSuffix, mask_name+'.tif'))
         if mask_dtype == 'n-bit':
             nbits = 3 if (save_component_masks == MASK_BIT and mask_name == mask_version) else 1
+
+        if mask.shape != image_shape:
+            print("Resizing mask array {} to native image size {}".format(mask.shape, image_shape))
+            mask = rat.imresize(mask, image_shape, 'nearest', method=('pil' if use_pil_imresize else 'cv2'))
+
         rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=mask_dtype, nbits=nbits)
+
+        del mask
 
 
 def mask_v1(demFile, noentropy=False,
@@ -478,7 +487,7 @@ def mask_v2(demFile=None, mask_version='mask',
         Minimum number of contiguous data pixels in a kept good data
         cluster in the returned mask, at `processing_res` resolution.
     save_component_masks : bool
-        If True, return addition edge, water, and cloud mask arrays.
+        If True, return additional edge, water, and cloud mask arrays.
     debug_component_masks : int
         If DEBUG_NONE, has no effect.
         If DEBUG_ALL, perform all of the following.
@@ -559,15 +568,59 @@ def mask_v2(demFile=None, mask_version='mask',
     except KeyError as e:
         print(e)
         raise MetadataError("Scene metadata file ({}) is missing critical information for filtering step; "
-                         "cannot proceed".format(metaFile))
+                            "cannot proceed".format(metaFile))
 
-    # Extract raster data.
+    # Load DEM.
     dem_array, image_shape, image_gt = rat.extractRasterData(demFile, 'array', 'shape', 'geo_trans')
     image_dx = image_gt[1]
     image_dy = image_gt[5]
     image_res = abs(image_dx)
+    resize_factor = (image_res / processing_res) if (image_res != processing_res) else None
+
+    dem_array[dem_array == -9999] = np.nan
+    if resize_factor is not None:
+        dem_array = rat.imresize(dem_array, resize_factor)
+    dem_nodata = np.isnan(dem_array)
+
+    if image_res != processing_res:
+        processing_dy, processing_dx = image_res * np.array(image_shape) / np.array(dem_array.shape)
+    else:
+        processing_dx = processing_res
+        processing_dy = processing_res
+    # Coordinate ascending/descending directionality affects gradient used in getSlopeMask.
+    if image_dx < 0:
+        processing_dx = -processing_dx
+    if image_dy < 0:
+        processing_dy = -processing_dy
+
+    # Load matchtag and get data density map.
     match_array = rat.extractRasterData(matchFile, 'array')
+    if match_array.shape != image_shape:
+        raise RasterDimensionError("matchFile '{}' dimensions {} do not match dem dimensions {}".format(
+                                   matchFile, match_array.shape, image_shape))
+    if ddm_kernel_size is None:
+        ddm_kernel_size = int(math.floor(21*2/image_res))
+    data_density_map = getDataDensityMap(match_array, ddm_kernel_size)
+    del match_array
+    if resize_factor is not None:
+        data_density_map = rat.imresize(data_density_map, resize_factor)
+    data_density_map[dem_nodata] = 0
+
+    # Load ortho.
     ortho_array = rat.extractRasterData(orthoFile, 'array')
+    if ortho_array.shape != image_shape:
+        raise RasterDimensionError("orthoFile '{}' dimensions {} do not match dem dimensions {}".format(
+                                   orthoFile, ortho_array.shape, image_shape))
+    # Re-scale ortho data if WorldView correction is detected in the meta file.
+    if maxDN is not None:
+        print("rescaled to: 0 to {}".format(maxDN))
+        ortho_array = rescaleDN(ortho_array, maxDN)
+    # Convert ortho data to radiance.
+    ortho_array = DG_DN2RAD(ortho_array, satID=satID, effectiveBandwith=effbw, abscalFactor=abscalfact)
+    print("radiance value range: {:.2f} to {:.2f}".format(np.nanmin(ortho_array), np.nanmax(ortho_array)))
+    if resize_factor is not None:
+        ortho_array = rat.imresize(ortho_array, resize_factor)
+    ortho_array[dem_nodata] = 0
 
     # Initialize output.
     component_masks = {}
@@ -577,52 +630,6 @@ def mask_v2(demFile=None, mask_version='mask',
         mask_components.extend([MASKCOMP_EDGE_NAME, MASKCOMP_WATER_NAME, MASKCOMP_CLOUD_NAME])
     for mask_name in mask_components:
         component_masks_out[mask_name] = np.ones_like(dem_array, np.bool)
-
-    if ddm_kernel_size is None:
-        ddm_kernel_size = int(math.floor(21*2/image_res))
-
-    # Raster size consistency checks
-    if match_array.shape != image_shape:
-        raise RasterDimensionError("matchFile '{}' dimensions {} do not match dem dimensions {}".format(
-                                   matchFile, match_array.shape, image_shape))
-
-    if ortho_array.shape != image_shape:
-        raise RasterDimensionError("orthoFile '{}' dimensions {} do not match dem dimensions {}".format(
-                                   orthoFile, ortho_array.shape, image_shape))
-
-    dem_array[dem_array == -9999] = np.nan
-    data_density_map = getDataDensityMap(match_array, ddm_kernel_size)
-    del match_array
-
-    # Re-scale ortho data if WorldView correction is detected in the meta file.
-    if maxDN is not None:
-        print("rescaled to: 0 to {}".format(maxDN))
-        ortho_array = rescaleDN(ortho_array, maxDN)
-
-    # Convert ortho data to radiance.
-    ortho_array = DG_DN2RAD(ortho_array, satID=satID, effectiveBandwith=effbw, abscalFactor=abscalfact)
-    print("radiance value range: {:.2f} to {:.2f}".format(np.nanmin(ortho_array), np.nanmax(ortho_array)))
-
-    # Resize arrays to processing resolution.
-    if image_res != processing_res:
-        resize_factor = image_res / processing_res
-        dem_array        = rat.imresize(dem_array,        resize_factor)
-        ortho_array      = rat.imresize(ortho_array,      resize_factor)
-        data_density_map = rat.imresize(data_density_map, resize_factor)
-        processing_dy, processing_dx = image_res * np.array(image_shape) / np.array(dem_array.shape)
-        ortho_array[np.isnan(dem_array)] = 0
-        data_density_map[np.isnan(dem_array)] = 0
-    else:
-        processing_dx = processing_res
-        processing_dy = processing_res
-
-    dem_nodata = np.isnan(dem_array)
-
-    # Coordinate ascending/descending directionality affects gradient used in getSlopeMask.
-    if image_dx < 0:
-        processing_dx = -processing_dx
-    if image_dy < 0:
-        processing_dy = -processing_dy
 
     # Mask edges using DEM slope.
     mask = getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res)
@@ -660,10 +667,10 @@ def mask_v2(demFile=None, mask_version='mask',
 
     component_masks[mask_version] = mask_out
 
-    for mask_name in component_masks:
-        mask = component_masks[mask_name]
-        mask = rat.imresize(mask, image_shape, 'nearest')
-        component_masks[mask_name] = mask
+    # for mask_name in component_masks:
+    #     mask = component_masks[mask_name]
+    #     mask = rat.imresize(mask, image_shape, 'nearest')
+    #     component_masks[mask_name] = mask
 
     return component_masks
 
