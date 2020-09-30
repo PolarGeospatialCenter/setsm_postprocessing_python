@@ -1278,10 +1278,12 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
 
     maskFile           = demFile.replace(demSuffix, maskSuffix)
     orthoFile          = demFile.replace(demSuffix, 'ortho.tif')
+    ortho2File         = demFile.replace(demSuffix, 'ortho2.tif')
     matchFile          = demFile.replace(demSuffix, 'matchtag.tif')
     dem_browse         = demFile.replace(demSuffix, 'dem_browse.tif')
     maskFile_10m       = demFile.replace(demSuffix, 'bitmask_10m.tif')
     orthoFile_10m      = demFile.replace(demSuffix, 'ortho_10m.tif')
+    ortho2File_10m     = demFile.replace(demSuffix, 'ortho2_10m.tif')
     matchFile_10m      = demFile.replace(demSuffix, 'matchtag_10m.tif')
     demFile_10m        = demFile.replace(demSuffix, 'dem_10m.tif')
     demFile_10m_masked = demFile.replace(demSuffix, 'dem_10m_masked.tif')
@@ -1323,6 +1325,9 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
             demFile_40m_masked,
             demFile_coverage
         ])
+        if os.path.isfile(ortho2File):
+            output_files.add(ortho2File_10m)
+            keep_files.add(ortho2File_10m)
 
     for ofile in output_files:
         if os.path.isfile(ofile):
@@ -1338,6 +1343,11 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
              ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(orthoFile, orthoFile_10m, 10))
+        )
+    if ortho2File_10m in output_files:
+        commands.append(
+            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(ortho2File, ortho2File_10m, 10))
         )
     if matchFile_10m in output_files:
         commands.append(
