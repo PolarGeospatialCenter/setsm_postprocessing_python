@@ -1067,10 +1067,12 @@ def array_round_proper(array, in_place):
         array = np.copy(array)
 
     array_gt_zero = array > 0
-    array_lt_zero = array < 0
-
     array[array_gt_zero] = np.floor(array + 0.5)[array_gt_zero]
-    array[array_lt_zero] =  np.ceil(array - 0.5)[array_lt_zero]
+    del array_gt_zero
+
+    array_lt_zero = array < 0
+    array[array_lt_zero] = np.ceil(array - 0.5)[array_lt_zero]
+    del array_lt_zero
 
     return array
 
