@@ -458,8 +458,8 @@ def main():
 
     elif os.path.isfile(src) and not src.endswith('.txt'):
         if args.provided(ARGSTR_SRC_SUFFIX):
-            raise ScriptArgumentError("{} option cannot be used when argument {} is a path to "
-                                      "a source raster file".format(ARGSTR_SRC_SUFFIX, ARGSTR_SRC))
+            arg_parser.error("{} option cannot be used when argument {} is a path to "
+                             "a source raster file".format(ARGSTR_SRC_SUFFIX, ARGSTR_SRC))
         args.set(ARGSTR_SRC_SUFFIX, None)
         suffix_maskval_dict = None
         src_raster = src
@@ -559,8 +559,8 @@ def main():
                     num_src_rasters += len(src_rasterffile_glob)
                     double_dipped = src_rasterffile_glob.intersection(rasterFiles_checklist)
                     if double_dipped:
-                        raise ScriptArgumentError("{} option '{}' matches source raster files that "
-                                                  "are already caught by another provided suffix!".format(
+                        arg_parser.error("{} option '{}' matches source raster files that "
+                                         "are already caught by another provided suffix!".format(
                             ARGSTR_SRC_SUFFIX, rasterSuffix
                         ))
                     rasterFiles_checklist = rasterFiles_checklist.union(src_rasterffile_glob)
@@ -592,8 +592,8 @@ def main():
                     num_src_rasters += 1
                     double_dipped = (src_rasterFile in rasterFiles_checklist)
                     if double_dipped:
-                        raise ScriptArgumentError("{} option '{}' matches source raster files that "
-                                                  "are already caught by another provided suffix!".format(
+                        arg_parser.error("{} option '{}' matches source raster files that "
+                                         "are already caught by another provided suffix!".format(
                             ARGSTR_SRC_SUFFIX, rasterSuffix
                         ))
                     rasterFiles_checklist.add(src_rasterFile)
@@ -615,7 +615,7 @@ def main():
                     num_src_rasters += len(src_rasterffile_glob)
                     double_dipped = src_rasterffile_glob.intersection(rasterFiles_checklist)
                     if double_dipped:
-                        raise ScriptArgumentError(
+                        arg_parser.error(
                             "{} option '{}' (auto-globbed) matches source raster files that "
                             "are already caught by another provided suffix!".format(
                             ARGSTR_SRC_SUFFIX, rasterSuffix_glob
