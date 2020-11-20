@@ -440,7 +440,7 @@ def main():
         for dir_argstr, dir_path in list(zip(ARGGRP_OUTDIR, args.get_as_list(ARGGRP_OUTDIR))):
             if dir_path is not None and not os.path.isdir(dir_path):
                 print("Creating argument {} directory: {}".format(dir_argstr, dir_path))
-                os.makedirs(dir_path)
+                os.makedirs(dir_path, exist_ok=True)
 
 
     ## Process tasks.
@@ -581,7 +581,7 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
 
     if not os.path.isdir(dstdir):
         if not args.get(ARGSTR_DRYRUN):
-            os.makedirs(dstdir)
+            os.makedirs(dstdir, exist_ok=True)
 
     if src_is_strip_metafile and normal_strip_output:
         src_rasters_to_reproject = [
