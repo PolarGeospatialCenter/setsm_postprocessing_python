@@ -453,15 +453,18 @@ class ArgumentPasser:
 
     def _argval2str(self, item):
         if type(item) is str:
-            if item.startswith('"') and item.endswith('"'):
-                item_str = item
-            elif item.startswith("'") and item.endswith("'"):
-                item_str = item
+            if item.startswith("'") and item.endswith("'"):
+                item_str = r"\'{}\'".format(item[1:-1])
+            elif item.startswith('"') and item.endswith('"'):
+                item_str = r'\"{}\"'.format(item[1:-1])
             else:
-                item_str = '"{}"'.format(item)
+                item_str = r'\"{}\"'.format(item)
         else:
             item_str = '{}'.format(item)
         return item_str
+
+    def _escape_comma(self, str_item):
+        return str_item.replace(',', '|COMMA|')
 
     def _update_cmd_base(self):
         arg_list = []
@@ -494,7 +497,7 @@ class ArgumentPasser:
                     posarg_list.append(' '.join([self._argval2str(item) for item in val]))
                 else:
                     posarg_list.append(self._argval2str(val))
-        self.cmd = '{} {} {} {}'.format(self.exe, self.script, " ".join(posarg_list), self.cmd_optarg_base)
+        self.cmd = '{} {} {} {}'.format(self.exe, self._argval2str(self.script), " ".join(posarg_list), self.cmd_optarg_base)
 
     def get_cmd(self):
         return self.cmd
@@ -525,9 +528,11 @@ class ArgumentPasser:
 
         if envvars is not None:
             if type(envvars) in (tuple, list):
-                cmd_envvars = ','.join(['p{}="{}"'.format(i, a) for i, a in enumerate(envvars)])
+                cmd_envvars = ','.join(['p{}="{}"'.format(i, self._escape_comma(a))
+                                        for i, a in enumerate(envvars)])
             elif type(envvars) == dict:
-                cmd_envvars = ','.join(['{}="{}"'.format(var_name, var_val) for var_name, var_val in envvars.items()])
+                cmd_envvars = ','.join(['{}="{}"'.format(var_name, self._escape_comma(var_val))
+                                        for var_name, var_val in envvars.items()])
 
         if scheduler == SCHED_PBS:
             cmd = ' '.join([
@@ -658,21 +663,26 @@ def write_task_bundles(task_list, tasks_per_bundle, dstdir, descr, task_fmt='%s'
 def read_task_bundle(bundle_file, args_dtype=str, args_delim=','):
     try:
         import numpy as np
+        imported_numpy = False
     except ImportError:
-        pass
-    if 'numpy' in sys.modules:
+        imported_numpy = False
+    if imported_numpy:
         if args_dtype is str:
             args_dtype = np.dtype(str)
         task_list = np.loadtxt(bundle_file, dtype=args_dtype, delimiter=args_delim).tolist()
         if type(task_list) is not list:
             task_list = [task_list]
     else:
+        task_list = []
         with open(bundle_file, 'r') as bundle_file_fp:
-            task_list = bundle_file_fp.read().splitlines()
-        if len(task_list) > 0 and args_delim in task_list[0]:
-            task_list = [[args_dtype(arg) for arg in task.split(args_delim)] for task in task_list]
-        else:
-            task_list = [args_dtype(arg) for arg in task_list]
+            line = bundle_file_fp.readline()
+            split_lines = (args_delim in line)
+            bundle_file_fp.seek(0)
+            for line in bundle_file_fp:
+                if split_lines:
+                    task_list.append([args_dtype(arg) for arg in line.rstrip().split(args_delim)])
+                else:
+                    task_list.append(args_dtype(line.rstrip()))
     return task_list
 
 

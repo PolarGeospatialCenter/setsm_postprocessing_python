@@ -27,6 +27,8 @@ elif [ "$job_class" == "Mask" ]; then
     env_load_cmd="$default_env_load_cmd"
 elif [ "$job_class" == "Check" ]; then
     env_load_cmd="$default_env_load_cmd"
+elif [ "$job_class" == "Reproj" ]; then
+    env_load_cmd="$default_env_load_cmd"
 fi
 
 

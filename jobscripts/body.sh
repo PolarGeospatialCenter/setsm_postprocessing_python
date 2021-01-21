@@ -22,7 +22,7 @@ fi
 # Required environment variable arguments
 jobscript_path="$p0"
 job_class="$p1"
-task_cmd="$p2"
+task_cmd="$p2"; task_cmd="${task_cmd//|COMMA|/,}"
 set +u
 # Optional environment variable arguments
 py_ver_min="$p3"
