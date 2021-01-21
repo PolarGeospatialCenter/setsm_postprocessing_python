@@ -1548,8 +1548,8 @@ def main():
 
 
 def check_rasters(raster_ffiles, checkfile, args):
-    import gdal
     import numpy as np
+    from osgeo import gdal
     gdal.UseExceptions()
 
     if args.get(ARGSTR_CHECKFILE) is not None:

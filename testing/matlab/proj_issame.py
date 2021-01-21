@@ -4,9 +4,7 @@
 import os
 import sys
 
-import gdal
-import osr
-
+from osgeo import gdal, osr
 
 gdal.UseExceptions()
 

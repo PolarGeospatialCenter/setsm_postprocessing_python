@@ -14,17 +14,20 @@ from PIL import Image
 from warnings import warn
 
 import cv2
-import gdal, ogr, osr, osgeo
 import numpy as np
+import osgeo
+from osgeo import gdal_array
+from osgeo import gdal, ogr, osr
 import scipy
 import shapely.geometry
 import shapely.ops
-from osgeo import gdal_array
 from scipy import ndimage as sp_ndimage
 from skimage.draw import polygon_perimeter
 from skimage import morphology as sk_morphology
 from skimage.filters.rank import entropy
 from skimage.util import unique_rows
+
+gdal.UseExceptions()
 
 if sys.version_info[0] < 3:
     from DecimatePoly import DecimatePoly

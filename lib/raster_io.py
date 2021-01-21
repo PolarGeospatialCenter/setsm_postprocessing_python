@@ -8,12 +8,12 @@ import os
 import sys
 from warnings import warn
 
-import gdal, ogr, osr
 import numpy as np
 from osgeo import gdal_array
-
+from osgeo import gdal, ogr, osr
 
 gdal.UseExceptions()
+
 
 class RasterIOError(Exception):
     def __init__(self, msg=""):
