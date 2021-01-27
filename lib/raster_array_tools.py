@@ -1047,7 +1047,7 @@ def flip_pixcoords(coords, shape_in, axis=0):
     return result
 
 
-def array_round_proper(array, in_place):
+def array_round_proper(array, in_place=False):
     """
     Round data in a floating point array to the nearest integer,
     rounding up for positive X.5 and down for negative X.5.
@@ -1070,11 +1070,13 @@ def array_round_proper(array, in_place):
         array = np.copy(array)
 
     array_gt_zero = array > 0
-    array[array_gt_zero] = np.floor(array + 0.5)[array_gt_zero]
+    np.add(array, 0.5, out=array, where=array_gt_zero)
+    np.floor(array, out=array, where=array_gt_zero)
     del array_gt_zero
 
     array_lt_zero = array < 0
-    array[array_lt_zero] = np.ceil(array - 0.5)[array_lt_zero]
+    np.subtract(array, 0.5, out=array, where=array_lt_zero)
+    np.ceil(array, out=array, where=array_lt_zero)
     del array_lt_zero
 
     return array
@@ -1163,7 +1165,7 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
 
     array_cropped = array if allow_modify_array else None
     try:
-        array_cropped = np.clip(array, dtype_out_min, dtype_out_max, array_cropped)
+        array_cropped = np.clip(array, dtype_out_min, dtype_out_max, out=array_cropped)
     except OverflowError:
         dtype_out_min_float = float(dtype_out_min)
         dtype_out_max_float = float(dtype_out_max)
@@ -1171,7 +1173,7 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
              "Casting clip range to float: [{}, {}]".format(dtype_out_np(1).dtype,
                                                             dtype_out_min, dtype_out_max,
                                                             dtype_out_min_float, dtype_out_max_float))
-        array_cropped = np.clip(array, dtype_out_min_float, dtype_out_max_float, array_cropped)
+        array_cropped = np.clip(array, dtype_out_min_float, dtype_out_max_float, out=array_cropped)
 
     return array_cropped.astype(dtype_out)
 
@@ -1533,6 +1535,14 @@ def imresize(array, size, interp='bicubic', dtype_out='input',
     array_backup = array
     dtype_in = array.dtype
 
+    method_choices = ('cv2', 'pil', 'scipy', 'gdal')
+    if method not in method_choices:
+        raise InvalidArgumentError("`method` must be one of {}, but was '{}'".format(method_choices, method))
+
+    dtype_out_choices = ('input', 'float')
+    if dtype_out not in dtype_out_choices:
+        raise InvalidArgumentError("`dtype_out` must be one of {}, but was '{}'".format(dtype_out_choices, dtype_out))
+
     # Handle interpolation method lookups.
     interp_dict = None
     if method == 'cv2':
@@ -1558,10 +1568,6 @@ def imresize(array, size, interp='bicubic', dtype_out='input',
         if interp not in interp_dict.keys():
             raise UnsupportedMethodError("`interp` must be one of {}, but was '{}'".format(interp_dict.keys(), interp))
         interp_code = interp_dict[interp]
-
-    dtype_out_choices = ('input', 'float')
-    if dtype_out not in dtype_out_choices:
-        raise InvalidArgumentError("`dtype_out` must be one of {}, but was '{}'".format(dtype_out_choices, dtype_out))
 
     # Handle 1D array input.
     one_dim_flag = False
