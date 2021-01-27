@@ -1413,6 +1413,9 @@ def main():
     if (   (checkffileroot_srcfnamechecklist_dict is not None and len(checkffileroot_srcfnamechecklist_dict) == 0)
         or (srcffile_checklist is not None and len(srcffile_checklist) == 0)):
         sys.exit(0)
+    elif args.get(ARGSTR_DRYRUN) and args.get(ARGSTR_SCHEDULER) is not None:
+        print("Exiting dryrun")
+        sys.exit(0)
 
 
     # Pause for user review.

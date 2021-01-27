@@ -678,19 +678,24 @@ def main():
                 )
             )
         ]
+
         print("Found {}{} strip-pair IDs, {} unfinished".format(
             len(stripids), ' *'+demSuffix if demSuffix is not None else '', len(stripids_to_process)))
         if len(stripids) == 0:
             print("(Did you mean to pass `{} {}` or `{}` arguments?)".format(
                 ARGSTR_DEM_TYPE, argcho_dem_type_opp, ARGSTR_OLD_ORG
             ))
-        # sys.exit(0)
+
         if args.get(ARGSTR_REBUILD_AUX):
             stripids_to_process = stripids
+        stripids_to_process.sort()
+
         if len(stripids_to_process) == 0:
             print("No unfinished strip DEMs found to process, exiting")
             sys.exit(0)
-        stripids_to_process.sort()
+        elif args.get(ARGSTR_DRYRUN) and args.get(ARGSTR_SCHEDULER) is not None:
+            print("Exiting dryrun")
+            sys.exit(0)
 
 
         # Pause for user review.

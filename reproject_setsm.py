@@ -428,6 +428,9 @@ def main():
 
     if num_tasks == 0:
         sys.exit(0)
+    elif args.get(ARGSTR_DRYRUN) and args.get(ARGSTR_SCHEDULER) is not None:
+        print("Exiting dryrun")
+        sys.exit(0)
 
     # Pause for user review.
     print("-----")
