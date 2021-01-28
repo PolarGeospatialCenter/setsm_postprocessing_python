@@ -4072,7 +4072,16 @@ def concave_hull_image(image, concavity,
                 pass
 
     # Create concave hull (single) polygon.
-    hull_concave_poly = hull_convex_poly.difference(erode_poly.difference(amin_poly))
+    # print("hull_convex_poly.is_valid={}".format(hull_convex_poly.is_valid))
+    # print("erode_poly.is_valid={}".format(erode_poly.is_valid))
+    # print("amin_poly.is_valid={}".format(amin_poly.is_valid))
+    erode_poly_safe = erode_poly.difference(amin_poly)
+    # print("erode_poly_safe.is_valid={}".format(erode_poly_safe.is_valid))
+    if not erode_poly_safe.is_valid:
+        erode_poly_safe = erode_poly_safe.buffer(0)
+    # print("erode_poly_safe.is_valid={}".format(erode_poly_safe.is_valid))
+    hull_concave_poly = hull_convex_poly.difference(erode_poly_safe)
+    # print("hull_concave_poly.is_valid={}".format(hull_concave_poly.is_valid))
     if type(hull_concave_poly) == shapely.geometry.polygon.Polygon:
         hull_concave_poly = [hull_concave_poly]
     else:
