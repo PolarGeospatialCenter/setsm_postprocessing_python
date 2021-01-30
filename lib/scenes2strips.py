@@ -9,7 +9,7 @@ import sys
 import traceback
 import warnings
 
-import ogr
+from osgeo import ogr
 import numpy as np
 import scipy.stats
 from scipy import interpolate

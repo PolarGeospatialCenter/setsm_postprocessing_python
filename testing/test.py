@@ -15,7 +15,7 @@ if sys.version_info[0] < 3:
 else:
     from io import StringIO
 
-import ogr, osr
+from osgeo import ogr, osr
 import numpy as np
 from PIL import Image
 from scipy.misc import imread as scipy_imread
