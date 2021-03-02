@@ -661,7 +661,8 @@ def getFP(demFile):
     demFile = findTestFile(demFile)
 
     Z, X, Y = rat.extractRasterData(demFile, 'z', 'x', 'y')
-    fp_vertices = rat.getFPvertices(Z, Y, X, label=-9999, label_type='nodata')
+    fp_vertices = rat.getFPvertices(Z, X, Y, label=-9999, label_type='nodata',
+                                    replicate_matlab=True, dtype_out_int64_if_equal=True)
     num = len(fp_vertices[0])
 
     test_str = (

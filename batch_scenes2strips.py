@@ -22,6 +22,7 @@ import subprocess
 import sys
 import traceback
 import warnings
+from collections import OrderedDict
 from time import sleep
 from datetime import datetime
 
@@ -1124,8 +1125,9 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                             print("Saving output from coregistration step")
                             if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
                                 saveStripMeta(stripdem_ffile_coreg, stripDemSuffix,
-                                              X, Y, Z, trans, trans_err, rmse, spat_ref,
-                                              scene_dfull, scenedem_fname_coregistered, args)
+                                              X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
+                                              scene_dfull, scenedem_fname_coregistered, args,
+                                              filter_options_applied=filter_options_coreg)
                             if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                                 saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
                                                  X, Y, Z, M, O, O2, MD, spat_ref)
@@ -1156,8 +1158,9 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 print("Writing output strip segment with DEM: {}".format(stripdem_ffile))
 
                 saveStripMeta(stripdem_ffile, stripDemSuffix,
-                              X, Y, Z, trans, trans_err, rmse, spat_ref,
-                              scene_dfull, scenedem_fname_mosaicked, args)
+                              X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
+                              scene_dfull, scenedem_fname_mosaicked, args,
+                              filter_options_applied=filter_options_mask)
                 saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
                                  X, Y, Z, M, O, O2, MD, spat_ref)
                 saveStripBrowse(args, stripdem_ffile, stripDemSuffix, stripMaskSuffix)
@@ -1241,20 +1244,96 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
 
 def saveStripMeta(strip_demFile, demSuffix,
-                  X, Y, Z, trans, trans_err, rmse, spat_ref,
-                  scene_dir, scene_demFiles, args):
-    from lib.raster_array_tools import getFPvertices
+                  X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
+                  scene_dir, scene_demFiles, args,
+                  filter_options_applied):
+    import numpy as np
+    from ogr import CreateGeometryFromWkt
+    from lib.raster_array_tools import getFPvertices, coordsToWkt
+    from lib.filter_scene import MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 
     strip_metaFile = strip_demFile.replace(demSuffix, 'meta.txt')
     scene_demFnames = [os.path.basename(f) for f in scene_demFiles]
 
-    fp_vertices = getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
-    del Z, X, Y
+    bitmask_compbit_pixelcount_dict = None
+    bitmask_nonedge_pixelcount = None
+    bitmask_nonedge_masked_pixelcount = None
+    if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_BITMASK:
+        bitmask_compbit_pixelcount_dict = dict()
+        mask_select = np.empty_like(MD, dtype=np.uint8)
+        for maskcomp_bit in [MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT]:
+            # We NEED to conserve memory at this point (strip rasters are big).
+            # Pixels that are both water/cloud AND edge are outside the AOI.
+            # The following two lines select all non-edgemask pixels,
+            # which always have an EVEN base 10 value in the bitmask.
+            mask_select = np.mod(MD, 2, out=mask_select)
+            mask_select = np.logical_not(mask_select, out=mask_select)
+            if bitmask_nonedge_masked_pixelcount is None:
+                bitmask_nonedge_pixelcount = np.count_nonzero(mask_select)
+                bitmask_nomask_pixelcount = MD.size - np.count_nonzero(MD)
+                bitmask_nonedge_masked_pixelcount = bitmask_nonedge_pixelcount - bitmask_nomask_pixelcount
+            np.left_shift(mask_select, maskcomp_bit, out=mask_select)
+            np.bitwise_and(MD, mask_select, out=mask_select)
+            maskcomp_pixelcount = np.count_nonzero(mask_select)
+            bitmask_compbit_pixelcount_dict[maskcomp_bit] = maskcomp_pixelcount
+        del mask_select
+
+    fp_vertices = getFPvertices(Z, X, Y, label=-9999, label_type='nodata',
+                                replicate_matlab=True, dtype_out_int64_if_equal=True)
+
+    strip_geom = CreateGeometryFromWkt(coordsToWkt(fp_vertices.T))
+    strip_area = strip_geom.Area()
+    data_pixel_count = np.count_nonzero(M)
+    pixel_area = abs(X[1] - X[0]) * abs(Y[1] - Y[0])
+    data_density = data_pixel_count * pixel_area / strip_area
+
+    dem_valid_pixel_count = np.count_nonzero(Z != -9999)
+    if bitmask_nonedge_pixelcount is not None:
+        # More accurate
+        dem_coverage = dem_valid_pixel_count / bitmask_nonedge_pixelcount
+    else:
+        # Less accurate because strip footprint geometry is somewhat simplified
+        dem_coverage = dem_valid_pixel_count * pixel_area / strip_area
+
+    data_density_info = OrderedDict([
+        ("Output DEM Coverage", dem_coverage),
+        ("Output Data Density", data_density),
+        ("Unmasked Data Density", 'NA'),
+        ("Fully Masked Data Density", 'NA'),
+        ("Water Mask Coverage", 'NA'),
+        ("Cloud Mask Coverage", 'NA'),
+        ("Combined Mask Coverage", 'NA')
+    ])
+    if bitmask_compbit_pixelcount_dict is not None:
+        if 'nowater' in filter_options_applied and 'nocloud' in filter_options_applied:
+            data_density_info["Unmasked Data Density"] = data_density
+        if len(filter_options_applied) == 0:
+            data_density_info["Fully Masked Data Density"] = data_density
+        else:
+            masked_data_array = (MD == 0)
+            np.logical_and(M, masked_data_array, out=masked_data_array)
+            masked_data_pixel_count = np.count_nonzero(masked_data_array)
+            masked_data_area = masked_data_pixel_count * pixel_area
+            masked_data_density = masked_data_area / strip_area
+            data_density_info["Fully Masked Data Density"] = masked_data_density
+            del masked_data_array
+        data_density_info["Combined Mask Coverage"] = (
+            bitmask_nonedge_masked_pixelcount * pixel_area / strip_area
+        )
+        data_density_info["Water Mask Coverage"] = (
+            bitmask_compbit_pixelcount_dict[MASKCOMP_WATER_BIT] * pixel_area / strip_area
+        )
+        data_density_info["Cloud Mask Coverage"] = (
+            bitmask_compbit_pixelcount_dict[MASKCOMP_CLOUD_BIT] * pixel_area / strip_area
+        )
+
     proj4 = spat_ref.ExportToProj4()
     time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
 
     writeStripMeta(strip_metaFile, scene_dir, scene_demFnames,
-                   trans, trans_err, rmse, proj4, fp_vertices, time, args)
+                   trans, trans_err, rmse,
+                   proj4, fp_vertices, data_density_info,
+                   time, args)
 
 
 def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
@@ -1476,7 +1555,9 @@ def shouldDoMasking(matchFile, mask_name):
 
 
 def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
-                   trans, trans_err, rmse, proj4, fp_vertices, strip_time, args):
+                   trans, trans_err, rmse,
+                   proj4, fp_vertices, data_density_info,
+                   strip_time, args):
     import numpy as np
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
     from lib.filter_scene import BITMASK_VERSION_NUM
@@ -1490,8 +1571,6 @@ def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
     }
 
     demSuffix = getDemSuffix(scene_demFnames[0])
-    if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
-        fp_vertices = fp_vertices.astype(np.int64)
 
     nowater, nocloud = args.get(ARGSTR_NOWATER, ARGSTR_NOCLOUD)
     nofilter_coreg = args.get(ARGSTR_NOFILTER_COREG)
@@ -1513,8 +1592,8 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
     datetime.today().strftime("%d-%b-%Y %H:%M:%S"),
     strip_time,
     proj4,
-    ' '.join(np.array_str(fp_vertices[1], max_line_width=float('inf')).strip()[1:-1].split()),
     ' '.join(np.array_str(fp_vertices[0], max_line_width=float('inf')).strip()[1:-1].split()),
+    ' '.join(np.array_str(fp_vertices[1], max_line_width=float('inf')).strip()[1:-1].split()),
     args.get(ARGSTR_RMSE_CUTOFF)
 )
     )
@@ -1546,6 +1625,11 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
         )
         filter_info += '\n'.join(sorted(filter_info_components.strip().splitlines())) + '\n'
         strip_info += filter_info
+
+    strip_info += "\nData Coverage Statistics\n{}\n".format(
+        '\n'.join(["{}: {}".format(info_key, info_val)
+                   for info_key, info_val in data_density_info.items()])
+    )
 
     strip_info += "\nScene Metadata \n\n"
 

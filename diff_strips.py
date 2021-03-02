@@ -226,7 +226,8 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
     rat.saveArrayAsTiff(z_diff, diff_demFile, x1, y1, spat_ref, nodata_val=-9999, dtype_out='float32')
 
     print("Extracting footprint vertices for metadata")
-    fp_vertices = rat.getFPvertices(z_diff, y1, x1, label=-9999, label_type='nodata', replicate_matlab=True)
+    fp_vertices = rat.getFPvertices(z_diff, x1, y1, label=-9999, label_type='nodata',
+                                    replicate_matlab=True, dtype_out_int64_if_equal=True)
     del z_diff
 
     if save_match:
@@ -308,8 +309,6 @@ def writeDiffMeta(o_metaFile, demFile1, demFile2,
 
     demSuffix1 = getDemSuffix(demFile1)
     demSuffix2 = getDemSuffix(demFile2)
-    if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
-        fp_vertices = fp_vertices.astype(np.int64)
 
     diff_info = (
 """DoD Metadata
@@ -327,8 +326,8 @@ scene, rmse, dz, dx, dy
         creation_time,
         creation_time,
         proj4,
-        ' '.join(np.array_str(fp_vertices[1], max_line_width=float('inf')).strip()[1:-1].split()),
         ' '.join(np.array_str(fp_vertices[0], max_line_width=float('inf')).strip()[1:-1].split()),
+        ' '.join(np.array_str(fp_vertices[1], max_line_width=float('inf')).strip()[1:-1].split()),
         )
     )
 

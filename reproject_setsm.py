@@ -699,11 +699,10 @@ def reproject_stripmeta(metafile_src, metafile_dst, target_epsg, args):
             inmeta_fp.readline()
         demfile_dst = metafile_dst.replace(SETSM_META_SUFFIX, STRIP_DEM_SUFFIX)
         Z, Y, X = raster_io.extractRasterData(demfile_dst, 'z', 'y', 'x')
-        fp_vertices = rat.getFPvertices(Z, Y, X, label=-9999, label_type='nodata', replicate_matlab=True)
+        fp_vertices = rat.getFPvertices(Z, X, Y, label=-9999, label_type='nodata',
+                                        replicate_matlab=True, dtype_out_int64_if_equal=True)
         del Z, Y, X
-        if fp_vertices.dtype != np.int64 and np.array_equal(fp_vertices, fp_vertices.astype(np.int64)):
-            fp_vertices = fp_vertices.astype(np.int64)
-        y_out, x_out = fp_vertices
+        x_out, y_out = fp_vertices
 
     else:
         ## Reproject existing strip footprint vertices.

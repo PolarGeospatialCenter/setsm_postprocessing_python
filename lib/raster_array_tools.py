@@ -4137,31 +4137,32 @@ def concave_hull_image(image, concavity,
 ################################
 
 
-def getFPvertices(array, Y=None, X=None,
+def getFPvertices(array, X=None, Y=None,
                   label=0, label_type='nodata',
-                  replicate_matlab=False):
+                  replicate_matlab=False,
+                  dtype_out_int64_if_equal=False):
     """
     Calculate simplified footprint vertices of a convex polygon
     that encloses a labeled region of nodes in an array.
 
     Returned vertices are either (row, col) pixel indices directly
     corresponding to indices of nodes in `array` or point coordinates
-    that the pixel coordinates are mapped to using provided Y and X
+    that the pixel coordinates are mapped to using provided X and Y
     grid coordinate arrays.
 
     Parameters
     ----------
     array : ndarray, 2D
         Array containing data to footprint.
-    Y : None or (ndarray, 1D)
-        Grid coordinates corresponding to all rows in `array`, from
-        top to bottom, such that `Y[i]` specifies the y-coordinate
-        for all pixels in `array[i, :]`.
-        If None, returned vertices are (row, col) pixel indices.
     X : None or (ndarray, 1D)
         Grid coordinates corresponding to all columns in `array`, from
         left to right, such that `X[j]` specifies the x-coordinate
         for all pixels in `array[:, j]`.
+        If None, returned vertices are (row, col) pixel indices.
+    Y : None or (ndarray, 1D)
+        Grid coordinates corresponding to all rows in `array`, from
+        top to bottom, such that `Y[i]` specifies the y-coordinate
+        for all pixels in `array[i, :]`.
         If None, returned vertices are (row, col) pixel indices.
     label : bool/int/float
         Value of nodes in `array` that are classified as "data"
@@ -4172,6 +4173,9 @@ def getFPvertices(array, Y=None, X=None,
         Attempt to replicate the results of the MATLAB version of this
         function by rotating and flipping convex hull vertices before
         simplifying them with `DecimatePoly`.
+    dtype_out_int64_if_equal : bool
+        If `X` and `Y` are provided, cast returned array of footprint
+        vertex coordinates to Int64 if no precision will be lost.
 
     Returns
     -------
@@ -4182,10 +4186,10 @@ def getFPvertices(array, Y=None, X=None,
         are provided.
 
     """
-    if (Y is None and X is None) or (Y is not None and X is not None):
+    if (X is None and Y is None) or (X is not None and Y is not None):
         pass
     else:
-        raise InvalidArgumentError("`Y` and `X` must both be None or both be set")
+        raise InvalidArgumentError("`X` and `Y` must both be None or both be set")
 
     # Determine which pixels are considered "data" for footprinting.
     data_array = getDataArray(array, label, label_type)
@@ -4208,7 +4212,16 @@ def getFPvertices(array, Y=None, X=None,
     fp_ind = fp_ind.T.astype(np.int64)
 
     # Return pixel coords or point coords (from provided grid coordinates).
-    return fp_ind if Y is None else np.array([Y[fp_ind[0]], X[fp_ind[1]]])
+    if X is None and Y is None:
+        fp_vert = fp_ind
+    else:
+        fp_points = np.array([X[fp_ind[1]], Y[fp_ind[0]]])
+        if dtype_out_int64_if_equal and fp_points.dtype != np.int64:
+            if np.array_equal(fp_points, fp_points.astype(np.int64)):
+                fp_points = fp_points.astype(np.int64)
+        fp_vert = fp_points
+
+    return fp_vert
 
 
 def getDataBoundariesPoly(array, X, Y, nodata_val=np.nan, coverage='all',
