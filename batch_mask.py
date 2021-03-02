@@ -204,8 +204,7 @@ def argparser_init():
             "of the source raster will be taken as the masking value. If the source raster",
             "does not have a set NoData value, masking of that raster will be skipped.",
             "\nSpecify multiple source file suffixes (with or without added masking value)",
-            "by delimiting string with the pipe character (/), noting that you must then",
-            "wrap the whole argument string with quotes like 'dem.tif=0/ortho.tif=0'."
+            "by separating them with the forward slash character (/) (e.g. 'dem.tif=0/ortho.tif=0')."
             "\n"
         ])
     )
@@ -216,13 +215,14 @@ def argparser_init():
         help=' '.join([
             "Suffix appended to filename of output masked rasters."
             "\nWorks like 'src-raster-fname.tif' -> 'src-raster-fname_[DST_SUFFIX].tif'.",
-            "\nIf not provided, the default output suffix is '{}XXX', where [XXX] is the".format(MASKED_SUFFIX_DEFAULT),
-            "bit-code corresponding to the filter components ([cloud, water, edge], respectively)",
-            "applied in the masking for this run with the (-c, -w, -e) mask filter options.",
-            "\nIf the --filter-off option is instead provided, by default all output filenames",
+            "\nIf not provided, the default output suffix is 'Y-X-{}', where X and Y".format(MASKED_SUFFIX_DEFAULT),
+            "are names of the selected filter components (edge, water, cloud) applied.",
+            "in the masking for this run with the (-e, -w, -c) mask filter options.",
+            "If all three components are applied, the default output suffix is simply '{}'.".format(MASKED_SUFFIX_DEFAULT),
+            "\nIf the {} option is provided, by default all output filenames".format(ARGSTR_FILTER_OFF),
             "will be the same as input filenames.",
-            "\nIf none of the (-c, -w, -e, --filter-off) filter options are provided, all filter",
-            "components are applied and the default output suffix is simply '{}'.".format(MASKED_SUFFIX_DEFAULT),
+            "\nIf no filter options are provided, all filter components are applied by default",
+            "and the default output suffix is simply '{}'.".format(MASKED_SUFFIX_DEFAULT),
             "\n"
         ])
     )
@@ -266,7 +266,11 @@ def argparser_init():
     parser.add_argument(
         ARGSTR_FILTER_OFF,
         action='store_true',
-        help="Turn off default (edge & water & cloud) so no filters are applied."
+        help=' '.join([
+            "ALL FILTER COMPONENTS ARE APPLIED BY DEFAULT, unless one or more components",
+            "are selectively applied with the (-e, -w, -c) command line arguments.",
+            "Use this option to skip applying any filter components."
+        ])
     )
 
     parser.add_argument(
