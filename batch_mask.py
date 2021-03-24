@@ -712,6 +712,8 @@ def main():
         args_batch = args
         args_single = copy.deepcopy(args)
         args_single.unset(*ARGGRP_BATCH)
+        if not args.provided(ARGSTR_MASK_SUFFIX):
+            args_single.unset(ARGSTR_MASK_SUFFIX)
 
         job_num = 0
         num_jobs = len(src_files)
