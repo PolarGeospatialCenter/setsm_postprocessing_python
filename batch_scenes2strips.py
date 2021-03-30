@@ -12,6 +12,7 @@ if script_utils.PYTHON_VERSION < script_utils.VersionString(PYTHON_VERSION_ACCEP
 
 
 import argparse
+import codecs
 import copy
 import filecmp
 import gc
@@ -798,7 +799,7 @@ def main():
                     envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
                 )
             else:
-                cmd = cmd_single
+                cmd = codecs.decode(cmd_single, 'unicode-escape')
 
             print("{}, {}".format(job_num, cmd))
             if not args_batch.get(ARGSTR_DRYRUN):
