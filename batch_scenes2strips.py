@@ -1182,7 +1182,9 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 segnum += 1
 
         except:
-            if scene_dfull is not None and sceneMaskSuffix is not None and args.get(ARGSTR_CLEANUP_ON_FAILURE) in (ARGCHO_CLEANUP_ON_FAILURE_MASKS, ARGCHO_CLEANUP_ON_FAILURE_OUTPUT):
+            if (    scene_dfull is not None and sceneMaskSuffix is not None
+                and (    args.get(ARGSTR_CLEANUP_ON_FAILURE) == ARGCHO_CLEANUP_ON_FAILURE_MASKS
+                     or (args.get(ARGSTR_CLEANUP_ON_FAILURE) == ARGCHO_CLEANUP_ON_FAILURE_OUTPUT and not args.get(ARGSTR_USE_OLD_MASKS)))):
                 src_mask_ffile_glob = sorted(glob.glob(os.path.join(scene_dfull, args.get(ARGSTR_STRIPID))+'*'+sceneMaskSuffix))
                 if len(src_mask_ffile_glob) > 0:
                     print("Detected error; deleting output scene masks"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
