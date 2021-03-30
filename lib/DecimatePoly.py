@@ -308,7 +308,7 @@ def CheckInputArgs(C, B_tol, P_tol):
         raise InvalidArgumentError("`C` must be a N-by-2 array of polygon vertices")
 
     siz = C.shape
-    if len(siz) != 2 or siz[1] != 2 or siz[0] < 3 or not isinstance(C.dtype.type(1), Number):
+    if len(siz) != 2 or siz[1] != 2 or siz[0] < 3 or not np.issubdtype(C.dtype, np.number):
         raise InvalidArgumentError("`C` must be a N-by-2 array of polygon vertices")
 
     if C.dtype != np.float64:

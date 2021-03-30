@@ -1115,7 +1115,7 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
     array_dtype_np = array.dtype.type
     dtype_out_np = dtype_out if type(dtype_out) != np.dtype else dtype_out.type
 
-    if isinstance(array_dtype_np(1), np.floating) and isinstance(dtype_out_np(1), np.integer):
+    if np.issubdtype(array_dtype_np, np.floating) and np.issubdtype(dtype_out_np, np.integer):
         # TODO: Consider replacing the following potentially costly call with
         # -t    np.around(array) if round-half-to-nearest-whole-even is acceptable.
         array = array_round_proper(array, allow_modify_array)
@@ -1159,7 +1159,7 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
         return array.astype(dtype_out)
 
     dtype_out_np = dtype_out if type(dtype_out) != np.dtype else dtype_out.type
-    dtype_info_fn = np.finfo if isinstance(dtype_out_np(1), np.floating) else np.iinfo
+    dtype_info_fn = np.finfo if np.issubdtype(dtype_out_np, np.floating) else np.iinfo
     dtype_out_min = dtype_info_fn(dtype_out_np).min
     dtype_out_max = dtype_info_fn(dtype_out_np).max
 
@@ -1594,7 +1594,7 @@ def imresize(array, size, interp='bicubic', dtype_out='input',
     promote_dtype = None
     promote_is_demote = False
     if float_resize:
-        if isinstance(dtype_in.type(1), np.floating):
+        if np.issubdtype(dtype_in, np.floating):
             pass
         else:
             array = array.astype(np.float32)
@@ -1672,7 +1672,7 @@ def imresize(array, size, interp='bicubic', dtype_out='input',
             array_r = astype_round_and_crop(array_r, dtype_in, allow_modify_array=True)
         else:
             array_r = astype_cropped(array_r, dtype_in, allow_modify_array=True)
-    elif dtype_out == 'float' and not isinstance(array_r.dtype.type(1), np.floating):
+    elif dtype_out == 'float' and not np.issubdtype(array_r.dtype, np.floating):
         array_r = array_r.astype(np.float32)
     if one_dim_flag:
         result_size_1d = new_shape[0] if one_dim_axis == 0 else new_shape[1]
@@ -1944,7 +1944,7 @@ def imresize_old(array, size, interp='bicubic', dtype_out='input',
     array_dtype_in = array.dtype
     dtype_out_np = None
     if dtype_out == 'float':
-        dtype_out_np = array_dtype_in if isinstance(array_dtype_in.type(1), np.floating) else np.float32
+        dtype_out_np = array_dtype_in if np.issubdtype(array_dtype_in, np.floating) else np.float32
     elif dtype_out == 'input':
         dtype_out_np = array_dtype_in
 
@@ -2070,9 +2070,9 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
 
     if default_double_out:
         dtype_out = None
-        if isinstance(array.dtype.type(1), np.floating):
+        if np.issubdtype(array.dtype, np.floating):
             dtype_out = array.dtype
-            if (isinstance(kernel.dtype.type(1), np.floating)
+            if (np.issubdtype(kernel.dtype, np.floating)
                 and int(str(kernel.dtype).replace('float', '')) > int(str(dtype_out).replace('float', ''))):
                 warn("Since default_double_out=True, kernel with floating dtype ({}) at greater precision than "
                      "array floating dtype ({}) is cast to array dtype".format(kernel.dtype, dtype_out))
@@ -2091,7 +2091,7 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
     # Take a record of where all NaN values are located
     # before setting the values of those pixels to zero.
     fixnans_flag = False
-    if isinstance(array.dtype.type(1), np.floating):
+    if np.issubdtype(array.dtype, np.floating):
         array_nans = np.isnan(array)
         if np.any(array_nans):
             fixnans_flag = True
@@ -2116,7 +2116,7 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
     # Perform convolution.
     method = scipy.signal.choose_conv_method(array, kernel, shape)
     array_c = scipy.signal.convolve(array, kernel, shape, method)
-    if method != 'direct' and fix_float_zeros and isinstance(array_c.dtype.type(1), np.floating):
+    if method != 'direct' and fix_float_zeros and np.issubdtype(array_c.dtype, np.floating):
         # Fix FLOP error from FFT method where we assume zero was the desired result.
         array_c[(-1.0e-12 < array_c) & (array_c < 10.0e-12)] = 0
 
@@ -2311,7 +2311,7 @@ def conv2(array, kernel, shape='full', conv_depth='default',
     dtype_out = None
     conv_dtype_error = False
     if conv_depth == 'default':
-        if isinstance(array_dtype_in.type(1), np.floating):
+        if np.issubdtype(array_dtype_in, np.floating):
             ddepth = -1
             dtype_out = array_dtype_in
         else:
@@ -2351,7 +2351,7 @@ def conv2(array, kernel, shape='full', conv_depth='default',
     # Take a record of where all NaN values are located
     # before setting the values of those pixels to zero.
     fixnans_flag = False
-    if isinstance(array.dtype.type(1), np.floating):
+    if np.issubdtype(array.dtype, np.floating):
         array_nans = np.isnan(array)
         if np.any(array_nans):
             fixnans_flag = True
@@ -2380,7 +2380,7 @@ def conv2(array, kernel, shape='full', conv_depth='default',
     # Perform convolution.
     array_c = cv2.filter2D(array, ddepth, np.rot90(kernel, 2),
                            borderType=(cv2.BORDER_CONSTANT if zero_border else cv2.BORDER_REPLICATE))
-    if fix_float_zeros and isinstance(array_c.dtype.type(1), np.floating):
+    if fix_float_zeros and np.issubdtype(array_c.dtype, np.floating):
         # Fix FLOP error where we assume zero was the desired result.
         if array_c.dtype == np.float32:
             array_c[(-1.0e-6 < array_c) & (array_c < 1.0e-6)] = 0
@@ -2569,14 +2569,14 @@ def conv_binary_prevent_overflow(array, structure):
     # Parse input array and structure data type for bitdepth.
     input_bitdepth_pos = 0
     for arr in (array, structure):
-        arr_dtype_sample = arr.dtype.type(1)
+        arr_dtype = arr.dtype
         if arr.dtype == np.bool:
             arr_posbits = 1
-        elif isinstance(arr_dtype_sample, np.int):
+        elif np.issubdtype(arr_dtype, np.int):
             arr_posbits = int(str(arr.dtype).replace('int', '')) - 1
-        elif isinstance(arr_dtype_sample, np.uint):
+        elif np.issubdtype(arr_dtype, np.uint):
             arr_posbits = int(str(arr.dtype).replace('uint', ''))
-        elif isinstance(arr_dtype_sample, np.floating):
+        elif np.issubdtype(arr_dtype, np.floating):
             arr_posbits = np.inf
         else:
             arr_posbits = 0
@@ -2708,8 +2708,8 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
         mode = 'conv' if time_conv < time_scipy else 'scipy'
 
     if mode == 'conv':
-        if (    not isinstance(array.dtype.type(1), np.floating)
-            and not isinstance(structure.dtype.type(1), np.floating) ):
+        if (    not np.issubdtype(array.dtype, np.floating)
+            and not np.issubdtype(structure.dtype, np.floating) ):
             # Make sure one of the input integer arrays has great enough
             # positive bitdepth to prevent overflow during convolution.
             if array.dtype != np.bool and np.any(~np.logical_or(array == 0, array == 1)):
@@ -2728,7 +2728,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
         if array.dtype == np.bool:
             padval = 1
         else:
-            padval = np.inf if isinstance(array.dtype.type(1), np.floating) else np.iinfo(array.dtype).max
+            padval = np.inf if np.issubdtype(array.dtype, np.floating) else np.iinfo(array.dtype).max
         array = np.pad(array, ((pady, pady), (padx, padx)), 'constant', constant_values=padval)
 
     for i in range(iterations):
@@ -2745,7 +2745,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
         elif mode == 'scipy_grey':
             # Greyscale erosion
             if np.any(structure != 1):
-                if not isinstance(structure.dtype.type(1), np.floating):
+                if not np.issubdtype(structure.dtype, np.floating):
                     structure = structure.astype(np.float32)
                 array_e = sp_ndimage.grey_erosion(array, structure=(structure - 1))
             else:
@@ -2754,7 +2754,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
         else:
             # Greyscale erosion
             array_vals = np.unique(array)
-            if isinstance(array.dtype.type(1), np.floating):
+            if np.issubdtype(array.dtype, np.floating):
                 array_vals_nans = np.isnan(array_vals)
                 has_nans = np.any(array_vals_nans)
                 if has_nans:
@@ -2904,8 +2904,8 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
         mode = 'conv' if time_conv < time_scipy else 'scipy'
 
     if mode == 'conv':
-        if (    not isinstance(array.dtype.type(1), np.floating)
-            and not isinstance(structure.dtype.type(1), np.floating) ):
+        if (    not np.issubdtype(array.dtype, np.floating)
+            and not np.issubdtype(structure.dtype, np.floating) ):
             # Make sure one of the input integer arrays has great enough
             # positive bitdepth to prevent overflow during convolution.
             if array.dtype != np.bool and np.any(~np.logical_or(array == 0, array == 1)):
@@ -2931,7 +2931,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
         elif mode == 'scipy_grey':
             # Greyscale dilation
             if np.any(structure != 1):
-                if not isinstance(structure.dtype.type(1), np.floating):
+                if not np.issubdtype(structure.dtype, np.floating):
                     structure = structure.astype(np.float32)
                 array_d = sp_ndimage.grey_dilation(array, structure=(structure - 1))
             else:
@@ -2940,7 +2940,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
         else:
             # Greyscale dilation
             array_vals = np.unique(array)
-            if isinstance(array.dtype.type(1), np.floating):
+            if np.issubdtype(array.dtype, np.floating):
                 array_vals_nans = np.isnan(array_vals)
                 has_nans = np.any(array_vals_nans)
                 if has_nans:
@@ -3361,12 +3361,12 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
     if array_dtype_in == np.bool:
         array_dtype_bitdepth = 1
         array_dtype_max = 1
-    if isinstance(array_dtype_in.type(1), np.integer):
+    if np.issubdtype(array_dtype_in, np.integer):
         array_dtype_bitdepth = int(str(array_dtype_in).split('int')[-1])
         array_dtype_max = np.iinfo(array_dtype_in).max
         if array_dtype_in.kind == 'u':
             array_dtype_unsigned = True
-    elif isinstance(array_dtype_in.type(1), np.floating):
+    elif np.issubdtype(array_dtype_in, np.floating):
         array_dtype_bitdepth = np.inf
         array_dtype_max = np.finfo(array_dtype_in).max
     else:
@@ -3392,7 +3392,7 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
         bin_array = array
 
     elif scale_from == 'dtype_max':
-        if not isinstance(array_dtype_in.type(1), np.floating):
+        if not np.issubdtype(array_dtype_in, np.floating):
             array = array.astype(np.float32) if array_dtype_bitdepth <= 16 else array.astype(np.float64)
         bin_array = array / array_dtype_max * bin_array_max
 
@@ -3408,14 +3408,14 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
                 # Since only value *counts*, not numerical values themselves,
                 # matter to entropy filter, shift array values so that minimum
                 # is set to zero.
-                if isinstance(array_dtype_in.type(1), np.floating):
+                if np.issubdtype(array_dtype_in, np.floating):
                     array = array_round_proper(array, allow_modify_array)
                 bin_array = np.empty_like(array, np.uint16)
                 np.subtract(array, array_min, out=bin_array, casting='unsafe')
         else:
             # Shift array values so that minimum is set to zero,
             # then scale to maximum number of bins.
-            if not isinstance(array_dtype_in.type(1), np.floating):
+            if not np.issubdtype(array_dtype_in, np.floating):
                 array = array.astype(np.float32) if array_dtype_bitdepth <= 16 else array.astype(np.float64)
             bin_array = (array - array_min) / array_range * bin_array_max
 
@@ -3425,7 +3425,7 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
     # function, and because it appears uint16 processes
     # faster than uint8.
     if bin_array.dtype != np.uint16:
-        if isinstance(bin_array.dtype.type(1), np.floating):
+        if np.issubdtype(bin_array.dtype, np.floating):
             if bin_array is not array_backup:
                 allow_modify_array = True
             bin_array = array_round_proper(bin_array, allow_modify_array)
