@@ -1200,6 +1200,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                         continue
                     dst_strip_ffile_glob = sorted(glob.glob(os.path.join(strip_dir, args.get(ARGSTR_STRIPID))+'*'))
                     for f in dst_strip_ffile_glob:
+                        if strip_dir == strip_dfull_coreg and f.endswith('meta.txt'):
+                            continue
                         cmd = "rm {}".format(f)
                         print(cmd)
                         if not args.get(ARGSTR_DRYRUN):
