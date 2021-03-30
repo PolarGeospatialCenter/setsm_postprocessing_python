@@ -25,11 +25,7 @@ You will likely have issues getting all of the dependencies installed and workin
 
 Once conda has been installed, create a new environment into which you will install the required packages. This can be accomplished by running the following commands:
 ```
-conda create --name s2s
-conda activate s2s
-conda config --add channels conda-forge
-conda config --set channel_priority strict
-conda install numpy scipy scikit-image opencv gdal shapely
+conda create --name s2s -c conda-forge python=3 gdal=3 numpy scipy scikit-image opencv shapely --yes
 ````
 You will need to have the environment activated whenever you wish to run the scripts in this repo. If you ran the above commands, the "s2s" environment should already be active, and this is indicated by `(s2s)` appearing at the beginning of your command prompt.
 
