@@ -1248,7 +1248,7 @@ def saveStripMeta(strip_demFile, demSuffix,
                   scene_dir, scene_demFiles, args,
                   filter_options_applied):
     import numpy as np
-    from ogr import CreateGeometryFromWkt
+    from osgeo.ogr import CreateGeometryFromWkt
     from lib.raster_array_tools import getFPvertices, coordsToWkt
     from lib.filter_scene import MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 
