@@ -16,6 +16,7 @@ if sys.version_info[0] < 3:
 else:
     from io import StringIO
 
+import cv2
 import numpy as np
 import skimage.morphology as sk_morphology
 from scipy import ndimage as sp_ndimage
