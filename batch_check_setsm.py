@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 # Erik Husby; Polar Geospatial Center, University of Minnesota; 2019
 
