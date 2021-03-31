@@ -8,6 +8,7 @@ import math
 import operator
 import os
 import sys
+import traceback
 from collections import deque
 from itertools import product
 from PIL import Image
@@ -16,7 +17,7 @@ from warnings import warn
 import cv2
 import numpy as np
 import osgeo
-from osgeo import gdal_array
+from osgeo import gdal_array, gdalconst
 from osgeo import gdal, ogr, osr
 import scipy
 import shapely.geometry
@@ -198,6 +199,48 @@ def reprojectGDALDataset(ds_in, target_srs, interp_str):
     return ds_out
 
 
+def gdalReadAsArraySetsmSceneBand(raster_band, make_nodata_nan=False):
+    scale = raster_band.GetScale()
+    offset = raster_band.GetOffset()
+    if scale is None:
+        scale = 1.0
+    if offset is None:
+        offset = 0.0
+    if scale == 1.0 and offset == 0.0:
+        array_data = raster_band.ReadAsArray()
+        if make_nodata_nan:
+            nodata_val = raster_band.GetNoDataValue()
+            if nodata_val is not None:
+                array_data[array_data == nodata_val] = np.nan
+    else:
+        if raster_band.DataType != gdalconst.GDT_Int32:
+            raise RasterIOError(
+                "Expected GDAL raster band with scale!=1.0 or offset!=0.0 to be of Int32 data type"
+                " (scaled int LERC_ZSTD-compressed 50cm DEM), but data type is {}".format(
+                    gdal.GetDataTypeName(raster_band.DataType)
+                )
+            )
+        if scale == 0.0:
+            raise RasterIOError(
+                "GDAL raster band has invalid parameters: scale={}, offset={}".format(scale, offset)
+            )
+        nodata_val = raster_band.GetNoDataValue()
+        array_data = raster_band.ReadAsArray(buf_type=gdalconst.GDT_Float32)
+        adjust_where = (array_data != nodata_val) if nodata_val is not None else True
+        if scale != 1.0:
+            np.multiply(array_data, scale, out=array_data, where=adjust_where)
+        if offset != 0.0:
+            np.add(array_data, offset, out=array_data, where=adjust_where)
+        if make_nodata_nan:
+            array_nodata = np.logical_not(adjust_where, out=adjust_where)
+            array_data[array_nodata] = np.nan
+        del adjust_where
+
+    if array_data is None:
+        raise RasterIOError("`raster_band.ReadAsArray()` returned None")
+
+    return array_data
+
 
 def getCornerCoords(gt, shape):
     """
@@ -366,9 +409,12 @@ def extractRasterData(rasterFile_or_ds, *params):
     if pset.intersection({'z', 'array', 'nodata_val', 'dtype_val', 'dtype_str'}):
         band = ds.GetRasterBand(1)
     if pset.intersection({'z', 'array'}):
-        array_data = band.ReadAsArray()
-        if array_data is None:
-            raise RasterIOError("`band.ReadAsArray()` returned None: {}".format(rasterFile_or_ds))
+        try:
+            array_data = gdalReadAsArraySetsmSceneBand(band)
+        except RasterIOError as e:
+            traceback.print_exc()
+            print("Error reading raster: {}".format(rasterFile_or_ds))
+            raise
     if pset.intersection({'shape', 'x', 'y', 'corner_coords', 'geom', 'geom_sr'}):
         shape = (ds.RasterYSize, ds.RasterXSize) if 'array_data' not in vars() else array_data.shape
     if pset.intersection({'x', 'y', 'dx', 'dy', 'res', 'geo_trans', 'corner_coords', 'geom', 'geom_sr'}):
