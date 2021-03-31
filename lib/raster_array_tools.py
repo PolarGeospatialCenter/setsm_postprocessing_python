@@ -4093,8 +4093,8 @@ def concave_hull_image(image, concavity,
     image_cchull = np.zeros(image.shape, dtype=np.bool)
     for poly in hull_concave_poly:
         cchull_r, cchull_c = poly.exterior.coords.xy
-        cchull_r = np.array(cchull_r)
-        cchull_c = np.array(cchull_c)
+        cchull_r = np.array(cchull_r, dtype=np.int64)
+        cchull_c = np.array(cchull_c, dtype=np.int64)
 
         if debug in (True, 3):
             print("[DEBUG] concave_hull_image (3): Concave hull boundary points")
