@@ -621,10 +621,12 @@ def saveArrayAsTiff(array, dest,
         raise InvalidArgumentError("`proj_ref` must be a string or osr.SpatialReference object, "
                                    "but was of type {}".format(type(proj_ref)))
 
+    dtype_is_nbits = (dtype_out is not None and type(dtype_out) is str and dtype_out == 'nbits')
+
     if co_args is not None and co_args != 'compress':
         if type(co_args) != list:
             raise InvalidArgumentError("`co_args` must be a list of strings, but was {}".format(co_args))
-        if dtype_out == 'nbits':
+        if dtype_is_nbits:
             for arg in co_args:
                 if arg.startswith('NBITS='):
                     raise InvalidArgumentError("`co_args` cannot include 'NBITS=X' argument. "
@@ -657,7 +659,7 @@ def saveArrayAsTiff(array, dest,
         nodata_val = None
 
     if dtype_out is not None:
-        if dtype_out == 'n-bit':
+        if dtype_is_nbits:
             if nbits is None:
                 nbits = int(math.floor(math.log(float(max(1, np.max(array))), 2)) + 1)
             elif type(nbits) != int or nbits < 1:
@@ -672,7 +674,7 @@ def saveArrayAsTiff(array, dest,
                 raise InvalidArgumentError("Output array requires {} bits of precision, "
                                            "but GDAL supports a maximum of 32 bits")
         else:
-            if isinstance(dtype_out, str):
+            if type(dtype_out) is str:
                 dtype_out = eval('np.{}'.format(dtype_out.lower()))
             dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_out)
             if dtype_gdal is None:
@@ -685,7 +687,7 @@ def saveArrayAsTiff(array, dest,
         array = array.astype(promote_dtype)
         dtype_in = promote_dtype(1).dtype
     if dtype_out is not None:
-        if dtype_out == 'n-bit':
+        if dtype_is_nbits:
             if not np.issubdtype(dtype_in, np.unsignedinteger):
                 warn("Input array data type ({}) is not unsigned and may be incorrectly saved "
                      "with n-bit precision".format(dtype_in))
@@ -711,7 +713,7 @@ def saveArrayAsTiff(array, dest,
                                               # if the resulting file *might* exceed 4GB.
         co_args.extend(['COMPRESS=LZW'])      # Do LZW compression on output image.
         co_args.extend(['TILED=YES'])         # Force creation of tiled TIFF files.
-    if dtype_out == 'n-bit':
+    if dtype_is_nbits:
         co_args.extend(['NBITS={}'.format(nbits)])
 
     if spat_ref is not None:

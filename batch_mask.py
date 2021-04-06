@@ -946,7 +946,8 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
             # Save output masked raster.
             rio.saveArrayAsTiff(dst_array, dst_rasterFile,
                                 nodata_val=dst_nodataval,
-                                like_raster=src_rasterFile)
+                                like_raster=src_rasterFile,
+                                dtype_out=dst_array.dtype)
 
 
 
