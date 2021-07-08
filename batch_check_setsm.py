@@ -15,6 +15,7 @@ if script_utils.PYTHON_VERSION < script_utils.VersionString(PYTHON_VERSION_ACCEP
 import argparse
 import copy
 import glob
+import logging
 import os
 import re
 import shutil
@@ -28,7 +29,8 @@ if script_utils.PYTHON_VERSION < script_utils.VersionString(3):
 else:
     from io import StringIO
 
-from lib.script_utils import eprint
+from lib import walk
+from lib.script_utils import LOGGER, eprint
 from lib.script_utils import ScriptArgumentError, DeveloperError
 
 
@@ -53,6 +55,8 @@ if HOSTNAME is not None:
 else:
     RUNNING_AT_PGC = False
 
+LOGGER.setLevel(logging.INFO)
+
 ##############################
 
 ## Argument globals
@@ -64,12 +68,17 @@ ARGSTR_SRC_SUFFIX = '--src-suffix'
 ARGSTR_CHECK_METHOD = '--check-method'
 ARGSTR_CHECK_SETSM_VALIDRANGE = '--check-setsm-validrange'
 ARGSTR_CHECK_SETSM_ALLOW_INVALID = '--check-setsm-allow-invalid'
+ARGSTR_CHECKFILE_WRITE_AT_END = '--checkfile-write-at-end'
 ARGSTR_CHECKFILE_OFF = '--checkfile-off'
 ARGSTR_CHECKFILE = '--checkfile'
 ARGSTR_CHECKFILE_ROOT = '--checkfile-root'
 ARGSTR_CHECKFILE_ROOT_REGEX = '--checkfile-root-regex'
 ARGSTR_CHECK_SPECIAL = '--check-special'
 ARGSTR_CHECK_SPECIAL_DEMTYPE = '--check-special-demtype'
+ARGSTR_VERIFY_BY_PAIRNAME_DIR = '--verify-by-pairname-dir'
+ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH = '--verify-by-pairname-dir-depth'
+ARGSTR_INDEX_PAIRNAMES_TO_JSON = '--index-pairnames-to-json'
+ARGSTR_VERIFY_QUICK_CHECK = '--verify-quick-check'
 ARGSTR_CHECKFILE_EXT = '--checkfile-ext'
 ARGSTR_ERRFILE_EXT = '--errfile-ext'
 ARGSTR_ALLOW_MISSING_SUFFIX = '--allow-missing-suffix'
@@ -89,6 +98,7 @@ ARGSTR_REMOVE_ONLY = '--remove-only'
 ARGSTR_STATS_ONLY = '--stats-only'
 ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
+ARGSTR_JOBNAME = '--jobname'
 ARGSTR_TASKS_PER_JOB = '--tasks-per-job'
 ARGSTR_SCRATCH = '--scratch'
 ARGSTR_WD = '--wd'
@@ -96,6 +106,7 @@ ARGSTR_LOGDIR = '--logdir'
 ARGSTR_EMAIL = '--email'
 ARGSTR_DO_DELETE = '--do-delete'
 ARGSTR_DRYRUN = '--dryrun'
+ARGSTR_DEBUG = '--debug'
 
 # Argument groups
 ARGGRP_OUTDIR = [ARGSTR_LOGDIR, ARGSTR_SCRATCH]
@@ -126,6 +137,7 @@ ARGCHO_CHECK_SPECIAL_STRIPSEGMENTS = 'strip-segments'
 ARGCHO_CHECK_SPECIAL_STRIPS = 'strips'
 ARGCHO_CHECK_SPECIAL_SCENEMETA = 'scene-meta'
 ARGCHO_CHECK_SPECIAL_STRIPMETA = 'strip-meta'
+ARGCHO_CHECK_SPECIAL_DSP = '2m_dsp_scenes'
 ARGCHO_CHECK_SPECIAL = [
     ARGCHO_CHECK_SPECIAL_ALL_TOGETHER,
     ARGCHO_CHECK_SPECIAL_ALL_SEPARATE,
@@ -134,7 +146,8 @@ ARGCHO_CHECK_SPECIAL = [
     ARGCHO_CHECK_SPECIAL_STRIPSEGMENTS,
     ARGCHO_CHECK_SPECIAL_STRIPS,
     ARGCHO_CHECK_SPECIAL_SCENEMETA,
-    ARGCHO_CHECK_SPECIAL_STRIPMETA
+    ARGCHO_CHECK_SPECIAL_STRIPMETA,
+    ARGCHO_CHECK_SPECIAL_DSP
 ]
 ARGCHO_CHECK_SPECIAL_DEMTYPE_REGULAR = 'non-lsf'
 ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH = 'lsf'
@@ -156,7 +169,8 @@ ARGCHO_REMOVE_TYPE = [
 # Argument choice groups
 ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_SCENELEVEL = [
     ARGCHO_CHECK_SPECIAL_SCENEPAIRS,
-    ARGCHO_CHECK_SPECIAL_PAIRNAMES
+    ARGCHO_CHECK_SPECIAL_PAIRNAMES,
+    ARGCHO_CHECK_SPECIAL_DSP
 ]
 ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_STRIPLEVEL = [
     ARGCHO_CHECK_SPECIAL_STRIPSEGMENTS,
@@ -179,6 +193,7 @@ ARGCHOGRP_CHECK_SPECIAL_SETSM = (
 
 # Argument choice settings
 CHECK_SPECIAL_DEM_SUFFIX_ORTHO2 = 'ortho2.tif'
+CHECK_SPECIAL_DEM_SUFFIX_ORTHO2_10M = 'ortho2_10m.tif'
 CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL_MATCHTAG_SET = {'matchtag_mt.tif', 'meta_mt.txt'}
 CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_SCENELEVEL_SET = {
     'mask.tif',
@@ -186,7 +201,9 @@ CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_SCENELEVEL_SET = {
 }
 CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET = {
     'bitmask_10m.tif',
+    'matchtag_10m.tif',
     'ortho_10m.tif',
+    CHECK_SPECIAL_DEM_SUFFIX_ORTHO2_10M,
     'dem_10m.tif',
     'dem_10m_masked.tif',
     'dem_10m_shade.tif',
@@ -195,6 +212,7 @@ CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET = {
     'dem_40m_coverage.tif'
 }
 ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META = 'meta.txt'
+ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_INFO50CM = 'info50cm.txt'
 ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL = '/'.join([
     # DEM suffix(es) will be set by --check-special-demtype script argument
     'matchtag.tif',
@@ -212,6 +230,11 @@ ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_STRIPLEVEL = '/'.join([
     'bitmask.tif',
     ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META,
     '/'.join(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET)
+])
+ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_DSP = '/'.join([
+    'matchtag.tif',
+    'ortho.tif',
+    ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_INFO50CM
 ])
 # ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = re.compile("(?P<scenepairname>(?P<strippairname>(?P<sensor>[A-Z0-9]{4})_(?P<timestamp>\d{8})_(?P<catid1>[A-Z0-9]{16})_(?P<catid2>[A-Z0-9]{16}))_(?P<tile1>R\d+C\d+-)?(?P<order1>\d{12}_\d{2})_(?P<part1>P\d{3})_(?P<tile2>R\d+C\d+-)?(?P<order2>\d{12}_\d{2})_(?P<part2>P\d{3})_(?P<res>\d{1}))_(?P<suffix>[_a-z0-9]+)\.(?P<ext>\w+)")
 ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL   = re.compile("^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_\d{1}(-\d{2})?)_[a-z0-9_]+\.\w+$")
@@ -248,6 +271,10 @@ ARGCHOSET_CHECK_SPECIAL_SETTING_DICT = {
     ARGCHO_CHECK_SPECIAL_STRIPMETA: [
         (ARGSTR_SRC_SUFFIX, ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META),
         (ARGSTR_CHECKFILE_OFF, True),
+    ],
+    ARGCHO_CHECK_SPECIAL_DSP: [
+        (ARGSTR_SRC_SUFFIX, ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_DSP),
+        (ARGSTR_CHECKFILE_ROOT_REGEX, ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL)
     ]
 }
 ARGCHOSET_CHECK_SPECIAL_SUBGROUP_DICT = {
@@ -263,11 +290,18 @@ ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT = {
     ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH: 'dem_smooth.tif/smooth_result.txt',
 }
 ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT[ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH] = '/'.join(
-    ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT.values())
+    sorted(ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT.values()))
+
+ARGCHOSET_CHECK_SPECIAL_INDEX_MODE_DICT = {
+    ARGCHO_CHECK_SPECIAL_SCENEPAIRS: 'scene',
+    ARGCHO_CHECK_SPECIAL_STRIPS: 'strip',
+    ARGCHO_CHECK_SPECIAL_DSP: 'scene'
+}
 
 # Argument defaults
 ARGDEF_SRC_SUFFIX = '.tif'
 ARGDEF_DEPTH = script_utils.ARGNUM_POS_INF
+ARGDEF_VERIFY_BY_PAIRNAME_DIR_DEPTH = 1
 ARGDEF_CHECKFILE_EXT = '.check'
 ARGDEF_CHECKERROR_EXT = '.err'
 ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles')
@@ -279,13 +313,16 @@ ARGDEF_SCRATCH = os.path.join(os.path.expanduser('~'), 'scratch', 'task_bundles'
 JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Check'
-BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
-JOB_WALLTIME_HR = 30
-JOB_MEMORY_GB = 20
+# BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
+BATCH_ARGDEF_WD = None
+JOB_WALLTIME_HR = 72
+JOB_MEMORY_GB = 40
 
 ##############################
 
 ## Custom globals
+
+INDEX_SETSM_SCRIPT = os.path.join(SCRIPT_DIR, '..', 'pgcdemtools', 'index_setsm.py')
 
 GDAL_RASTER_SUFFIXES = ['.tif', '.tiff']
 
@@ -382,6 +419,17 @@ SETSM_META_REQUIRED_KEY_SORTED_LIST = sorted(SETSM_META_REQUIRED_DICT.keys())
 
 del SETSM_META_KEY, SETSM_META_ITEM_RE, SETSM_META_VALUE_RE
 
+INFO50CM_RE = re.compile(
+"""scenedemid=[A-Z][A-Z0-9]{2}\d{1}_\d{8}_[A-Z0-9]{16}_[A-Z0-9]{16}_(?:R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(?:R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_0(?:-\d{2})?
+stripdemid=[A-Z][A-Z0-9]{2}\d{1}_\d{8}_[A-Z0-9]{16}_[A-Z0-9]{16}_50cm_v\d{6}
+filesz_dem=(\d+\.\d+([eE][-\+]?\d+)?)
+filesz_lsf=((?:\d+\.\d+)?([eE][-\+]?\d+)?)
+filesz_mt=(\d+\.\d+([eE][-\+]?\d+)?)
+filesz_or=(\d+\.\d+([eE][-\+]?\d+)?)
+filesz_or2=((?:\d+\.\d+)?([eE][-\+]?\d+)?)
+\Z"""
+)
+
 ##############################
 
 
@@ -407,11 +455,11 @@ def argparser_init():
 
     parser.add_argument(
         ARGSTR_SRC,
-        # type=script_utils.ARGTYPE_PATH(
-        #     argstr=ARGSTR_SRC,
-        #     existcheck_fn=os.path.exists,
-        #     existcheck_reqval=True),
-        type=str,
+        type=script_utils.ARGTYPE_PATH(
+            argstr=ARGSTR_SRC,
+            abspath_fn=os.path.abspath,
+            existcheck_fn=os.path.exists,
+            existcheck_reqval=True),
         help=' '.join([
             "Path to source file directory or single input file to check.",
             "Accepts a task bundle text file listing paths to checkfile root paths."
@@ -534,11 +582,53 @@ def argparser_init():
     )
 
     parser.add_argument(
+        ARGSTR_VERIFY_BY_PAIRNAME_DIR,
+        action='store_true',
+        help=' '.join([
+            "Use PAIRNAME DIRECTORIES as check groups, writing check and error files next to ",
+            "the pairname directories."
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH,
+        type=script_utils.ARGTYPE_NUM(
+            argstr=ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH,
+            numeric_type=int,
+            allow_neg=False,
+            allow_zero=True,
+            allow_inf=True),
+        default=ARGDEF_VERIFY_BY_PAIRNAME_DIR_DEPTH,
+        help=' '.join([
+            "Depth of recursive search into source directory for PAIRNAME DIRECTORIES to check.",
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_INDEX_PAIRNAMES_TO_JSON,
+        action='store_true',
+        help=' '.join([
+            "Build index .json file alongside each PAIRNAME DIRECTORY after completely successful check.",
+            "Only applicable when {} option is also provided, and {} must be set to one of {}.".format(
+                ARGSTR_VERIFY_BY_PAIRNAME_DIR,ARGSTR_CHECK_SPECIAL, sorted(ARGCHOSET_CHECK_SPECIAL_INDEX_MODE_DICT.keys())
+            ),
+            "Requires the 'pgcdemtools' repo to exist at alongside this repo."
+        ])
+    )
+    parser.add_argument(
+        '-vqc', ARGSTR_VERIFY_QUICK_CHECK,
+        action='store_true',
+        help=' '.join([
+            "Scan {} directory for PAIRNAME DIRECTORIES and verify that all necessary checkfiles".format(ARGSTR_SRC),
+            "and JSON files have built successfully for processing region to be deemed complete",
+            "and ready for writing JSON indices to applicable database(s)."
+        ])
+    )
+
+    parser.add_argument(
         ARGSTR_CHECKFILE_EXT,
         type=str,
         default=ARGDEF_CHECKFILE_EXT,
         help=' '.join([
-            "File extension of checkfile(s), unless argument {} is used, in which case the extension"
+            "File extension of checkfile(s), unless argument {} is used, in which case the extension".format(ARGSTR_CHECKFILE),
             "is considered to be included/excluded in the provided checkfile file path."
         ])
     )
@@ -551,6 +641,15 @@ def argparser_init():
             "checking procedures, containing error messages describing issues with the source file.",
             "The full file path of an error file is constructed by simply appending this string",
             "to the full file path of the corresponding source file."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_CHECKFILE_WRITE_AT_END,
+        action='store_true',
+        help=' '.join([
+            "Write list of passing source files to check file at end of processing all "
+            "source files in check group, instead of appending as soon as each pass check."
         ])
     )
 
@@ -692,9 +791,14 @@ def argparser_init():
         ])
     )
     parser.add_argument(
+        ARGSTR_JOBNAME,
+        type=str,
+        default=JOB_ABBREV,
+        help="Prefix for names of jobs submitted to scheduler."
+    )
+    parser.add_argument(
         ARGSTR_TASKS_PER_JOB,
         type=int,
-        choices=None,
         default=None,
         help=' '.join([
             "Number of tasks to bundle into a single job.",
@@ -757,6 +861,11 @@ def argparser_init():
         action='store_true',
         help="Print actions without executing."
     )
+    parser.add_argument(
+        ARGSTR_DEBUG,
+        action='store_true',
+        help="Change logger from INFO to DEBUG level."
+    )
 
     return parser
 
@@ -783,11 +892,16 @@ def checkfile_incomplete(args,
                          warn_missing_suffix=True, warn_errfile_exists=True,
                          warn_missing_checked=True, warn_new_source=True):
 
-    checkfile = checkfile_root+checkfile_ext if checkfile_ext is not None else checkfile_root
+    if checkfile_ext is not None:
+        checkfile = checkfile_root+checkfile_ext
+        checkgroup_errfile = checkfile_root+errfile_ext
+    else:
+        checkfile = checkfile_root
+        checkgroup_errfile = None
     if checkfile_ext is None and src_rasters is None:
         raise DeveloperError("Checkfile {}; cannot locate corresponding source files when checkfile"
                              "is a full file path (assuming argument {} was provided)".format(checkfile, ARGSTR_CHECKFILE))
-    checkfile_dir = os.path.dirname(checkfile)
+    checkfile_dir = os.path.dirname(checkfile) if not os.path.isdir(checkfile_root) else checkfile_root
     checkfile_exists = os.path.isfile(checkfile)
     if src_rasters is not None and type(src_rasters) is list:
         src_rasters = set(src_rasters)
@@ -889,20 +1003,31 @@ def checkfile_incomplete(args,
                             missing_suffixes_set.difference_update(CHECK_SPECIAL_DEM_SUFFIX_SCENELEVEL_MATCHTAG_SET)
                         missing_suffixes_set.difference_update(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_SCENELEVEL_SET)
                     if missing_suffixes_set and args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM:
-                        if (    CHECK_SPECIAL_DEM_SUFFIX_ORTHO2 in missing_suffixes_set
+                        if (    (   CHECK_SPECIAL_DEM_SUFFIX_ORTHO2 in missing_suffixes_set
+                                 or CHECK_SPECIAL_DEM_SUFFIX_ORTHO2_10M in missing_suffixes_set)
                             and ((not check_group_is_xtrack) or args.get(ARGSTR_ALLOW_MISSING_ORTHO2))):
-                            missing_suffixes_set.remove(CHECK_SPECIAL_DEM_SUFFIX_ORTHO2)
+                            if CHECK_SPECIAL_DEM_SUFFIX_ORTHO2 in missing_suffixes_set:
+                                missing_suffixes_set.remove(CHECK_SPECIAL_DEM_SUFFIX_ORTHO2)
+                            if CHECK_SPECIAL_DEM_SUFFIX_ORTHO2_10M in missing_suffixes_set:
+                                missing_suffixes_set.remove(CHECK_SPECIAL_DEM_SUFFIX_ORTHO2_10M)
                     if missing_suffixes_set and args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_STRIPLEVEL:
                         missing_suffixes_set.difference_update(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET)
                     missing_suffixes = [s for s in missing_suffixes if s in missing_suffixes_set]
 
                 if missing_suffixes:
                     warnings.warn("Source file suffixes for a check group were not found")
-                    if warn_missing_suffix:
-                        eprint("Check {}group {}; missing the following source file suffixes: {}".format(
+                    missing_suffix_errmsg = (
+                        "Check {}group {}; missing the following source file suffixes: {}".format(
                             "special '{}' sub".format(check_special_option)*(check_special_option is not None),
                             checkfile_root_subgroup, missing_suffixes
-                        ))
+                        )
+                    )
+                    if args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR) and checkgroup_errfile is not None:
+                        if not args.get(ARGSTR_DRYRUN):
+                            with open(checkgroup_errfile, 'a') as checkgroup_errfile_fp:
+                                checkgroup_errfile_fp.write(missing_suffix_errmsg+'\n')
+                    if warn_missing_suffix:
+                        eprint(missing_suffix_errmsg)
                     if type(missing_suffix_flag) is list and len(missing_suffix_flag) == 1:
                         missing_suffix_flag[0] = True
                     delete_files = (delete_files or args.get(ARGSTR_RMWHERE_MISSING_SUFFIX))
@@ -911,6 +1036,8 @@ def checkfile_incomplete(args,
                 break
 
         src_raster_errfnames = [f+errfile_ext for f in src_rasters if os.path.isfile(os.path.join(checkfile_dir, f+errfile_ext))]
+        if checkgroup_errfile is not None and os.path.isfile(checkgroup_errfile):
+            src_raster_errfnames.append(checkgroup_errfile)
         if src_raster_errfnames:
             warnings.warn("Error files were found among source files for a check group")
             if warn_errfile_exists:
@@ -953,6 +1080,7 @@ def checkfile_incomplete(args,
 
 
 def main():
+    global LOGGER
 
     # Invoke argparse argument parsing.
     arg_parser = argparser_init()
@@ -966,7 +1094,7 @@ def main():
 
     src = args.get(ARGSTR_SRC)
     search_depth = args.get(ARGSTR_DEPTH)
-    print(search_depth)
+    verify_by_pairname_dir_depth = args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH)
     checkfile_ext = args.get(ARGSTR_CHECKFILE_EXT)
     errfile_ext = args.get(ARGSTR_ERRFILE_EXT)
     allow_missing_suffix = args.get(ARGSTR_ALLOW_MISSING_SUFFIX)
@@ -979,6 +1107,9 @@ def main():
     allow_remove_checkfiles = args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_CHECKFILES, ARGCHO_REMOVE_TYPE_BOTH]
     allow_remove_sourcefiles = args.get(ARGSTR_REMOVE_TYPE) in [ARGCHO_REMOVE_TYPE_SOURCEFILES, ARGCHO_REMOVE_TYPE_BOTH]
     delete_dryrun = (args.get(ARGSTR_DRYRUN) or not args.get(ARGSTR_DO_DELETE))
+    if args.get(ARGSTR_DEBUG):
+        LOGGER.setLevel(logging.DEBUG)
+    verifying_strips = (args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR) and args.get(ARGSTR_CHECK_SPECIAL) == ARGCHO_CHECK_SPECIAL_STRIPS)
 
     if args.get(ARGSTR_SCHEDULER) is not None:
         if args.get(ARGSTR_JOBSCRIPT) is None:
@@ -1020,6 +1151,22 @@ def main():
                 ARGSTR_CHECK_SPECIAL, args.get(ARGSTR_CHECK_SPECIAL),
                 check_special_set_argstr, args.get(check_special_set_argstr)))
 
+    if args.get(ARGSTR_INDEX_PAIRNAMES_TO_JSON):
+        if not args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR):
+            arg_parser.error("{} option can only be used in conjuction with {} option".format(
+                ARGSTR_INDEX_PAIRNAMES_TO_JSON, ARGSTR_VERIFY_BY_PAIRNAME_DIR
+            ))
+        if args.get(ARGSTR_CHECK_SPECIAL) not in ARGCHOSET_CHECK_SPECIAL_INDEX_MODE_DICT:
+            arg_parser.error("{} option requires {} must be set to one of {}".format(
+                ARGSTR_INDEX_PAIRNAMES_TO_JSON, ARGSTR_CHECK_SPECIAL, sorted(ARGCHOSET_CHECK_SPECIAL_INDEX_MODE_DICT.keys())
+            ))
+        if not os.path.isfile(INDEX_SETSM_SCRIPT):
+            arg_parser.error(
+                "{} option requires the 'pgcdemtools' repo to exist alongside this repo, "
+                "but SETSM indexing script does not exist: {}".format(
+                ARGSTR_INDEX_PAIRNAMES_TO_JSON, SCRIPT_DIR, INDEX_SETSM_SCRIPT)
+            )
+
     for removal_argstr in ARGGRP_REQUIRES_RMWHERE:
         if args.get(removal_argstr) and not try_removal:
             arg_parser.error("{} option can only be used in conjunction with one of the following "
@@ -1044,6 +1191,96 @@ def main():
 
     checkfile_root_regex = (re.compile(args.get(ARGSTR_CHECKFILE_ROOT_REGEX))
                             if args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None else None)
+
+
+    if args.get(ARGSTR_VERIFY_QUICK_CHECK):
+        ## Do quick verification check and exit
+        print("\nDoing verification quick check...")
+
+        if not os.path.isdir(args.get(ARGSTR_SRC)):
+            arg_parser.error("{} must be a directory when {} option is provided".format(
+                ARGSTR_SRC, ARGSTR_VERIFY_QUICK_CHECK
+            ))
+        srcdir = args.get(ARGSTR_SRC)
+        pairname_dir_list = []
+        for root, dnames, fnames in walk.walk(srcdir, maxdepth=verify_by_pairname_dir_depth):
+            for dn in dnames:
+                if re.match(ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL, dn) is not None:
+                    pairname_dir = os.path.join(root, dn)
+                    pairname_dir_list.append(pairname_dir)
+
+        pairname_dir_num_total = len(pairname_dir_list)
+        if len(pairname_dir_list) == 0:
+            eprint("ERROR: No pairname directories were found with {} and {}={}".format(
+                ARGSTR_VERIFY_BY_PAIRNAME_DIR, ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH, verify_by_pairname_dir_depth
+            ))
+            sys.exit(1)
+        else:
+            print("Found {} pairname directories within {}".format(pairname_dir_num_total, srcdir))
+        print('')
+
+        pairname_dir_not_done_list = []
+        pairname_dir_empty_list = []
+        for pairname_dir in pairname_dir_list:
+            pairname_errfile = pairname_dir+errfile_ext
+            pnamedir_checkfile = pairname_dir+checkfile_ext
+            pnamedir_jsonfile = pairname_dir+'.json'
+            pnamedir_errfile_exists = os.path.isfile(pairname_errfile)
+            pnamedir_checkfile_exists = os.path.isfile(pnamedir_checkfile)
+            pnamedir_jsonfile_exists = os.path.isfile(pnamedir_jsonfile)
+            if pnamedir_errfile_exists or not (pnamedir_checkfile_exists and pnamedir_jsonfile_exists):
+                for _, _, srcfname_list in walk.walk(pairname_dir, maxdepth=1):
+                    break
+                if len(srcfname_list) == 0:
+                    print("WARNING: Pairname directory is empty: {}".format(pairname_dir))
+                    pairname_dir_empty_list.append(pairname_dir)
+                    if pnamedir_checkfile_exists or pnamedir_jsonfile_exists:
+                        print("ERROR: Empty pairname directory has a checkfile or JSON file: {}".format(pairname_dir))
+                    else:
+                        continue
+                elif len(srcfname_list) == 1 and verifying_strips:
+                    single_strip_fname = srcfname_list[0]
+                    if single_strip_fname.endswith('.fin'):
+                        if pnamedir_jsonfile_exists:
+                            print("ERROR: Pairname directory with lone strip finfile has JSON file: {}".format(pnamedir_jsonfile))
+                        elif not pnamedir_checkfile_exists:
+                            continue
+                        else:
+                            with open(pnamedir_checkfile, 'r') as check_strips_fin_fp:
+                                strip_finfname = check_strips_fin_fp.read().strip()
+                                if strip_finfname == single_strip_fname:
+                                    continue
+                                else:
+                                    print("ERROR: Solo strip finfile in pairname directory checkfile ({}) "
+                                          "does not match existing lone strip finfile ({}): {}".format(
+                                        strip_finfname, single_strip_fname, pnamedir_checkfile
+                                    ))
+                print("Pairname directory containing {} files, where {}, has not passed verification: {}".format(
+                    len(srcfname_list),
+                    "(errfile {}, checkfile {}, JSON {})".format(
+                        *['exists' if file_exists else 'DNE' for file_exists in [
+                            pnamedir_errfile_exists,
+                            pnamedir_checkfile_exists,
+                            pnamedir_jsonfile_exists
+                        ]]
+                    ),
+                    pairname_errfile if pnamedir_errfile_exists else pairname_dir
+                ))
+                pairname_dir_not_done_list.append(pairname_dir)
+
+        print('')
+        if len(pairname_dir_not_done_list) == 0:
+            print("All pairname directories have passed verification!")
+        else:
+            print("{} pairname directories have not yet passed verification:\n  {}".format(
+                len(pairname_dir_not_done_list), '\n  '.join(pairname_dir_not_done_list)
+            ))
+        if len(pairname_dir_empty_list) != 0:
+            print("{} pairname directories are empty:\n  {}".format(
+                len(pairname_dir_empty_list), '\n  '.join(pairname_dir_empty_list)
+            ))
+
+        sys.exit(0)
 
 
     ## Scan source dir/file input to determine which source files should be checked.
@@ -1072,8 +1309,43 @@ def main():
         if (    args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None
             and args.get(ARGSTR_CHECK_SPECIAL) != ARGCHO_CHECK_SPECIAL_ALL_SEPARATE):
             checkffileroot_srcfnamechecklist_dict = dict()
-            for root, dnames, fnames in os.walk(srcdir):
-                if root[len(srcdir):].count(os.sep) < search_depth:
+            if args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR):
+                pairname_dir_list = []
+                if re.match(ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL, os.path.basename(srcdir)) is not None:
+                    pairname_dir_list.append(srcdir)
+                else:
+                    for root, dnames, fnames in walk.walk(srcdir, maxdepth=verify_by_pairname_dir_depth):
+                        for dn in dnames:
+                            if re.match(ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL, dn) is not None:
+                                pairname_dir = os.path.join(root, dn)
+                                pairname_dir_list.append(pairname_dir)
+                if len(pairname_dir_list) == 0:
+                    eprint("No pairname directories were found with {} and {}={}".format(
+                        ARGSTR_VERIFY_BY_PAIRNAME_DIR, ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH, verify_by_pairname_dir_depth
+                    ))
+                for pairname_dir in pairname_dir_list:
+                    srcfname_list = []
+                    for _, _, srcfname_list in walk.walk(pairname_dir, maxdepth=1):
+                        break
+                    if len(srcfname_list) == 1 and verifying_strips:
+                        single_strip_fname = srcfname_list[0]
+                        if single_strip_fname.endswith('.fin'):
+                            strip_finfname = single_strip_fname
+                            with open(pairname_dir+'.check', 'w') as check_strips_fin_fp:
+                                check_strips_fin_fp.write(strip_finfname)
+                                continue
+                    for srcfname in srcfname_list:
+                        if endswith_one_of_coll(srcfname, src_suffixes):
+                            match = re.match(checkfile_root_regex, srcfname)
+                            if match is None:
+                                eprint("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
+                            else:
+                                if pairname_dir not in checkffileroot_srcfnamechecklist_dict:
+                                    checkffileroot_srcfnamechecklist_dict[pairname_dir] = []
+                                checkffileroot_srcfnamechecklist_dict[pairname_dir].append(srcfname)
+
+            else:
+                for root, dnames, fnames in walk.walk(srcdir, maxdepth=search_depth):
                     for srcfname in fnames:
                         if endswith_one_of_coll(srcfname, src_suffixes):
                             match = re.match(checkfile_root_regex, srcfname)
@@ -1094,11 +1366,10 @@ def main():
 
         else:  # if argument --checkfile was provided or if each source raster is allotted a checkfile
             srcffile_checklist = []
-            for root, dnames, fnames in os.walk(srcdir):
-                if root[len(srcdir):].count(os.sep) < search_depth:
-                    for srcfname in fnames:
-                        if endswith_one_of_coll(srcfname, src_suffixes):
-                            srcffile_checklist.append(os.path.join(root, srcfname))
+            for root, dnames, fnames in walk.walk(srcdir, maxdepth=search_depth):
+                for srcfname in fnames:
+                    if endswith_one_of_coll(srcfname, src_suffixes):
+                        srcffile_checklist.append(os.path.join(root, srcfname))
             missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, srcffile_checklist)]
             if missing_suffixes:
                 warnings.warn("Source file suffixes were not found")
@@ -1107,7 +1378,8 @@ def main():
                     missing_suffix_flag[0] = True
 
     elif os.path.isfile(src):
-        if src.endswith('.txt') and not src.endswith(ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META):
+        if src.endswith('.txt') and not src.endswith((ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_META,
+                                                      ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_INFO50CM)):
             bundle_file = src
             task_list = script_utils.read_task_bundle(bundle_file)
             if args.get(ARGSTR_CHECK_SPECIAL) == ARGCHO_CHECK_SPECIAL_ALL_SEPARATE:
@@ -1127,31 +1399,77 @@ def main():
                     ))
                 checkffileroot_list = task_list
 
-                srcffiles = []
-                for cff_root in checkffileroot_list:
-                    srcffiles.extend(glob.glob(cff_root+'*'))
-
-                if args.get(ARGSTR_CHECKFILE) is not None:
-                    srcffile_checklist = srcffiles
-                elif args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None:
+                if args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR):
                     checkffileroot_srcfnamechecklist_dict = dict()
-                    for srcffile in srcffiles:
-                        if endswith_one_of_coll(srcffile, src_suffixes):
-                            srcfdir, srcfname = os.path.split(srcffile)
-                            match = re.match(checkfile_root_regex, srcfname)
-                            if match is None:
-                                eprint("No regex match for file matching suffix criteria pulled from "
-                                       "source text file containing checkfile roots: {}".format(srcffile))
+                    pairname_dir_list = []
+                    if verify_by_pairname_dir_depth == 0:
+                        for cff_root in checkffileroot_list:
+                            if not os.path.isdir(cff_root):
+                                warnings.warn("Path in source text file is not an existing directory ({})".format(ARGSTR_VERIFY_BY_PAIRNAME_DIR))
+                                eprint("Path in source text file is not an existing directory: {}".format(cff_root))
+                            elif not re.match(ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL, os.path.basename(cff_root)) is not None:
+                                warnings.warn("Directory name in source text file does not match pairname regex ({})".format(ARGSTR_VERIFY_BY_PAIRNAME_DIR))
+                                eprint("Directory name in source text file does not match pairname regex: {}".format(cff_root))
                             else:
-                                cf_root_name = match.group(1)
-                                cf_root_full = os.path.join(srcfdir, cf_root_name)
-                                if cf_root_full not in checkffileroot_srcfnamechecklist_dict:
-                                    checkffileroot_srcfnamechecklist_dict[cf_root_full] = []
-                                checkffileroot_srcfnamechecklist_dict[cf_root_full].append(srcfname)
-                else:
-                    checkffileroot_srcfnamechecklist_dict = {cf_root_full: None for cf_root_full in checkffileroot_list}
+                                pairname_dir_list.append(cff_root)
+                    else:
+                        for cff_root in checkffileroot_list:
+                            for root, dnames, fnames in walk.walk(cff_root, maxdepth=verify_by_pairname_dir_depth):
+                                for dn in dnames:
+                                    if re.match(ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL, dn) is not None:
+                                        pairname_dir = os.path.join(root, dn)
+                                        pairname_dir_list.append(pairname_dir)
+                    if len(pairname_dir_list) == 0:
+                         eprint("No pairname directories were found with {} and {}={}".format(
+                             ARGSTR_VERIFY_BY_PAIRNAME_DIR, ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH, verify_by_pairname_dir_depth
+                         ))
+                    for pairname_dir in pairname_dir_list:
+                        srcfname_list = []
+                        for _, _, srcfname_list in walk.walk(pairname_dir, maxdepth=1):
+                            break
+                        if len(srcfname_list) == 1 and verifying_strips:
+                            single_strip_file = srcfname_list[0]
+                            if single_strip_file.endswith('.fin'):
+                                strip_finfile = single_strip_file
+                                with open(pairname_dir+'.check', 'w') as check_strips_fin_fp:
+                                    check_strips_fin_fp.write(strip_finfile)
+                                    continue
+                        for srcfname in srcfname_list:
+                            if endswith_one_of_coll(srcfname, src_suffixes):
+                                match = re.match(checkfile_root_regex, srcfname)
+                                if match is None:
+                                    eprint("No regex match for filename matching suffix criteria in source directory: {}".format(srcfname))
+                                else:
+                                    if pairname_dir not in checkffileroot_srcfnamechecklist_dict:
+                                        checkffileroot_srcfnamechecklist_dict[pairname_dir] = []
+                                    checkffileroot_srcfnamechecklist_dict[pairname_dir].append(srcfname)
 
-                num_srcfiles = None
+                else:
+                    srcffiles = []
+                    for cff_root in checkffileroot_list:
+                        srcffiles.extend(glob.glob(cff_root+'*'))
+
+                    if args.get(ARGSTR_CHECKFILE) is not None:
+                        srcffile_checklist = srcffiles
+                    elif args.get(ARGSTR_CHECKFILE_ROOT_REGEX) is not None:
+                        checkffileroot_srcfnamechecklist_dict = dict()
+                        for srcffile in srcffiles:
+                            if endswith_one_of_coll(srcffile, src_suffixes):
+                                srcfdir, srcfname = os.path.split(srcffile)
+                                match = re.match(checkfile_root_regex, srcfname)
+                                if match is None:
+                                    eprint("No regex match for file matching suffix criteria pulled from "
+                                           "source text file containing checkfile roots: {}".format(srcffile))
+                                else:
+                                    cf_root_name = match.group(1)
+                                    cf_root_full = os.path.join(srcfdir, cf_root_name)
+                                    if cf_root_full not in checkffileroot_srcfnamechecklist_dict:
+                                        checkffileroot_srcfnamechecklist_dict[cf_root_full] = []
+                                    checkffileroot_srcfnamechecklist_dict[cf_root_full].append(srcfname)
+                    else:
+                        checkffileroot_srcfnamechecklist_dict = {cf_root_full: None for cf_root_full in checkffileroot_list}
+
+                # num_srcfiles = None
 
         else:
             argstr_incompat_srcfile = [ARGSTR_CHECKFILE_ROOT, ARGSTR_CHECKFILE_ROOT_REGEX, ARGSTR_CHECK_SPECIAL]
@@ -1203,6 +1521,7 @@ def main():
 
         for cff_root in checkffileroot_srcfnamechecklist_dict:
             cff_root_src_rasters = checkffileroot_srcfnamechecklist_dict[cff_root]
+            checkgroup_errfile = cff_root+errfile_ext
 
             srcfile_count[0] = None
             errfile_count[0] = None
@@ -1234,7 +1553,10 @@ def main():
                 and (   errfile_count[0] is None
                      or (not retry_errors and args.get(ARGSTR_CHECKFILE_OFF) and type(cff_root_src_rasters_to_check) is list))):
                 cff_dir = os.path.join(os.path.dirname(cff_root))
-                srcfname_errlist = [fn for fn in cff_root_src_rasters if os.path.isfile(os.path.join(cff_dir, fn+errfile_ext))]
+                if os.path.isfile(checkgroup_errfile):
+                    srcfname_errlist = cff_root_src_rasters
+                else:
+                    srcfname_errlist = [fn for fn in cff_root_src_rasters if os.path.isfile(os.path.join(cff_dir, fn+errfile_ext))]
                 errfile_count[0] = len(srcfname_errlist)
 
             if errfile_count[0] is not None:
@@ -1377,12 +1699,11 @@ def main():
             sys.exit(0)
     print("-----")
     if os.path.isdir(src):
-        for root, dnames, fnames in os.walk(src):
-            if root[len(srcdir):].count(os.sep) < search_depth:
-                for srcfname in fnames:
-                    if srcfname.endswith(errfile_ext):
-                        num_errfiles_walk += 1
-        print("{} existing error files found within source directory via os.walk".format(num_errfiles_walk))
+        for root, dnames, fnames in walk.walk(src, maxdepth=search_depth):
+            for srcfname in fnames:
+                if srcfname.endswith(errfile_ext):
+                    num_errfiles_walk += 1
+        print("{} existing error files found within source directory".format(num_errfiles_walk))
     print("{} existing error files found among source selection".format(num_srcfiles_err_exist))
     if num_srcfiles is not None or num_srcfiles_to_check is not None:
         print("Number of source files: {}{}{}{}{}".format(
@@ -1414,9 +1735,9 @@ def main():
     if (   (checkffileroot_srcfnamechecklist_dict is not None and len(checkffileroot_srcfnamechecklist_dict) == 0)
         or (srcffile_checklist is not None and len(srcffile_checklist) == 0)):
         sys.exit(0)
-    elif args.get(ARGSTR_DRYRUN) and args.get(ARGSTR_SCHEDULER) is not None:
-        print("Exiting dryrun")
-        sys.exit(0)
+    # elif args.get(ARGSTR_DRYRUN) and args.get(ARGSTR_SCHEDULER) is not None:
+    #     print("Exiting dryrun")
+    #     sys.exit(0)
 
 
     # Pause for user review.
@@ -1443,7 +1764,7 @@ def main():
     ## Check rasters.
 
     if check_items is checkffileroot_srcfnamechecklist_dict:
-        check_items_sorted = sorted(checkffileroot_srcfnamechecklist_dict)
+        check_items_sorted = sorted(checkffileroot_srcfnamechecklist_dict.keys())
     elif check_items is srcffile_checklist:
         check_items.sort()
         check_items_sorted = check_items
@@ -1455,7 +1776,7 @@ def main():
         check_units = (check_items_sorted if tasks_per_job is None else
                        script_utils.write_task_bundles(check_items_sorted, tasks_per_job,
                                                        args.get(ARGSTR_SCRATCH),
-                                                        '{}_{}'.format(JOB_ABBREV, ARGSTR_SRC)))
+                                                       '{}_{}'.format(JOB_ABBREV, ARGSTR_SRC)))
 
         jobnum_fmt = script_utils.get_jobnum_fmtstr(check_units)
         last_job_email = args.get(ARGSTR_EMAIL)
@@ -1473,6 +1794,10 @@ def main():
             args_single.set(ARGSTR_CHECK_SPECIAL, ARGCHO_CHECK_SPECIAL_ALL_SEPARATE)
         if args.get(ARGSTR_CHECK_SPECIAL) is not None:
             args_single.unset(ARGGRP_CHECK_REGULAR)
+        if args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR):
+            args_single.set(ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH, 0)
+
+        job_name_prefix = args.get(ARGSTR_JOBNAME)
 
         job_num = 0
         num_jobs = len(check_units)
@@ -1484,16 +1809,18 @@ def main():
                 args_single.set(ARGSTR_EMAIL, last_job_email)
             cmd_single = args_single.get_cmd()
 
-            job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
+            job_name = job_name_prefix+jobnum_fmt.format(job_num)
             cmd = args_single.get_jobsubmit_cmd(
                 args_batch.get(ARGSTR_SCHEDULER),
                 jobscript=args_batch.get(ARGSTR_JOBSCRIPT),
                 jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, email=args.get(ARGSTR_EMAIL),
-                envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
+                envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN],
+                hold=True
             )
 
-            print(cmd)
-            if not args_batch.get(ARGSTR_DRYRUN):
+            if args_batch.get(ARGSTR_DRYRUN):
+                print(cmd)
+            else:
                 subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
 
     else:
@@ -1503,7 +1830,7 @@ def main():
 
             if check_items is checkffileroot_srcfnamechecklist_dict:
                 for i, cff_root in enumerate(check_items_sorted):
-                    checkfile_dir = os.path.dirname(cff_root)
+                    checkfile_dir = os.path.dirname(cff_root) if not os.path.isdir(cff_root) else cff_root
                     cf_rasterffile_list = [os.path.join(checkfile_dir, rasterfname) for rasterfname in
                                            checkffileroot_srcfnamechecklist_dict[cff_root]]
                     cf_rasterffile_list.sort()
@@ -1558,11 +1885,27 @@ def check_rasters(raster_ffiles, checkfile, args):
 
     if args.get(ARGSTR_CHECKFILE) is not None:
         checkfile = args.get(ARGSTR_CHECKFILE)
+    if args.get(ARGSTR_VERIFY_BY_PAIRNAME_DIR):
+        checkgroup_errfile = checkfile.replace(args.get(ARGSTR_CHECKFILE_EXT), args.get(ARGSTR_ERRFILE_EXT))
+        if checkgroup_errfile == checkfile:
+            checkgroup_errfile = None
+        elif os.path.isfile(checkgroup_errfile):
+            LOGGER.info("Removing existing check group error file: {}".format(checkgroup_errfile))
+            try:
+                os.remove(checkgroup_errfile)
+            except:
+                traceback.print_exc()
+    else:
+        checkgroup_errfile = None
 
     checkfile_write = (not args.get(ARGSTR_CHECKFILE_OFF))
+    checkfile_write_at_end = args.get(ARGSTR_CHECKFILE_WRITE_AT_END)
     checkfile_exists = os.path.isfile(checkfile)
     if checkfile_exists:
-        print("Checkfile already exists: {}".format(checkfile))
+        LOGGER.info("Checkfile already exists: {}".format(checkfile))
+
+    raster_ffile_list_pass = []
+    file_check_failure_count = 0
 
     raster_ffile_list = raster_ffiles
     checkfile_group_fp = None
@@ -1575,14 +1918,17 @@ def check_rasters(raster_ffiles, checkfile, args):
         if checkfile_write:
             if checkfile_exists:
                 with open(checkfile, 'r') as checkfile_group_fp:
-                    rasters_checked = set(checkfile_group_fp.read().splitlines())
+                    rasters_checked = checkfile_group_fp.read().splitlines()
+                    raster_ffile_list_pass.extend(rasters_checked)
+                    rasters_checked = set(rasters_checked)
                     rasters_to_check = set([os.path.basename(f) for f in raster_ffile_list])
                     rasters_already_checked = rasters_checked.intersection(rasters_to_check)
                     if len(rasters_already_checked) > 0:
                         raise DeveloperError("The following source files have already been checked: {}".format(
                             rasters_already_checked))
-            print("Opening group checkfile in append mode: {}".format(checkfile))
-            checkfile_group_fp = open(checkfile, 'a')
+            if not checkfile_write_at_end:
+                LOGGER.info("Opening group checkfile in append mode: {}".format(checkfile))
+                checkfile_group_fp = open(checkfile, 'a')
 
 
     # Check each input source file.
@@ -1590,8 +1936,11 @@ def check_rasters(raster_ffiles, checkfile, args):
 
         raster_ffile_err = raster_ffile+args.get(ARGSTR_ERRFILE_EXT)
         if os.path.isfile(raster_ffile_err):
-            print("Removing existing error file: {}".format(raster_ffile_err))
-            os.remove(raster_ffile_err)
+            LOGGER.info("Removing existing error file: {}".format(raster_ffile_err))
+            try:
+                os.remove(raster_ffile_err)
+            except:
+                traceback.print_exc()
         errmsg_list = []
 
         if not os.path.isfile(raster_ffile):
@@ -1603,7 +1952,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                 meta_ffile = raster_ffile
 
                 if args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_SCENELEVEL:
-                    print("Checking SETSM scene metadata file: {}".format(meta_ffile))
+                    LOGGER.debug("Checking SETSM scene metadata file: {}".format(meta_ffile))
                     try:
                         with open(meta_ffile, 'r') as scenemeta_fp:
                             meta_errmsg_list = check_setsm_meta(scenemeta_fp)
@@ -1613,7 +1962,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                             "Text file read error: {}".format(e))
 
                 elif args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_STRIPLEVEL:
-                    print("Checking SETSM strip metadata file: {}".format(meta_ffile))
+                    LOGGER.debug("Checking SETSM strip metadata file: {}".format(meta_ffile))
                     try:
                         with open(meta_ffile, 'r') as stripmeta_fp:
                             in_scenemeta_section = False
@@ -1645,6 +1994,19 @@ def check_rasters(raster_ffiles, checkfile, args):
                             ARGSTR_CHECK_SPECIAL, ARGCHOGRP_CHECK_SPECIAL_SETSM)
                     ]))
 
+            elif raster_ffile.endswith(ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_INFO50CM):
+                info50cm_ffile = raster_ffile
+                LOGGER.debug("Checking info50cm.txt file: {}".format(info50cm_ffile))
+                try:
+                    with open(info50cm_ffile, 'r') as info50cm_fp:
+                        info50cm_text = info50cm_fp.read()
+                    if re.match(INFO50CM_RE, info50cm_text) is None:
+                        errmsg_print_and_list(errmsg_list,
+                            "info50cm file contents do not match expected pattern:\n{}".format(INFO50CM_RE.pattern))
+                except RuntimeError as e:
+                    errmsg_print_and_list(errmsg_list,
+                        "Text file read error: {}".format(e))
+
 
             elif endswith_one_of_coll(raster_ffile, GDAL_RASTER_SUFFIXES, case_sensitive=False):
                 working_on_copy = False
@@ -1652,16 +2014,16 @@ def check_rasters(raster_ffiles, checkfile, args):
                 try:
                     if args.get(ARGSTR_WD) is not None:
                         raster_ffile_wd = os.path.join(args.get(ARGSTR_WD), os.path.basename(raster_ffile))
-                        print("Copying source raster to working directory: {} -> {}".format(raster_ffile, raster_ffile_wd))
+                        LOGGER.debug("Copying source raster to working directory: {} -> {}".format(raster_ffile, raster_ffile_wd))
                         try:
                             shutil.copy2(raster_ffile, raster_ffile_wd)
                             raster_ffile = raster_ffile_wd
                             working_on_copy = True
                         except shutil.SameFileError as e:
                             raster_ffile_wd = None
-                            print(e)
+                            LOGGER.debug(e)
 
-                    print("Checking raster: {}".format(raster_ffile))
+                    LOGGER.debug("Checking raster: {}".format(raster_ffile))
 
                     setsm_suffix = None
                     if args.get(ARGSTR_CHECK_SETSM_VALIDRANGE):
@@ -1678,7 +2040,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                         raise RasterFileReadError()
 
                     num_bands = ds.RasterCount
-                    print("{} bands{}".format(
+                    LOGGER.debug("{} bands{}".format(
                         num_bands, ', check SETSM suffix: {}'.format(setsm_suffix) if setsm_suffix is not None else ''))
 
                     if setsm_suffix is not None and num_bands > 1:
@@ -1690,33 +2052,33 @@ def check_rasters(raster_ffiles, checkfile, args):
                     for band_index in range(num_bands):
                         band_num = band_index + 1
                         band = ds.GetRasterBand(band_num)
-                        print("Processing Band {}".format(band_num))
+                        LOGGER.debug("Processing Band {}".format(band_num))
 
                         if args.get(ARGSTR_CHECK_METHOD) == ARGCHO_CHECK_METHOD_CHECKSUM:
                             try:
-                                print("Doing checksum")
+                                LOGGER.debug("Doing checksum")
                                 checksum = band.Checksum()
-                                print("Checksum succeeded: {}".format(checksum))
+                                LOGGER.debug("Checksum succeeded: {}".format(checksum))
                             except RuntimeError as e:
                                 errmsg_print_and_list(errmsg_list,
                                     "Band {} checksum error: {}".format(band_num, e))
 
                         if args.get(ARGSTR_CHECK_METHOD) == ARGCHO_CHECK_METHOD_READ or setsm_suffix is not None:
                             try:
-                                print("Reading band data array")
+                                LOGGER.debug("Reading band data array")
                                 data_array = band.ReadAsArray()
-                                print("Data read succeeded")
+                                LOGGER.debug("Data read succeeded")
                             except RuntimeError as e:
                                 errmsg_print_and_list(errmsg_list,
                                     "Band {} data read error: {}".format(band_num, e))
-                                print("Continuing to next band")
+                                LOGGER.debug("Continuing to next band")
                                 continue
 
                             if setsm_suffix is not None:
                                 valid_range = SETSM_RASTER_SUFFIX_VALIDRANGE_DICT[setsm_suffix]
                                 nodata_val = band.GetNoDataValue()
 
-                                print("Checking SETSM suffix '{}' valid range: {} (NoData value: {})".format(
+                                LOGGER.debug("Checking SETSM suffix '{}' valid range: {} (NoData value: {})".format(
                                     setsm_suffix, valid_range, nodata_val))
 
                                 valid_min, valid_max = valid_range
@@ -1727,7 +2089,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                                     data_array_invalid[data_array_nodata] = False
 
                                 if not np.any(data_array_invalid):
-                                    print("SETSM check succeeded")
+                                    LOGGER.debug("SETSM check succeeded")
                                 else:
                                     errmsg_print_and_list(errmsg_list,
                                         "Band {} failed SETSM suffix '{}' valid range check of {}".format(
@@ -1748,7 +2110,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                                         "Invalid values: {}".format(invalid_values)
                                     ]
                                     for line in errmsg_setsm_details_list:
-                                        print(line)
+                                        LOGGER.error(line)
                                     errmsg_list.extend(errmsg_setsm_details_list)
 
                 except RasterFileReadError:
@@ -1757,7 +2119,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                     raise
                 finally:
                     if args.get(ARGSTR_WD) is not None and working_on_copy and raster_ffile_wd is not None:
-                        print("Removing working copy of source raster: {}".format(raster_ffile_wd))
+                        LOGGER.debug("Removing working copy of source raster: {}".format(raster_ffile_wd))
                         os.remove(raster_ffile_wd)
 
             else:
@@ -1767,37 +2129,89 @@ def check_rasters(raster_ffiles, checkfile, args):
 
 
         if len(errmsg_list) > 0:
-            print("Writing{} error file: {}".format(
-                ' over existing' if os.path.isfile(raster_ffile_err) else '', raster_ffile_err))
-            with open(raster_ffile_err, 'w') as raster_ffile_err_fp:
-                for line in errmsg_list:
-                    raster_ffile_err_fp.write(line+'\n')
-            if checkfile_write and checkfile_group_fp is not None and not args.get(ARGSTR_KEEP_CHECKFILE_WITH_ERRORS):
+            file_check_failure_count += 1
+            LOGGER.error("Source file failed check(s): {}".format(raster_ffile))
+            if checkgroup_errfile is not None:
+                LOGGER.debug("Appending to check group error file: {}".format(checkgroup_errfile))
+                with open(checkgroup_errfile, 'a') as raster_ffile_err_fp:
+                    raster_ffile_err_fp.write("--- {} ---\n".format(raster_ffile))
+                    for line in errmsg_list:
+                        raster_ffile_err_fp.write(line+'\n')
+            else:
+                LOGGER.info("Writing{} error file: {}".format(
+                    ' over existing' if os.path.isfile(raster_ffile_err) else '', raster_ffile_err))
+                with open(raster_ffile_err, 'w') as raster_ffile_err_fp:
+                    for line in errmsg_list:
+                        raster_ffile_err_fp.write(line+'\n')
+            if checkfile_write and not args.get(ARGSTR_KEEP_CHECKFILE_WITH_ERRORS):
                 if checkfile_group_fp is not None:
                     checkfile_group_fp.close()
                 if os.path.isfile(checkfile):
-                    print("Removing checkfile after encountering source file errors: {}".format(checkfile))
+                    LOGGER.info("Removing checkfile after encountering source file errors: {}".format(checkfile))
                     os.remove(checkfile)
                 if checkfile_write:
-                    print("No longer writing to checkfile after encountering source file errors: {}".format(checkfile))
-                    print("To continue writing to checkfile despite encountering source file errors, "
-                          "please pass the {} script argument".format(ARGSTR_KEEP_CHECKFILE_WITH_ERRORS))
+                    LOGGER.info("No longer writing to checkfile after encountering source file errors: {}".format(checkfile))
+                    LOGGER.info("To continue writing to checkfile despite encountering source file errors, "
+                                "pass the {} script argument".format(ARGSTR_KEEP_CHECKFILE_WITH_ERRORS))
                     checkfile_write = False
         else:
-            print("Source file passed check(s)")
-            if checkfile_write:
+            LOGGER.debug("Source file passed check(s)")
+            raster_ffile_list_pass.append(raster_ffile)
+            if checkfile_write and not checkfile_write_at_end:
                 if checkfile_group_fp is None:
-                    print("Writing single checkfile: {}".format(checkfile))
+                    LOGGER.debug("Writing single checkfile: {}".format(checkfile))
                     with open(checkfile, 'w'):
                         pass
                 else:
-                    print("Adding filename to group checkfile list: {}".format(checkfile))
+                    LOGGER.debug("Adding filename to group checkfile list: {}".format(checkfile))
                     checkfile_group_fp.write(os.path.basename(raster_ffile)+'\n')
 
     if checkfile_group_fp is not None:
         checkfile_group_fp.close()
 
-    print("Done!")
+    LOGGER.info("{} of {} source files passed checks{}".format(
+        len(raster_ffile_list_pass), len(raster_ffile_list),
+        ", {} source files failed checks".format(file_check_failure_count) if file_check_failure_count > 0 else ''
+    ))
+
+    if checkfile_write and checkfile_write_at_end:
+
+        if args.get(ARGSTR_INDEX_PAIRNAMES_TO_JSON):
+            pairname_dir = checkfile.replace(args.get(ARGSTR_CHECKFILE_EXT), '')
+            pairname_rootdir = os.path.dirname(pairname_dir)
+
+            if not os.path.isdir(pairname_dir):
+                errmsg_list = []
+                errmsg_print_and_list(errmsg_list,
+                    "Pairname directory does not exist in expected location: {}".format(pairname_dir)
+                )
+                errmsg_print_and_list(errmsg_list,
+                    "Cannot generate JSON index file for pairname directory as requesed by {} option".format(ARGSTR_INDEX_PAIRNAMES_TO_JSON)
+                )
+                if checkgroup_errfile is not None:
+                    LOGGER.debug("Appending to check group error file: {}".format(checkgroup_errfile))
+                    with open(checkgroup_errfile, 'a') as raster_ffile_err_fp:
+                        for line in errmsg_list:
+                            raster_ffile_err_fp.write(line+'\n')
+            else:
+                index_mode = ARGCHOSET_CHECK_SPECIAL_INDEX_MODE_DICT[args.get(ARGSTR_CHECK_SPECIAL)]
+                index_setsm_cmd = """ python {} {} {} --mode {} --write-json --skip-region-lookup --np """.format(
+                    INDEX_SETSM_SCRIPT, pairname_dir, pairname_rootdir, index_mode
+                )
+                LOGGER.info("Running command to create JSON index file for pairname dir: {}".format(index_setsm_cmd))
+                index_setsm_rc = subprocess.call(index_setsm_cmd, shell=True)
+                if index_setsm_rc != 0:
+                    LOGGER.error("Index script returned non-zero exit status ({}); will not write checkfile".format(index_setsm_rc))
+                    checkfile_write = False
+
+        if checkfile_write:
+            LOGGER.info("Writing group checkfile: {}".format(checkfile))
+            with open(checkfile, 'w') as checkfile_group_fp:
+                for raster_ffile in raster_ffile_list_pass:
+                    checkfile_group_fp.write(os.path.basename(raster_ffile)+'\n')
+
+    if checkgroup_errfile is not None and os.path.isfile(checkgroup_errfile):
+        LOGGER.info("Check group error file exists: {}".format(checkgroup_errfile))
 
 
 def check_setsm_meta(meta_fp):
@@ -1813,7 +2227,7 @@ def check_setsm_meta(meta_fp):
     for meta_key in SETSM_META_REQUIRED_KEY_SORTED_LIST:
         item_regex, item_is_key_value, item_req_count = SETSM_META_REQUIRED_DICT[meta_key]
         search_message = "Searching metadata text for item '{}' (item regex = {})".format(meta_key, repr(item_regex.pattern))
-        print(search_message)
+        LOGGER.debug(search_message)
         errmsg_list_this_key = []
 
         item_matches_stripped = [item.strip() for item in re.findall(item_regex, meta_txt_buf)]
@@ -1821,7 +2235,7 @@ def check_setsm_meta(meta_fp):
 
         match_results = "Item '{}'; {} of {} instances found: {}".format(
                 meta_key, num_matches, item_req_count, item_matches_stripped)
-        print(match_results)
+        LOGGER.debug(match_results)
 
         if num_matches != item_req_count:
             errmsg_print_and_list(errmsg_list_this_key, match_results)
@@ -1939,7 +2353,7 @@ def check_setsm_meta(meta_fp):
 
 
 def errmsg_print_and_list(errmsg_list, errmsg):
-    print("ERROR: {}".format(errmsg))
+    LOGGER.error(errmsg)
     errmsg_list.append(errmsg)
 
 

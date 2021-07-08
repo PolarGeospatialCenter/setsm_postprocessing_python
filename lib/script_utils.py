@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import copy
 import functools
+import logging
 import math
 import operator
 import os
@@ -23,6 +24,25 @@ from email.mime.text import MIMEText
 SYSTYPE = platform.system()
 
 PYTHON_VERSION_REQUIRED_MIN = "2.7"  # supports multiple dot notation
+
+
+class InfoFilter(logging.Filter):
+    def filter(self, rec):
+        return rec.levelno in (logging.DEBUG, logging.INFO)
+def setup_logger(logger):
+    formatter = logging.Formatter('%(asctime)s %(levelname)s- %(message)s', '%m-%d-%Y %H:%M:%S')
+    h1 = logging.StreamHandler(sys.stdout)
+    h1.setLevel(logging.DEBUG)
+    h1.setFormatter(formatter)
+    h1.addFilter(InfoFilter())
+    h2 = logging.StreamHandler(sys.stderr)
+    h2.setLevel(logging.WARNING)
+    h2.setFormatter(formatter)
+    logger.addHandler(h1)
+    logger.addHandler(h2)
+
+LOGGER = logging.getLogger(__name__)
+setup_logger(LOGGER)
 
 
 def eprint(*args, **kwargs):
@@ -506,7 +526,7 @@ class ArgumentPasser:
                           jobscript=None, jobname=None,
                           time_hr=None, time_min=None, time_sec=None,
                           memory_gb=None, node=None, email=None,
-                          envvars=None):
+                          envvars=None, hold=False):
         cmd = None
         cmd_envvars = None
         jobscript_optkey = None
@@ -545,8 +565,9 @@ class ArgumentPasser:
                         "mem={}gb".format(memory_gb) if memory_gb is not None else ''
                     ]).strip(',')
                 ) if (time_hms is not None and memory_gb is not None) else '',
-                "-v {}".format(cmd_envvars) if cmd_envvars is not None else ''
-                "-m ae" if email else ''
+                "-v {}".format(cmd_envvars) if cmd_envvars is not None else '',
+                "-m ae" if email else '',
+                "-h" if hold else '',
             ])
             jobscript_optkey = '#PBS'
 
@@ -556,9 +577,9 @@ class ArgumentPasser:
                 "--job-name {}".format(jobname) if jobname is not None else '',
                 "--time {}".format(time_hms) if time_hms is not None else '',
                 "--mem {}G".format(memory_gb) if memory_gb is not None else '',
-                "-v {}".format(cmd_envvars) if cmd_envvars is not None else ''
+                "-v {}".format(cmd_envvars) if cmd_envvars is not None else '',
                 "--mail-type FAIL,END" if email else '',
-                "--mail-user {}".format(email) if type(email) is str else None
+                "--mail-user {}".format(email) if type(email) is str else None,
             ])
             jobscript_optkey = '#SBATCH'
 
