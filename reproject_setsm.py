@@ -60,7 +60,7 @@ ARGSTR_TARGET_EPSG = '--target-epsg'
 ARGSTR_TARGET_RESOLUTION = '--target-res'
 ARGSTR_OVERWRITE = '--overwrite'
 ARGSTR_ADD_RES_SUFFIX = '--add-res-suffix'
-ARGSTR_CORRECT_META_FP_VERTS = '--correct-meta-fp-verts'
+ARGSTR_SIMPLE_META_FP_VERTS = '--simple-meta-fp-verts'
 ARGSTR_STRIPS_NO_BROWSE = '--strips-no-browse'
 ARGSTR_STRIPS_BUILD_AUX = '--strips-build-aux'
 ARGSTR_SCHEDULER = '--scheduler'
@@ -205,19 +205,17 @@ def argparser_init():
     )
 
     parser.add_argument(
-        ARGSTR_CORRECT_META_FP_VERTS,
+        ARGSTR_SIMPLE_META_FP_VERTS,
         action='store_true',
-        default=False,
         help=' '.join([
-            "When reprojecting strip DEM data, recalculate correct strip footprint vertices",
-            "from reprojected strip *dem.tif raster and write those into reprojected *meta.txt file."
+            "When reprojecting strip DEM data, simply reproject strip footprint vertices "
+            "instead of recalculating correct vertices from reprojected strip *dem.tif raster."
         ])
     )
 
     parser.add_argument(
         ARGSTR_STRIPS_NO_BROWSE,
         action='store_true',
-        default=False,
         help=' '.join([
             "When reprojecting 2-meter strip DEMs, do not build 10-meter hillshade raster."
         ])
@@ -693,7 +691,7 @@ def reproject_stripmeta(metafile_src, metafile_dst, target_epsg, args):
         return
     outmeta_txt += line
 
-    if args.get(ARGSTR_CORRECT_META_FP_VERTS):
+    if not args.get(ARGSTR_SIMPLE_META_FP_VERTS):
         ## Recalculate strip footprint vertices from reprojected strip DEM raster.
         from lib import raster_array_tools as rat
         for i in range(2):
