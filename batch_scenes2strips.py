@@ -1400,10 +1400,16 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
 
     if not args.get(ARGSTR_NO_BROWSE):
         output_files.update([
+            maskFile_10m,
             demFile_10m,
-            demFile_10m_shade
+            demFile_10m_shade,
+            demFile_shade_mask
         ])
-        keep_files.add(demFile_10m_shade)
+        keep_files.update([
+            demFile_10m,
+            demFile_10m_shade,
+            demFile_shade_mask
+        ])
 
     if args.get(ARGSTR_BUILD_AUX):
         output_files.update([
