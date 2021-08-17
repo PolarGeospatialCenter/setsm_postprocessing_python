@@ -15,7 +15,6 @@ def walk(srcdir, mindepth=1, maxdepth=float('inf'), list_function=WALK_LIST_FUNC
         raise InvalidArgumentError("`srcdir` directory does not exist: {}".format(srcdir))
     if mindepth < 0 or maxdepth < 0:
         raise InvalidArgumentError("depth arguments must be >= 0")
-    srcdir = os.path.abspath(srcdir)
     if mindepth == 0:
         updir = os.path.dirname(srcdir)
         srcdname = os.path.basename(srcdir)

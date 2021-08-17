@@ -1346,12 +1346,22 @@ def saveStripMeta(strip_demFile, demSuffix,
             bitmask_compbit_pixelcount_dict[MASKCOMP_CLOUD_BIT] * pixel_area / strip_area
         )
 
+    dem_nodata = (Z == -9999)
+    Z[dem_nodata] = np.nan
+    elevation_stats = OrderedDict([
+        ("Minimum elevation value", np.nanmin(Z)),
+        ("Maximum elevation value", np.nanmax(Z))
+    ])
+    Z[dem_nodata] = -9999
+    del dem_nodata
+
     proj4 = spat_ref.ExportToProj4()
     time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
 
     writeStripMeta(strip_metaFile, scene_dir, scene_demFnames,
                    trans, trans_err, rmse,
-                   proj4, fp_vertices, data_density_info,
+                   proj4, fp_vertices,
+                   data_density_info, elevation_stats,
                    time, args)
 
 
@@ -1581,7 +1591,8 @@ def shouldDoMasking(matchFile, mask_name):
 
 def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
                    trans, trans_err, rmse,
-                   proj4, fp_vertices, data_density_info,
+                   proj4, fp_vertices,
+                   data_density_info, elevation_stats,
                    strip_time, args):
     import numpy as np
     from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
@@ -1654,6 +1665,11 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
     strip_info += "\nData Coverage Statistics\n{}\n".format(
         '\n'.join(["{}: {}".format(info_key, info_val)
                    for info_key, info_val in data_density_info.items()])
+    )
+
+    strip_info += "\nElevation Statistics\n{}\n".format(
+        '\n'.join(["{}: {}".format(info_key, info_val)
+                   for info_key, info_val in elevation_stats.items()])
     )
 
     strip_info += "\nScene Metadata \n\n"
