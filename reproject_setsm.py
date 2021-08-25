@@ -113,8 +113,8 @@ BUILD_STRIP_AUX_CORE_STRIP_SUFFIXES = [
     'bitmask.tif',
 ]
 
-RE_UTM_PROJNAME = re.compile("utm\d+[ns]")
-RE_SHELVED_STRIP = re.compile("(/mnt/pgc/data/elev/dem/setsm/(?:ArcticDEM|EarthDEM|REMA)/region/(?:arcticdem|earthdem|rema|)_\d{2}_[^/]+/strips_v4/2m)/.+")
+RE_UTM_PROJNAME = re.compile("\Autm\d+[ns]\Z")
+RE_SHELVED_STRIP = re.compile("\A.*/strips_v4/2m/")
 
 logger = logging.getLogger("logger")
 logger.setLevel(logging.INFO)
@@ -392,10 +392,10 @@ def main():
                 task_metafile_src, task_dstdir, task_target_epsg = task
                 task_target_epsg = int(task_target_epsg)
                 if task_dstdir in ('psn', 'pss') or re.match(RE_UTM_PROJNAME, task_dstdir) is not None:
-                    shelved_strip_match = re.match(RE_SHELVED_STRIP, task_metafile_src)
+                    shelved_strip_match = re.search(RE_SHELVED_STRIP, task_metafile_src)
                     if shelved_strip_match is not None:
-                        strips_res_dir = shelved_strip_match.groups()[0]
-                        task_dstdir = "{}_{}".format(strips_res_dir, task_dstdir)
+                        strips_res_dir = shelved_strip_match.group(0)
+                        task_dstdir = "{}_{}".format(strips_res_dir.rstrip('/'), task_dstdir)
                         task[1] = task_dstdir
             else:
                 arg_parser.error("Source task list can only have up to three columns: "
@@ -510,7 +510,10 @@ def main():
                 # if not args.get(ARGSTR_DRYRUN):
                 reproject_setsm(task_metafile_src, task_dstdir, task_target_epsg, args=args)
 
+            print("\nCompleted task processing loop")
+
         except KeyboardInterrupt:
+            print("\nTask processing loop interrupted with KeyboardInterrupt")
             raise
 
         except Exception as e:
@@ -524,7 +527,8 @@ def main():
                 print("If running on a Linux system where the jobscripts/init.sh file has been properly"
                       " set up, try running the following command to activate a working environment"
                       " in your current shell session:\n{}".format("source {} {}".format(JOBSCRIPT_INIT, JOB_ABBREV)))
-                print('')
+
+            print("\nTask processing loop was not completed due to exception")
 
         if type(args.get(ARGSTR_EMAIL)) is str:
             # Send email notification of script completion.

@@ -2195,7 +2195,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                             raster_ffile_err_fp.write(line+'\n')
             else:
                 index_mode = ARGCHOSET_CHECK_SPECIAL_INDEX_MODE_DICT[args.get(ARGSTR_CHECK_SPECIAL)]
-                index_setsm_cmd = """ python {} {} {} --mode {} --write-json --skip-region-lookup --np """.format(
+                index_setsm_cmd = """ python {} {} {} --mode {} --write-json --overwrite --skip-region-lookup --np """.format(
                     INDEX_SETSM_SCRIPT, pairname_dir, pairname_rootdir, index_mode
                 )
                 LOGGER.info("Running command to create JSON index file for pairname dir: {}".format(index_setsm_cmd))

@@ -483,8 +483,8 @@ class ArgumentPasser:
             item_str = '{}'.format(item)
         return item_str
 
-    def _escape_comma(self, str_item):
-        return str_item.replace(',', '|COMMA|')
+    def _escape_problem_chars(self, str_item):
+        return str_item.replace(',', '@COMMA@').replace(' ', '@SPACE@')
 
     def _update_cmd_base(self):
         arg_list = []
@@ -548,10 +548,10 @@ class ArgumentPasser:
 
         if envvars is not None:
             if type(envvars) in (tuple, list):
-                cmd_envvars = ','.join(['p{}="{}"'.format(i, self._escape_comma(a))
+                cmd_envvars = ','.join(['p{}="{}"'.format(i, self._escape_problem_chars(a))
                                         for i, a in enumerate(envvars)])
             elif type(envvars) == dict:
-                cmd_envvars = ','.join(['{}="{}"'.format(var_name, self._escape_comma(var_val))
+                cmd_envvars = ','.join(['{}="{}"'.format(var_name, self._escape_problem_chars(var_val))
                                         for var_name, var_val in envvars.items()])
 
         if scheduler == SCHED_PBS:
@@ -577,9 +577,9 @@ class ArgumentPasser:
                 "--job-name {}".format(jobname) if jobname is not None else '',
                 "--time {}".format(time_hms) if time_hms is not None else '',
                 "--mem {}G".format(memory_gb) if memory_gb is not None else '',
-                "-v {}".format(cmd_envvars) if cmd_envvars is not None else '',
+                "--export {}".format(cmd_envvars) if cmd_envvars is not None else '',
                 "--mail-type FAIL,END" if email else '',
-                "--mail-user {}".format(email) if type(email) is str else None,
+                "--mail-user {}".format(email) if type(email) is str else '',
             ])
             jobscript_optkey = '#SBATCH'
 

@@ -17,14 +17,15 @@ env_load_cmd=''
 ## Modify the two code blocks below to set default and per-script environment load commands
 
 # Set default environment load command for all batch scripts (fallback if no specific script setting)
-#default_env_load_cmd="source /mnt/pgc/data/scratch/erik/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/build/miniconda3/envs/s2s"
-#default_env_load_cmd="source /home/husby036/build/miniconda3/bin/activate /home/husby036/build/miniconda3/envs/s2s"
+#default_env_load_cmd="source /mnt/pgc/data/scratch/erik/installed/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/installed/build/miniconda3/envs/s2s"
+#default_env_load_cmd="source /home/husby036/installed/build/miniconda3/bin/activate /home/husby036/installed/build/miniconda3/envs/s2s"
 
 # Set environment load commands specific to batch scripts
 if [ "$job_class" == "s2s" ]; then
     env_load_cmd="$default_env_load_cmd"
 elif [ "$job_class" == "Mask" ]; then
     env_load_cmd="$default_env_load_cmd"
+#    env_load_cmd="module load gdal/2.1.3 ; module use /mnt/pgc/data/common/repos/gdal-lerc/modules ; module load gdal-lerc/2.4.4"
 elif [ "$job_class" == "Check" ]; then
     env_load_cmd="$default_env_load_cmd"
 elif [ "$job_class" == "Reproj" ]; then
