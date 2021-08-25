@@ -114,7 +114,7 @@ BUILD_STRIP_AUX_CORE_STRIP_SUFFIXES = [
 ]
 
 RE_UTM_PROJNAME = re.compile("\Autm\d+[ns]\Z")
-RE_SHELVED_STRIP = re.compile("\A.*/strips_v4/2m/")
+RE_SHELVED_STRIP = re.compile("\A.*/(?:strips_v4|strips)/2m/")
 
 logger = logging.getLogger("logger")
 logger.setLevel(logging.INFO)
