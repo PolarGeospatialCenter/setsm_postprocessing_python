@@ -1,0 +1,52 @@
+diff --git a/batch_check_setsm.py b/batch_check_setsm.py
+index b13bfb3..a735fde 100644
+--- a/batch_check_setsm.py
++++ b/batch_check_setsm.py
+@@ -315,7 +315,7 @@ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
+ JOB_ABBREV = 'Check'
+ # BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
+ BATCH_ARGDEF_WD = None
+-JOB_WALLTIME_HR = 72
++JOB_WALLTIME_HR = 24
+ JOB_MEMORY_GB = 40
+ 
+ ##############################
+diff --git a/jobscripts/head_slurm.sh b/jobscripts/head_slurm.sh
+index 079f4bf..8e71bb8 100755
+--- a/jobscripts/head_slurm.sh
++++ b/jobscripts/head_slurm.sh
+@@ -1,12 +1,19 @@
+ #!/bin/bash
+
+-#SBATCH --time 1:00:00
++#SBATCH --time 24:00:00
+ #SBATCH --nodes 1
+-#SBATCH --ntasks 2
++#SBATCH --ntasks 8
+-#SBATCH --mem=5G
++#SBATCH --mem=40G
+
+ #SBATCH -o %x.o%j
+
++#SBATCH -A s1780
++##SBATCH --partition=single
++##SBATCH --constraint=sky
++##SBATCH --qos=abv_arc_b1016
++##SBATCH --nice=370
++#SBATCH --qos=long
++
+
+ ## NOTE: Look to 'body.sh' script for expected environment variable arguments
+
+diff --git a/jobscripts/init.sh b/jobscripts/init.sh
+index f29836b..36e8917 100755
+--- a/jobscripts/init.sh
++++ b/jobscripts/init.sh
+@@ -19,6 +19,7 @@ env_load_cmd=''
+ # Set default environment load command for all batch scripts (fallback if no specific script setting)
+ #default_env_load_cmd="source /mnt/pgc/data/scratch/erik/installed/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/installed/build/miniconda3/envs/s2s"
+ #default_env_load_cmd="source /home/husby036/installed/build/miniconda3/bin/activate /home/husby036/installed/build/miniconda3/envs/s2s"
++default_env_load_cmd="set +u; source /discover/nobackup/projects/sacs_tucker/sw/etc/gdal-v3.3.1.sh; set -u"
+
+ # Set environment load commands specific to batch scripts
+ if [ "$job_class" == "s2s" ]; then

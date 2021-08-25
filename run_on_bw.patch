@@ -1,0 +1,56 @@
+diff --git a/jobscripts/body.sh b/jobscripts/body.sh
+index a890161..5349003 100755
+--- a/jobscripts/body.sh
++++ b/jobscripts/body.sh
+@@ -23,6 +23,7 @@ fi
+ jobscript_path="$p0"
+ job_class="$p1"
+ task_cmd="$p2"; task_cmd="${task_cmd//\@COMMA\@/,}"; task_cmd="${task_cmd//\@SPACE\@/ }";
++task_cmd="aprun -n 1 -d 16 -j 2 -- bwpy-environ -- ${task_cmd}"
+ set +u
+ # Optional environment variable arguments
+ py_ver_min="$p3"
+diff --git a/jobscripts/head_pbs.sh b/jobscripts/head_pbs.sh
+index 99f47bb..cd1ba7b 100755
+--- a/jobscripts/head_pbs.sh
++++ b/jobscripts/head_pbs.sh
+@@ -1,12 +1,13 @@
+ #!/bin/bash
+
+-#PBS -l walltime=1:00:00,nodes=1:ppn=2,mem=5gb
++#PBS -l walltime=96:00:00,nodes=1:ppn=16:xe
+
+ #PBS -o $PBS_JOBNAME.o$PBS_JOBID
+ #PBS -j oe
+ #PBS -k oe
+
+ #PBS -m n
++#PBS -q high
+
+
+ ## NOTE: Look to 'body.sh' script for expected environment variable arguments
+diff --git a/jobscripts/init.sh b/jobscripts/init.sh
+index f29836b..36e8917 100755
+--- a/jobscripts/init.sh
++++ b/jobscripts/init.sh
+@@ -19,6 +19,7 @@ env_load_cmd=''
+ # Set default environment load command for all batch scripts (fallback if no specific script setting)
+ #default_env_load_cmd="source /mnt/pgc/data/scratch/erik/installed/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/installed/build/miniconda3/envs/s2s"
+ #default_env_load_cmd="source /home/husby036/installed/build/miniconda3/bin/activate /home/husby036/installed/build/miniconda3/envs/s2s"
++default_env_load_cmd="module load bwpy/2.0.2"
+ 
+ # Set environment load commands specific to batch scripts
+ if [ "$job_class" == "s2s" ]; then
+diff --git a/reproject_setsm.py b/reproject_setsm.py
+index 93cebdd..e3c6e7f 100644
+--- a/reproject_setsm.py
++++ b/reproject_setsm.py
+@@ -87,7 +87,7 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR
+ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
+ JOB_ABBREV = 'Reproj'
+-JOB_WALLTIME_HR = 30
++JOB_WALLTIME_HR = 96
+ JOB_MEMORY_GB = 20
+ 
+ ##############################
