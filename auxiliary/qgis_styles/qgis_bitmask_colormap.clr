@@ -1,0 +1,8 @@
+0 255 255 255 0 "good data"
+1 255 171 35 255 bad edge data
+2 0 154 196 255 water
+3 0 220 103 255 water and edge
+4 253 255 99 255 cloud
+5 255 71 71 255 cloud and edge
+6 150 105 255 255 cloud and water
+7 131 61 17 255 cloud, water, and edge
