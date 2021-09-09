@@ -314,6 +314,8 @@ def main():
     ## Further parse/adjust argument values.
 
     src = args.get(ARGSTR_SRC)
+    dstdir = args.get(ARGSTR_DSTDIR)
+    target_epsg = args.get(ARGSTR_TARGET_EPSG)
 
     if args.get(ARGSTR_ADD_RES_SUFFIX):
         global STRIP_DEM_SUFFIX
@@ -382,8 +384,8 @@ def main():
     test_srs = osr.SpatialReference()
     for task in src_tasks_all:
         task_metafile_src = ''
-        task_dstdir = args.get(ARGSTR_DSTDIR)
-        task_target_epsg = args.get(ARGSTR_TARGET_EPSG)
+        task_dstdir = dstdir
+        task_target_epsg = target_epsg
         
         if type(task) is list:
             if len(task) == 2:
@@ -392,11 +394,13 @@ def main():
                 task_metafile_src, task_dstdir, task_target_epsg = task
                 task_target_epsg = int(task_target_epsg)
                 if task_dstdir in ('psn', 'pss') or re.match(RE_UTM_PROJNAME, task_dstdir) is not None:
-                    shelved_strip_match = re.search(RE_SHELVED_STRIP, task_metafile_src)
-                    if shelved_strip_match is not None:
-                        strips_res_dir = shelved_strip_match.group(0)
-                        task_dstdir = "{}_{}".format(strips_res_dir.rstrip('/'), task_dstdir)
-                        task[1] = task_dstdir
+                    if dstdir is not None:
+                        task_dstdir = os.path.join(dstdir, task_dstdir)
+                    else:
+                        shelved_strip_match = re.search(RE_SHELVED_STRIP, task_metafile_src)
+                        if shelved_strip_match is not None:
+                            strips_res_dir = shelved_strip_match.group(0)
+                            task_dstdir = "{}_{}".format(strips_res_dir.rstrip('/'), task_dstdir)
             else:
                 arg_parser.error("Source task list can only have up to three columns: "
                                  "src_metafile, dstdir, target_epsg")
