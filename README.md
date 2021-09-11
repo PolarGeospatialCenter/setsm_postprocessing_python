@@ -1,5 +1,5 @@
 # setsm_postprocessing_python
-Methods for filtering and merging DEMs produced by [SETSM](https://github.com/setsmdeveloper/SETSM "SETSM on GitHub") with stereo pairs of DigitalGlobe imagery.
+Methods for filtering and merging Digital Elevation Models (DEMs) produced by [SETSM](https://github.com/setsmdeveloper/SETSM "SETSM on GitHub") with stereo pairs of DigitalGlobe imagery.
 
 The code for both filtering and merging (also referred to as "mosaicking" here) is largely ported from [MATLAB code written by Ian Howat](https://github.com/ihowat/setsm_postprocessing "setsm_postprocessing on GitHub"), glaciologist and professor of Earth Sciences at The Ohio State University (OSU).
 
