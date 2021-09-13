@@ -928,8 +928,9 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
                 warnings.warn("Ortho{} '{}' dimensions differ from DEM dimensions".format(ortho_num if ortho_num > 1 else '', ortho_file)
                              +"\nInterpolating to DEM dimensions")
                 x, y = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'x', 'y')
+                o = o.astype(np.float32)
                 o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
-                o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
+                o = rat.interp2_gdal(x, y, o, x_dem, y_dem, 'cubic')
                 o[np.isnan(o)] = 0  # Convert back to uint16.
                 o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
         ortho_arrays.append(o)
