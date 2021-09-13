@@ -899,6 +899,8 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     """
     global __INTRACK_ORTHO_CATID__
 
+    demFile_srs = rat.extractRasterData(rat.openRaster(demFile), 'spat_ref')
+
     z, x_dem, y_dem, spat_ref = rat.extractRasterData(rat.openRaster(demFile, __STRIP_SPAT_REF__, 'bilinear'), 'array', 'x', 'y', 'spat_ref')
     if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
         raise SpatialRefError("DEM '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
@@ -907,6 +909,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
     # TODO: Ask Ian about the following interpretation of nodata values.
     z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
+
+    check_srs = rat.extractRasterData(rat.openRaster(matchFile), 'spat_ref')
+    if check_srs.IsSame(demFile_srs) != 1:
+        raise SpatialRefError("Matchtag '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
+                              matchFile, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
 
     m = rat.extractRasterData(rat.openRaster(matchFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.bool)
     if m.shape != z.shape:
@@ -923,6 +930,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
         if ortho_file is None:
             o = None
         else:
+            check_srs = rat.extractRasterData(rat.openRaster(ortho_file), 'spat_ref')
+            if check_srs.IsSame(demFile_srs) != 1:
+                raise SpatialRefError("Ortho{} '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
+                                      ortho_num if ortho_num > 1 else '', ortho_file, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
+
             o = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'array')
             if o.shape != z.shape:
                 warnings.warn("Ortho{} '{}' dimensions differ from DEM dimensions".format(ortho_num if ortho_num > 1 else '', ortho_file)
@@ -939,6 +951,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     if maskFile is None:
         md = np.zeros_like(z, dtype=np.uint8)
     else:
+        check_srs = rat.extractRasterData(rat.openRaster(maskFile), 'spat_ref')
+        if check_srs.IsSame(demFile_srs) != 1:
+            raise SpatialRefError("Mask '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
+                                  maskFile, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
+
         md = rat.extractRasterData(rat.openRaster(maskFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.uint8)
         if md.shape != z.shape:
             raise RasterDimensionError("Mask '{}' dimensions {} do not match DEM dimensions {}".format(
