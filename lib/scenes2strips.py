@@ -866,12 +866,12 @@ def orderPairs(fnames):
     sample_spat_ref = rat.extractRasterData(fnames[0], 'spat_ref')
 
     # Get rectangular parameters and geometries.
-    for i in range(len(fnames)):
-        cc, geom = rat.extractRasterData(rat.openRaster(fnames[i], sample_spat_ref), 'corner_coords', 'geom')
+    for fname_index, fn in enumerate(fnames):
+        cc, scene_geom = rat.extractRasterData(rat.openRaster(fn, sample_spat_ref), 'corner_coords', 'geom')
         cc_x = cc[:, 0]
         cc_y = cc[:, 1]
-        R0[i, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]
-        indexed_geoms.append((i, geom))
+        R0[fname_index, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]
+        indexed_geoms.append((fname_index, scene_geom))
 
     # Calculate aspect ratio, ar = x-extent/y-extent
     ar = (  (max(R0[:, 0] + R0[:, 2]) - min(R0[:, 0]))
@@ -883,10 +883,32 @@ def orderPairs(fnames):
     else:
         # Scenes are in north-south direction; start with scene with minimum y.
         direction_ordered_indices = np.argsort(R0[:, 1]).tolist()
-    first_fname_index = direction_ordered_indices[0]
+    direction_start_index = 0
+
+    # # The first scene by direction could be a small "sliver" overlap, which could be bad to start with.
+    # # Choose the first scene by direction that has large enough area to presume it is not a sliver.
+    # #
+    # # WARNING: Claire and I decided this adjustment is not necessary, so will be leaving this
+    # # commented out. If we later decide to use this, beware that this could break the new
+    # # redundant scene handling in the core scenes2strips function (see the last commit)!!
+    # first_overlap_area = None
+    # for direction_index, fname_index in enumerate(direction_ordered_indices):
+    #     scene_fname = fnames[fname_index]
+    #     scene_geom = indexed_geoms[fname_index][1]
+    #     scene_area = scene_geom.GetArea()
+    #     overlap_area = max([scene_geom.Intersection(ind_geom[1]).GetArea() for ind_geom in indexed_geoms if ind_geom[0] != fname_index])
+    #     print("orderPairs :: {} :: area = {} :: overlap area = {}".format(scene_fname, scene_area, overlap_area))
+    #     # if direction_index == 0:
+    #     #     first_overlap_area = overlap_area
+    #     # if scene_area > 50000000:
+    #     #     if direction_index > 0 and overlap_area > first_overlap_area:
+    #     #         direction_start_index = direction_index
+    #     #     break
 
     # Start with the footprint of this scene and let the strip grow from there.
-    footprint_geom = indexed_geoms[first_fname_index][1]
+    first_fname_index = direction_ordered_indices[direction_start_index]
+    first_geom = indexed_geoms[first_fname_index][1]
+    footprint_geom = first_geom
     ordered_fname_indices = [first_fname_index]
     del indexed_geoms[first_fname_index]
 
