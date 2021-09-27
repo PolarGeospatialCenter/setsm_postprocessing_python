@@ -202,6 +202,7 @@ def scenes2strips(demFiles,
                     demFiles_to_try_to_pick_up = [
                         df for df in demFiles_ordered_by_direction if df in demFiles_to_try_to_pick_up
                     ]
+                    demFiles_to_try_to_pick_up.reverse()
                     demFiles_ordered.extend(demFiles_to_try_to_pick_up)
 
                     trans = np.concatenate((trans, np.zeros((3, num_scenes_pickup))), axis=1)
@@ -898,25 +899,21 @@ def orderPairs(fnames):
         direction_ordered_indices = np.argsort(R0[:, 1]).tolist()
     direction_start_index = 0
 
-    # # The first scene by direction could be a small "sliver" overlap, which could be bad to start with.
-    # # Choose the first scene by direction that has large enough area to presume it is not a sliver.
-    # #
-    # # WARNING: Claire and I decided this adjustment is not necessary, so will be leaving this
-    # # commented out. If we later decide to use this, beware that this could break the new
-    # # redundant scene handling in the core scenes2strips function (see the last commit)!!
-    # first_overlap_area = None
-    # for direction_index, fname_index in enumerate(direction_ordered_indices):
-    #     scene_fname = fnames[fname_index]
-    #     scene_geom = indexed_geoms[fname_index][1]
-    #     scene_area = scene_geom.GetArea()
-    #     overlap_area = max([scene_geom.Intersection(ind_geom[1]).GetArea() for ind_geom in indexed_geoms if ind_geom[0] != fname_index])
-    #     print("orderPairs :: {} :: area = {} :: overlap area = {}".format(scene_fname, scene_area, overlap_area))
-    #     # if direction_index == 0:
-    #     #     first_overlap_area = overlap_area
-    #     # if scene_area > 50000000:
-    #     #     if direction_index > 0 and overlap_area > first_overlap_area:
-    #     #         direction_start_index = direction_index
-    #     #     break
+    # The first scene by direction could be almost fully overlapped by a larger
+    # subsequent scene as determined by the main ordering algorithm.
+    # That ordering can be detrimental to the quality of the first segment in the merged strip,
+    # since the feather/merge procedure is ill-defined when working on this case.
+    # The following will check if this is the case by natural ordering,
+    # and if it is, select a different first scene to avoid this case.
+    if len(fnames) > 1:
+        for direction_index, fname_index in enumerate(direction_ordered_indices):
+            scene_geom = indexed_geoms[fname_index][1]
+            scene_area = scene_geom.GetArea()
+            overlap_area = max([scene_geom.Intersection(ind_geom[1]).GetArea() for ind_geom in indexed_geoms if ind_geom[0] != fname_index])
+            if overlap_area < (0.9*scene_area):
+                direction_start_index = direction_index
+                break
+    print("orderPairs direction_start_index={}".format(direction_start_index))
 
     # Start with the footprint of this scene and let the strip grow from there.
     first_fname_index = direction_ordered_indices[direction_start_index]
