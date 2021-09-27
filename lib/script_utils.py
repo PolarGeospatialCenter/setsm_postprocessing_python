@@ -472,19 +472,22 @@ class ArgumentPasser:
                 self.set(argstr, (argstr in self.provided_opt_args))
 
     def _argval2str(self, item):
-        if type(item) is str:
-            if item.startswith("'") and item.endswith("'"):
-                item_str = r"\'{}\'".format(item[1:-1])
-            elif item.startswith('"') and item.endswith('"'):
-                item_str = r'\"{}\"'.format(item[1:-1])
+        if type(item) is str and ' ' in item:
+            if (   (item.startswith("'") and item.endswith("'"))
+                or (item.startswith('"') and item.endswith('"'))):
+                item_str = item
             else:
-                item_str = r'\"{}\"'.format(item)
+                item_str = '"{}"'.format(item)
         else:
             item_str = '{}'.format(item)
         return item_str
 
-    def _escape_problem_chars(self, str_item):
-        return str_item.replace(',', '@COMMA@').replace(' ', '@SPACE@')
+    def _escape_problem_jobsubmit_chars(self, str_item):
+        str_item = str_item.replace("'", "\\'")
+        str_item = str_item.replace('"', '\\"')
+        str_item = str_item.replace(',', '@COMMA@')
+        str_item = str_item.replace(' ', '@SPACE@')
+        return str_item
 
     def _update_cmd_base(self):
         arg_list = []
@@ -548,10 +551,10 @@ class ArgumentPasser:
 
         if envvars is not None:
             if type(envvars) in (tuple, list):
-                cmd_envvars = ','.join(['p{}="{}"'.format(i, self._escape_problem_chars(a))
+                cmd_envvars = ','.join(['p{}="{}"'.format(i, self._escape_problem_jobsubmit_chars(a))
                                         for i, a in enumerate(envvars)])
             elif type(envvars) == dict:
-                cmd_envvars = ','.join(['{}="{}"'.format(var_name, self._escape_problem_chars(var_val))
+                cmd_envvars = ','.join(['{}="{}"'.format(var_name, self._escape_problem_jobsubmit_chars(var_val))
                                         for var_name, var_val in envvars.items()])
 
         if scheduler == SCHED_PBS:
