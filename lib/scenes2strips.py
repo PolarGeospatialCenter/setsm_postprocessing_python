@@ -115,6 +115,7 @@ def scenes2strips(demFiles,
         # Files should already be properly ordered if a guess is provided.
         # Running `orderPairs` on them could detrimentally change their order.
         demFiles_ordered = list(demFiles)
+        demFiles_ordered_by_direction = None
     num_scenes = len(demFiles_ordered)
 
     # Initialize output stats.
@@ -149,7 +150,7 @@ def scenes2strips(demFiles,
             or (rmse_guess is not None and np.isnan(rmse_guess[0, i]))):
             # State of scene is somewhere between naturally redundant
             # or redundant by masking, as classified by prior s2s run.
-            print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
+            print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFiles_ordered[i]))
             print("Scene was considered redundant in coregistration step and will be skipped")
             skipped_scene = True
 
@@ -168,6 +169,18 @@ def scenes2strips(demFiles,
                 trans = trans[:, :i]
                 trans_err = trans_err[:, :i]
                 rmse = rmse[:, :i]
+
+                if demFiles_ordered_by_direction is None:
+                    # Unexpected segment break when coregistration value guesses were provided.
+                    # In the usual two-step workflow, this has been seen to happen when the
+                    # masked coregistration step somehow succeeds, but then the unmasked
+                    # mosaicking step fails. It appears this happens due to deficiencies in
+                    # the core merging/feathering logic when s2s analyzes the overlap area
+                    # between the existing swath and the new scene to be added, AND the data
+                    # quality is bad (have seen this happen over water or spare data clusters).
+                    # Regardless of the true source of the issue, it should be okay to break
+                    # to a new segment at this time.
+                    break
 
                 demFile_last_added = demFiles_ordered[-1]
                 last_added_index = demFiles_ordered_by_direction.index(demFile_last_added)
