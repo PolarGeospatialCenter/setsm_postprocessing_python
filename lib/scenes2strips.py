@@ -58,7 +58,7 @@ def scenes2strips(demFiles,
                   maskSuffix=None, filter_options=(), max_coreg_rmse=1,
                   trans_guess=None, trans_err_guess=None, rmse_guess=None,
                   hold_guess=HOLD_GUESS_OFF, check_guess=True,
-                  use_second_ortho=False):
+                  use_second_ortho=False, remerge_strips=False):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -235,7 +235,7 @@ def scenes2strips(demFiles,
         print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
 
         # try:
-        x, y, z, m, o, o2, md = loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile)
+        x, y, z, m, o, o2, md = loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, remerge_strips)
         # except:
         #     print("Data read error:")
         #     traceback.print_exc()
@@ -975,7 +975,7 @@ def rectFootprint(*geoms):
     return ogr.Geometry(wkt=fp_wkt)
 
 
-def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
+def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, remerge_strips=False):
     """
     Load data files and perform basic conversions.
     """
@@ -1043,52 +1043,55 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
             raise RasterDimensionError("Mask '{}' dimensions {} do not match DEM dimensions {}".format(
                                        maskFile, md.shape, z.shape))
 
-    # Re-scale ortho data if WorldView correction is detected in the meta file.
-    # Allow for inconsistent Image 1/2 paths in SETSM metadata, making sure that
-    # first ortho 'o' corresponds to first catalogid in strip pairname and that
-    # second ortho 'o2' (optional, xtrack only) corresponds to second catalogid.
-    meta = readSceneMeta(metaFile)
+    if remerge_strips:
+        o, o2 = o1, o2
+    else:
+        # Re-scale ortho data if WorldView correction is detected in the meta file.
+        # Allow for inconsistent Image 1/2 paths in SETSM metadata, making sure that
+        # first ortho 'o' corresponds to first catalogid in strip pairname and that
+        # second ortho 'o2' (optional, xtrack only) corresponds to second catalogid.
+        meta = readSceneMeta(metaFile)
 
-    ortho_arrays = []
-    ortho_catids = []
-    for i, o in enumerate([o1, o2]):
-        catid = None
-        if o is not None:
-            ortho_num = i+1
-            wv_correct_flag = meta['image_{}_wv_correct'.format(ortho_num)]
-            maxDN = meta['image_{}_max'.format(ortho_num)] if wv_correct_flag else None
-            if maxDN is not None:
-                print("Ortho{} had wv_correct applied, rescaling values to range [0, {}]".format(
-                    ortho_num if ortho_num > 1 else '', maxDN))
-                o = rescaleDN(o, maxDN)
-                o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
-            ortho_image_file = meta['image_{}'.format(ortho_num)]
-            catid = os.path.basename(ortho_image_file).split('_')[2]
-        ortho_arrays.append(o)
-        ortho_catids.append(catid)
+        ortho_arrays = []
+        ortho_catids = []
+        for i, o in enumerate([o1, o2]):
+            catid = None
+            if o is not None:
+                ortho_num = i+1
+                wv_correct_flag = meta['image_{}_wv_correct'.format(ortho_num)]
+                maxDN = meta['image_{}_max'.format(ortho_num)] if wv_correct_flag else None
+                if maxDN is not None:
+                    print("Ortho{} had wv_correct applied, rescaling values to range [0, {}]".format(
+                        ortho_num if ortho_num > 1 else '', maxDN))
+                    o = rescaleDN(o, maxDN)
+                    o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
+                ortho_image_file = meta['image_{}'.format(ortho_num)]
+                catid = os.path.basename(ortho_image_file).split('_')[2]
+            ortho_arrays.append(o)
+            ortho_catids.append(catid)
 
-    pairname_catids = os.path.basename(orthoFile).split('_')[2:4]
-    if ortho_catids[1] is None:
-        # Strip is intrack.
-        intrack_ortho_catid = ortho_catids[0]
-        if __INTRACK_ORTHO_CATID__ is None:
-            __INTRACK_ORTHO_CATID__ = intrack_ortho_catid
-        elif intrack_ortho_catid is None or ortho_catids[0] != __INTRACK_ORTHO_CATID__:
-            warnings.warn("Catalog ID of Image 1 (assumed ortho) is not consistent across"
-                          " scene metadata files for intrack strip")
-    elif ortho_catids[0] != pairname_catids[0]:
-        # if ortho_catids[1] is None:
-        #     raise MetadataError("Single intrack ortho from Image 1 in '{}' has catalogid ({})"
-        #                         " that does not match first catalogid of pairname".format(metaFile, ortho_catids[0]))
-        if ortho_catids[0] != pairname_catids[1] or ortho_catids[1] != pairname_catids[0]:
-            raise MetadataError("xtrack orthos from Image 1/2 in '{}' have Catalog IDs ({})"
-                                " that do not match Catalog IDs of pairname".format(metaFile, ortho_catids))
-        # Assume strip pairname is xtrack at this point.
-        assert ortho2File is not None, "`ortho2File` is None"
-        ortho_catids.reverse()
-        ortho_arrays.reverse()
+        pairname_catids = os.path.basename(orthoFile).split('_')[2:4]
+        if ortho_catids[1] is None:
+            # Strip is intrack.
+            intrack_ortho_catid = ortho_catids[0]
+            if __INTRACK_ORTHO_CATID__ is None:
+                __INTRACK_ORTHO_CATID__ = intrack_ortho_catid
+            elif intrack_ortho_catid is None or ortho_catids[0] != __INTRACK_ORTHO_CATID__:
+                warnings.warn("Catalog ID of Image 1 (assumed ortho) is not consistent across"
+                              " scene metadata files for intrack strip")
+        elif ortho_catids[0] != pairname_catids[0]:
+            # if ortho_catids[1] is None:
+            #     raise MetadataError("Single intrack ortho from Image 1 in '{}' has catalogid ({})"
+            #                         " that does not match first catalogid of pairname".format(metaFile, ortho_catids[0]))
+            if ortho_catids[0] != pairname_catids[1] or ortho_catids[1] != pairname_catids[0]:
+                raise MetadataError("xtrack orthos from Image 1/2 in '{}' have Catalog IDs ({})"
+                                    " that do not match Catalog IDs of pairname".format(metaFile, ortho_catids))
+            # Assume strip pairname is xtrack at this point.
+            assert ortho2File is not None, "`ortho2File` is None"
+            ortho_catids.reverse()
+            ortho_arrays.reverse()
 
-    o, o2 = ortho_arrays
+        o, o2 = ortho_arrays
 
     return x_dem, y_dem, z, m, o, o2, md
 

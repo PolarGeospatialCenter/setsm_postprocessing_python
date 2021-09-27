@@ -26,6 +26,7 @@ import warnings
 from collections import OrderedDict
 from time import sleep
 from datetime import datetime
+from distutils.version import StrictVersion
 
 from lib import script_utils
 from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgumentError
@@ -35,7 +36,7 @@ from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgument
 
 ## Core globals
 
-SCRIPT_VERSION_NUM = script_utils.VersionString('4')
+SCRIPT_VERSION_NUM = script_utils.VersionString('4.1')
 
 # Script paths and execution
 SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
@@ -66,6 +67,7 @@ ARGSTR_UNFILTERED = '--unf'
 ARGSTR_NOFILTER_COREG = '--nofilter-coreg'
 ARGSTR_SAVE_COREG_STEP = '--save-coreg-step'
 ARGSTR_RMSE_CUTOFF = '--rmse-cutoff'
+ARGSTR_REMERGE_STRIPS = '--remerge-strips'
 ARGSTR_SCHEDULER = '--scheduler'
 ARGSTR_JOBSCRIPT = '--jobscript'
 ARGSTR_LOGDIR = '--logdir'
@@ -77,6 +79,7 @@ ARGSTR_CLEANUP_ON_FAILURE = '--cleanup-on-failure'
 ARGSTR_OLD_ORG = '--old-org'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
+ARGSTR_SCENEDIRNAME = '--scenedirname'
 ARGSTR_SKIP_ORTHO2_ERROR = '--skip-xtrack-missing-ortho2-error'
 ARGSTR_SCENE_MASKS_ONLY = '--build-scene-masks-only'
 ARGSTR_USE_PIL_IMRESIZE = '--use-pil-imresize'
@@ -166,6 +169,11 @@ DEM_TYPE_SUFFIX_DICT = {
 
 RE_STRIPID_STR = "(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$"
 RE_STRIPID = re.compile(RE_STRIPID_STR)
+RE_STRIPFNAME_SEGNUM = re.compile("_seg(\d+)_", re.I)
+RE_SCENEMETA_SETSM_VERSION_STR = "^setsm[ _]version=.*$"
+RE_SCENEMETA_SETSM_VERSION = re.compile(RE_SCENEMETA_SETSM_VERSION_STR, re.I|re.MULTILINE)
+RE_SCENEMETA_GROUP_VERSION = re.compile("^group[ _]version=.*$", re.I|re.MULTILINE)
+RE_STRIPMETA_SCENE_NAME_KEY = re.compile("^scene \d+ name=", re.I)
 
 ##############################
 
@@ -380,6 +388,15 @@ def argparser_init():
     )
 
     parser.add_argument(
+        ARGSTR_REMERGE_STRIPS,
+        action='store_true',
+        help=' '.join([
+            "Source are strip segment results to be treated as input scenes for",
+            "rerunning through the coregistration and mosaicking steps"
+        ])
+    )
+
+    parser.add_argument(
         ARGSTR_SCHEDULER,
         type=str,
         choices=script_utils.SCHED_SUPPORTED,
@@ -472,6 +489,14 @@ def argparser_init():
     )
 
     parser.add_argument(
+        ARGSTR_SCENEDIRNAME,
+        help=' '.join([
+            "Name of folder containing the scene DEM files for a single strip-pair ID",
+            "designated by the {} argument".format(ARGSTR_STRIPID)
+        ])
+    )
+
+    parser.add_argument(
         ARGSTR_SKIP_ORTHO2_ERROR,
         action='store_true',
         help=' '.join([
@@ -556,7 +581,13 @@ def main():
                 args.set(ARGSTR_JOBSCRIPT, jobscript_default)
                 print("argument {} set automatically to: {}".format(ARGSTR_JOBSCRIPT, args.get(ARGSTR_JOBSCRIPT)))
 
-    demSuffix = DEM_TYPE_SUFFIX_DICT[args.get(ARGSTR_DEM_TYPE)]
+    if args.get(ARGSTR_REMERGE_STRIPS):
+        demSuffix = 'dem.tif'
+    else:
+        demSuffix = DEM_TYPE_SUFFIX_DICT[args.get(ARGSTR_DEM_TYPE)]
+
+    if args.get(ARGSTR_REMERGE_STRIPS) and not args.provided(ARGSTR_CLEANUP_ON_FAILURE):
+        args.set(ARGSTR_CLEANUP_ON_FAILURE, ARGCHO_CLEANUP_ON_FAILURE_STRIP)
 
 
     ## Validate argument values.
@@ -632,6 +663,7 @@ def main():
             # Find all unique strip IDs.
             stripids = set()
             stripid_cannot_be_parsed_flag = False
+            old_org = args.get(ARGSTR_OLD_ORG)
             for scenedem_ffile in src_scenedem_ffile_glob:
                 sID_match = re.match(RE_STRIPID, os.path.basename(scenedem_ffile))
                 if sID_match is None:
@@ -641,7 +673,14 @@ def main():
                                   "Please fix source raster filenames so that a strip ID can be parsed "
                                   "using the following regular expression: '{}'".format(RE_STRIPID_STR))
                     continue
-                stripids.add(sID_match.group(1))
+                sID = sID_match.group(1)
+                scenedirname = None
+                if not old_org:
+                    scenedirname_test = os.path.basename(os.path.dirname(scenedem_ffile))
+                    scenedirname_match = re.match(RE_STRIPID, scenedirname_test)
+                    if scenedirname_match is not None:
+                        scenedirname = scenedirname_test
+                stripids.add((sID, scenedirname))
 
             if stripid_cannot_be_parsed_flag:
                 print("One or more scene DEMs could not have their strip ID parsed, exiting")
@@ -679,19 +718,36 @@ def main():
 
         stripids = sorted(list(stripids))
 
+        if len(stripids) == 0:
+            print("No strip-pair IDs found")
+            sys.exit(0)
+
 
         ## Create processing list.
         ## Existence check. Filter out strips with existing .fin output file.
+        stripids_to_process = list()
         dstdir = args.get(ARGSTR_DST)
-        stripids_to_process = [
-            sID for sID in stripids if not glob.glob(
-                os.path.join(
-                    dstdir,
-                    '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG)),
-                    '{}_{}*.fin'.format(sID, res_str)
-                )
-            )
-        ]
+        stripdirname_s2sidentifier = '{}{}'.format(
+            res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
+        )
+        use_scenedirname = (len(stripids[0]) == 2)
+        scenedirname = None
+        stripdirname = None
+        for stripid_tuple in stripids:
+            if use_scenedirname:
+                sID, scenedirname = stripid_tuple
+            else:
+                sID = stripid_tuple
+            if scenedirname is not None:
+                if stripdirname_s2sidentifier in scenedirname:
+                    stripdirname = scenedirname
+                else:
+                    stripdirname = scenedirname.replace(res_str, stripdirname_s2sidentifier)
+            else:
+                stripdirname = '{}_{}*'.format(sID, stripdirname_s2sidentifier)
+            dst_sID_ffile_glob = glob.glob(os.path.join(dstdir, stripdirname, '{}_{}*.fin'.format(sID, res_str)))
+            if len(dst_sID_ffile_glob) == 0:
+                stripids_to_process.append((sID, scenedirname, stripdirname))
 
         print("Found {}{} strip-pair IDs, {} unfinished".format(
             len(stripids), ' *'+demSuffix if demSuffix is not None else '', len(stripids_to_process)))
@@ -730,13 +786,16 @@ def main():
 
         job_num = 0
         num_jobs = len(stripids_to_process)
-        for sID in stripids_to_process:
+        for sID, scenedirname, stripdirname in stripids_to_process:
             job_num += 1
 
-            strip_dname_pattern = os.path.join(
-                args_batch.get(ARGSTR_DST),
-                '{}_{}{}*/'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG))
-            )
+            if args.get(ARGSTR_OLD_ORG):
+                strip_dname_pattern = args_batch.get(ARGSTR_DST)
+            else:
+                if stripdirname is None:
+                    stripdirname = '{}_{}*/'.format(sID, stripdirname_s2sidentifier)
+                strip_dname_pattern = os.path.join(args_batch.get(ARGSTR_DST), stripdirname)
+
             strip_dfull_glob = glob.glob(strip_dname_pattern)
             if len(strip_dfull_glob) > 1:
                 raise InvalidArgumentError("Found more than one match for output strip folder in"
@@ -786,6 +845,7 @@ def main():
                 continue
 
             args_single.set(ARGSTR_STRIPID, sID)
+            args_single.set(ARGSTR_SCENEDIRNAME, scenedirname)
             if last_job_email and job_num == num_jobs:
                 args_single.set(ARGSTR_EMAIL, last_job_email)
             cmd_single = args_single.get_cmd()
@@ -843,7 +903,10 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         use_old_trans = True if args.get(ARGSTR_META_TRANS_DIR) is not None else False
 
         mask_name = 'mask' if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_MASKV2 else args.get(ARGSTR_MASK_VER)
-        scene_mask_name = demSuffix.replace('.tif', '_'+mask_name)
+        if args.get(ARGSTR_REMERGE_STRIPS):
+            scene_mask_name = mask_name
+        else:
+            scene_mask_name = demSuffix.replace('.tif', '_'+mask_name)
         strip_mask_name = mask_name
 
         sceneMaskSuffix = scene_mask_name+'.tif'
@@ -875,19 +938,28 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             scene_dname = ''
         else:
             scene_dname_root = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)
-
-            scene_dfull_pattern = os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*/')
-            scene_dfull_glob = glob.glob(scene_dfull_pattern)
-            if len(scene_dfull_glob) != 1:
-                raise InvalidArgumentError("Cannot find only one match for input strip folder in"
-                                           " source directory with pattern: {}".format(scene_dfull_pattern))
-            scene_dfull = scene_dfull_glob[0]
-            scene_dname = os.path.basename(os.path.normpath(scene_dfull))
+            if args.get(ARGSTR_SCENEDIRNAME) is not None:
+                scene_dname = args.get(ARGSTR_SCENEDIRNAME)
+                scene_dfull = os.path.join(args.get(ARGSTR_SRC), scene_dname)
+                if not os.path.isdir(scene_dfull):
+                    raise InvalidArgumentError(
+                        "Source scene directory specified by '{}' and {} arguments does not exist: {}".format(
+                            ARGSTR_SRC, ARGSTR_SCENEDIRNAME, scene_dfull
+                        )
+                    )
+            else:
+                scene_dfull_pattern = os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*/')
+                scene_dfull_glob = glob.glob(scene_dfull_pattern)
+                if len(scene_dfull_glob) != 1:
+                    raise InvalidArgumentError("Cannot find only one match for input strip folder in"
+                                               " source directory with pattern: {}".format(scene_dfull_pattern))
+                scene_dfull = scene_dfull_glob[0]
+                scene_dname = os.path.basename(os.path.normpath(scene_dfull))
 
         strip_dname = '{}_{}{}{}'.format(
             args.get(ARGSTR_STRIPID),
             res_str,
-            '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
+            ('_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_REMERGE_STRIPS)),
             scene_dname.replace(scene_dname_root, '')
         )
 
@@ -900,6 +972,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
         # Print arguments for this run.
         print("stripid: {}".format(args.get(ARGSTR_STRIPID)))
+        print("scenedirname: {}".format(args.get(ARGSTR_SCENEDIRNAME)))
         print("res: {}".format(res_str))
         print("src dir: {}".format(args.get(ARGSTR_SRC)))
         print("dst dir: {}".format(args.get(ARGSTR_DST)))
@@ -915,6 +988,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         print("coreg filter options: {}".format(filter_options_coreg))
         print("mask filter options: {}".format(filter_options_mask))
         print("rmse cutoff: {}".format(args.get(ARGSTR_RMSE_CUTOFF)))
+        print("remerge strips: {}".format(args.get(ARGSTR_REMERGE_STRIPS)))
         print("dryrun: {}".format(args.get(ARGSTR_DRYRUN)))
         print('')
 
@@ -927,13 +1001,18 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             print("No scene DEMs found to process, skipping")
             sys.exit(0)
         src_scenedem_ffile_glob.sort()
+        print('')
 
         stripid_fin_fname = strip_dname+'.fin'
+        stripid_remergeinfo_fname = strip_dname+'_remerge.info'
         stripid_fin_ffile = os.path.join(strip_dfull, stripid_fin_fname)
+        stripid_remergeinfo_ffile = os.path.join(strip_dfull, stripid_remergeinfo_fname)
         if dstdir_coreg is not None:
             stripid_fin_ffile_coreg = os.path.join(dstdir_coreg, stripid_fin_fname)
+            stripid_remergeinfo_ffile_coreg = os.path.join(dstdir_coreg, stripid_remergeinfo_fname)
         else:
             stripid_fin_ffile_coreg = None
+            stripid_remergeinfo_ffile_coreg = None
 
         # Strip output existence check.
         if os.path.isfile(stripid_fin_ffile) and not args.get(ARGSTR_REBUILD_AUX):
@@ -1015,10 +1094,69 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 if not args.get(ARGSTR_DRYRUN):
                     os.rmdir(strip_dfull_coreg)
 
+
+        # Derive stripdemid from SETSM versions in scene metadata.
+        setsm_version_list = list()
+        group_version_list = list()
+
+        for src_demFile in src_scenedem_ffile_glob:
+            src_metaFile = src_demFile.replace(demSuffix, 'meta.txt')
+            if not os.path.isfile(src_metaFile):
+                raise FileNotFoundError("{} not found".format(src_metaFile))
+            with open(src_metaFile, 'r') as src_metaFile_fp:
+                src_metaFile_text = src_metaFile_fp.read()
+            setsm_version_list.extend(re.findall(RE_SCENEMETA_SETSM_VERSION, src_metaFile_text))
+            group_version_list.extend(re.findall(RE_SCENEMETA_GROUP_VERSION, src_metaFile_text))
+
+        if len(setsm_version_list) == 0:
+            raise MetaReadError("No matches for regex '{}' among all scene DEM meta.txt files".format(RE_SCENEMETA_SETSM_VERSION_STR))
+
+        setsm_version_list = list(set([item.split('=')[1].strip() for item in setsm_version_list]))
+        group_version_list = list(set([item.split('=')[1].strip() for item in group_version_list]))
+
+        setsm_version_list_fixed = list()
+        for ver in setsm_version_list:
+            if ver.count('.') == 1:
+                ver = "{}.0.0".format(ver.split('.')[0])
+            elif ver.count('.') != 2:
+                raise MetaReadError("Unexpected SETSM version format: '{}'".format(ver))
+            setsm_version_list_fixed.append(ver)
+
+        setsm_version_list_fixed.sort(key=StrictVersion)
+        group_version_list.sort(key=StrictVersion)
+
+        derived_group_version = setsm_version_list_fixed[0]
+        parsed_group_version = None
+        if len(group_version_list) > 0:
+            if len(group_version_list) == 1:
+                parsed_group_version = group_version_list[0]
+            else:
+                raise MetaReadError("Found more than one 'Group_version' among source "
+                                    "scene DEM meta.txt files: {}".format(group_version_list))
+
+        if parsed_group_version is not None and parsed_group_version != derived_group_version:
+            raise MetaReadError(
+                "Parsed 'Group_version' ({}) from source scene DEM meta.txt files "
+                "does not match group version ({}) derived from 'SETSM Version' meta entries: {}".format(
+                    parsed_group_version, derived_group_version, setsm_version_list
+                )
+            )
+
+        setsm_verkey = "v{:02}{:02}{:02}".format(*[int(n) for n in derived_group_version.split('.')])
+        stripdemid = "{}_{}_{}".format(
+            args.get(ARGSTR_STRIPID), res_str, setsm_verkey
+        )
+
+        print("SETSM 'group version' derived from scene DEM meta.txt files: {}".format(derived_group_version))
+        print("Strip DEM ID: {}".format(stripdemid))
+
+
         print('')
 
         # Filter all scenes in this strip.
-        if args.get(ARGSTR_USE_OLD_MASKS):
+        if args.get(ARGSTR_REMERGE_STRIPS):
+            scenedems_to_filter = []
+        elif args.get(ARGSTR_USE_OLD_MASKS):
             scenedems_to_filter = [f for f in src_scenedem_ffile_glob if shouldDoMasking(selectBestMatchtag(f), scene_mask_name)]
         else:
             src_scenemask_ffile_glob = glob.glob(os.path.join(
@@ -1114,7 +1252,9 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                     X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
                         scenedem_fname_remaining,
                         sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF),
-                        use_second_ortho=(stripid_is_xtrack and not bypass_ortho2))
+                        use_second_ortho=(stripid_is_xtrack and not bypass_ortho2),
+                        remerge_strips=args.get(ARGSTR_REMERGE_STRIPS)
+                    )
                     if X is None:
                         all_data_masked = True
                     coreg_step_attempted = True
@@ -1138,7 +1278,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                                 os.makedirs(dstdir_coreg)
                             print("Saving output from coregistration step")
                             if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
-                                saveStripMeta(stripdem_ffile_coreg, stripDemSuffix,
+                                saveStripMeta(stripdem_ffile_coreg, stripid_remergeinfo_ffile_coreg,
+                                              stripDemSuffix, stripdemid,
                                               X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
                                               scene_dfull, scenedem_fname_coregistered, args,
                                               filter_options_applied=filter_options_coreg)
@@ -1154,7 +1295,9 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                         sceneMaskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
                         trans_guess=trans, trans_err_guess=trans_err, rmse_guess=rmse,
                         hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans,
-                        use_second_ortho=(stripid_is_xtrack and not bypass_ortho2))
+                        use_second_ortho=(stripid_is_xtrack and not bypass_ortho2),
+                        remerge_strips=args.get(ARGSTR_REMERGE_STRIPS)
+                    )
                     if X is None:
                         all_data_masked = True
                     if use_old_trans and scenedem_fname_mosaicked != scenedem_fname_coregistered:
@@ -1165,13 +1308,25 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
 
                 scenedem_fname_remaining = list(set(scenedem_fname_remaining).difference(set(scenedem_fname_mosaicked)))
-                if all_data_masked:
+                if args.get(ARGSTR_REMERGE_STRIPS) and all_data_masked:
+                    remergeinfo_ffile_list = [stripid_remergeinfo_ffile]
+                    if stripid_remergeinfo_ffile_coreg is not None:
+                        remergeinfo_ffile_list.append(stripid_remergeinfo_ffile_coreg)
+                    newseg_remerge_info = ""
+                    for stripseg_fname in scenedem_fname_mosaicked:
+                        input_stripseg_fname = os.path.basename(stripseg_fname)
+                        input_segnum = int(re.search(RE_STRIPFNAME_SEGNUM, input_stripseg_fname).groups()[0])
+                        newseg_remerge_info += "seg{}>none (masked out)\n".format(input_segnum)
+                    for remergeinfo_ffile in remergeinfo_ffile_list:
+                        with open(remergeinfo_ffile, 'a') as remergeinfo_fp:
+                            remergeinfo_fp.write(newseg_remerge_info)
                     continue
 
 
                 print("Writing output strip segment with DEM: {}".format(stripdem_ffile))
 
-                saveStripMeta(stripdem_ffile, stripDemSuffix,
+                saveStripMeta(stripdem_ffile, stripid_remergeinfo_ffile,
+                              stripDemSuffix, stripdemid,
                               X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
                               scene_dfull, scenedem_fname_mosaicked, args,
                               filter_options_applied=filter_options_mask)
@@ -1261,7 +1416,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         sys.exit(1)
 
 
-def saveStripMeta(strip_demFile, demSuffix,
+def saveStripMeta(strip_demFile, strip_remergeInfoFile,
+                  demSuffix, stripdemid,
                   X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
                   scene_dir, scene_demFiles, args,
                   filter_options_applied):
@@ -1357,7 +1513,8 @@ def saveStripMeta(strip_demFile, demSuffix,
     proj4 = spat_ref.ExportToProj4()
     time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
 
-    writeStripMeta(strip_metaFile, scene_dir, scene_demFnames,
+    writeStripMeta(strip_metaFile, strip_remergeInfoFile,
+                   scene_dir, scene_demFnames, stripdemid,
                    trans, trans_err, rmse,
                    proj4, fp_vertices,
                    data_density_info, elevation_stats,
@@ -1588,7 +1745,8 @@ def shouldDoMasking(matchFile, mask_name):
     return False
 
 
-def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
+def writeStripMeta(o_metaFile, strip_remergeInfoFile,
+                   scene_dir, scenedem_fname_list, stripdemid,
                    trans, trans_err, rmse,
                    proj4, fp_vertices,
                    data_density_info, elevation_stats,
@@ -1605,7 +1763,7 @@ def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
         ARGCHO_MASK_VER_BITMASK: BITMASK_VERSION_NUM
     }
 
-    demSuffix = getDemSuffix(scene_demFnames[0])
+    demSuffix = getDemSuffix(scenedem_fname_list[0])
 
     nowater, nocloud = args.get(ARGSTR_NOWATER, ARGSTR_NOCLOUD)
     nofilter_coreg = args.get(ARGSTR_NOFILTER_COREG)
@@ -1615,6 +1773,7 @@ def writeStripMeta(o_metaFile, scene_dir, scene_demFnames,
 Creation Date: {}
 Strip creation date: {}
 Strip projection (proj4): '{}'
+Strip DEM ID: {}
 
 Strip Footprint Vertices
 X: {}
@@ -1627,23 +1786,69 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
     datetime.today().strftime("%d-%b-%Y %H:%M:%S"),
     strip_time,
     proj4,
+    stripdemid,
     ' '.join(np.array_str(fp_vertices[0], max_line_width=float('inf')).strip()[1:-1].split()),
     ' '.join(np.array_str(fp_vertices[1], max_line_width=float('inf')).strip()[1:-1].split()),
     args.get(ARGSTR_RMSE_CUTOFF)
 )
     )
 
-    for i in range(len(scene_demFnames)):
-        line = "{} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f} {:.4f}\n".format(
-            scene_demFnames[i],
+    scene_align_format = "{} {}".format('{}', ' '.join(['{:.4f}']*7))
+
+    for i, scenedem_fname in enumerate(scenedem_fname_list):
+
+        scene_align_nums = np.array([
             rmse[0, i],
             trans[0, i], trans[1, i], trans[2, i],
             trans_err[0, i], trans_err[1, i], trans_err[2, i]
-        )
-        strip_info += line
+        ], dtype=np.float64)
 
-        filter_info = "\nFiltering Applied: {} (v{})\n".format(
-            args.get(ARGSTR_MASK_VER), MASK_VER_VERNUM_DICT[args.get(ARGSTR_MASK_VER)])
+        if not args.get(ARGSTR_REMERGE_STRIPS):
+            scene_align_str = scene_align_format.format(scenedem_fname_list[i], *scene_align_nums)
+            strip_info += scene_align_str+'\n'
+        else:
+            stripseg_align_nums = scene_align_nums
+
+            if np.isnan(rmse[0, i]):
+                scene_align_nums_addition = np.full(7, np.nan, dtype=np.float64)
+            else:
+                scene_align_nums_addition = np.array(
+                    [0, trans[0, i], trans[1, i], trans[2, i], 0, 0, 0],
+                    dtype=np.float64
+                )
+
+            stripseg_metaFile = os.path.join(scene_dir, scenedem_fname.replace(demSuffix, 'meta.txt'))
+            in_strip_align_stats = False
+            on_first_scene_in_strip_align = False
+            with open(stripseg_metaFile, 'r') as stripseg_metaFile_fp:
+                for line in stripseg_metaFile_fp:
+                    if in_strip_align_stats:
+                        line = line.strip()
+                        if line == '':
+                            break
+                        else:
+                            scene_alignment = line
+
+                        scene_align_parts = scene_alignment.split(' ')
+                        scene_align_demFname = scene_align_parts[0]
+
+                        if on_first_scene_in_strip_align:
+                            scene_align_str = scene_align_format.format(scene_align_demFname, *stripseg_align_nums)
+                            on_first_scene_in_strip_align = False
+                        else:
+                            scene_align_nums = np.array(scene_align_parts[1:]).astype(np.float64)
+                            if scene_align_nums.size == 4:
+                                scene_align_nums = np.concatenate((scene_align_nums, np.full(3, np.nan)))
+                            scene_align_nums += scene_align_nums_addition
+                            scene_align_str = scene_align_format.format(scene_align_demFname, *scene_align_nums)
+
+                        strip_info += scene_align_str+'\n'
+                    elif line.startswith("scene, rmse, dz, dx, dy"):
+                        in_strip_align_stats = True
+                        on_first_scene_in_strip_align = True
+
+    filter_info = "\nFiltering Applied: {} (v{})\n".format(
+        args.get(ARGSTR_MASK_VER), MASK_VER_VERNUM_DICT[args.get(ARGSTR_MASK_VER)])
 
     if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_BITMASK:
         filter_info += "bit, class, coreg, mosaic\n"
@@ -1674,22 +1879,70 @@ scene, rmse, dz, dx, dy, dz_err, dx_err, dy_err
     strip_info += "\nScene Metadata \n\n"
 
     scene_info = ""
-    for i in range(len(scene_demFnames)):
-        scene_info += "scene {} name={}\n".format(i+1, scene_demFnames[i])
+    if not args.get(ARGSTR_REMERGE_STRIPS):
+        for i, scenedem_fname in enumerate(scenedem_fname_list):
+            scene_info += "scene {} name={}\n".format(i+1, scenedem_fname)
 
-        scene_metaFile = os.path.join(scene_dir, scene_demFnames[i].replace(demSuffix, 'meta.txt'))
-        if os.path.isfile(scene_metaFile):
-            scene_metaFile_fp = open(scene_metaFile, 'r')
-            scene_info += scene_metaFile_fp.read()
-            scene_metaFile_fp.close()
-        else:
-            # scene_info += "{} not found".format(scene_metaFile)
-            raise FileNotFoundError("{} not found".format(scene_metaFile))
-        scene_info += " \n"
+            scene_metaFile = os.path.join(scene_dir, scenedem_fname.replace(demSuffix, 'meta.txt'))
+            if os.path.isfile(scene_metaFile):
+                scene_metaFile_fp = open(scene_metaFile, 'r')
+                scene_info += scene_metaFile_fp.read()
+                scene_metaFile_fp.close()
+            else:
+                # scene_info += "{} not found".format(scene_metaFile)
+                raise FileNotFoundError("{} not found".format(scene_metaFile))
+            scene_info += " \n"
+    else:
+        stripmeta_curr_scene_num = 1
+        for stripseg_fname in scenedem_fname_list:
+            stripseg_metaFile = os.path.join(scene_dir, stripseg_fname.replace(demSuffix, 'meta.txt'))
+            if os.path.isfile(stripseg_metaFile):
+                in_scene_metadata = False
+                skip_empty_line = False
+                with open(stripseg_metaFile, 'r') as stripseg_metaFile_fp:
+                    for line in stripseg_metaFile_fp:
+                        if in_scene_metadata:
+                            if skip_empty_line:
+                                skip_empty_line = False
+                                continue
+                            scene_name_key_match = re.match(RE_STRIPMETA_SCENE_NAME_KEY, line)
+                            if scene_name_key_match is not None:
+                                scene_name_val = line.strip().split('=')[1]
+                                line = "scene {} name={}\n".format(stripmeta_curr_scene_num, scene_name_val)
+                                stripmeta_curr_scene_num += 1
+                            scene_info += line
+                        elif line.startswith("Scene Metadata"):
+                            in_scene_metadata = True
+                            skip_empty_line = True
+            else:
+                raise FileNotFoundError("{} not found".format(stripseg_metaFile))
 
     with open(o_metaFile, 'w') as strip_metaFile_fp:
         strip_metaFile_fp.write(strip_info)
         strip_metaFile_fp.write(scene_info)
+
+    if args.get(ARGSTR_REMERGE_STRIPS):
+        output_segnum = int(re.search(RE_STRIPFNAME_SEGNUM, os.path.basename(o_metaFile)).groups()[0])
+        input_segnum_list = list()
+        for i, input_stripseg_fname in enumerate(scenedem_fname_list):
+            input_segnum = int(re.search(RE_STRIPFNAME_SEGNUM, input_stripseg_fname).groups()[0])
+            if np.isnan(rmse[0, i]):
+                input_segnum *= -1
+            input_segnum_list.append(input_segnum)
+
+        # newseg_remerge_info = "seg{}={}\n".format(
+        #     output_segnum, ','.join([str(n) for n in input_segnum_list])
+        # )
+        # with open(strip_remergeInfoFile, 'a') as strip_remergeInfoFile_fp:
+        #     strip_remergeInfoFile_fp.write(newseg_remerge_info)
+
+        newseg_remerge_info = ""
+        for input_segnum in input_segnum_list:
+            newseg_remerge_info += "seg{}>seg{}{}\n".format(
+                abs(input_segnum), output_segnum, ' (redundant)' if input_segnum < 0 else ''
+            )
+        with open(strip_remergeInfoFile, 'a') as strip_remergeInfoFile_fp:
+            strip_remergeInfoFile_fp.write(newseg_remerge_info)
 
 
 def readStripMeta_stats(metaFile):
