@@ -101,7 +101,7 @@ def scenes2strips(demFiles,
     num_scenes = len(demFiles)
     if trans_guess is None and trans_err_guess is None and rmse_guess is None:
         print("Ordering {} scenes".format(num_scenes))
-        demFiles_ordered = orderPairs(demFiles)
+        demFiles_ordered, demFiles_ordered_by_direction = orderPairs(demFiles)
     elif trans_err_guess is not None and trans_guess is None:
         raise InvalidArgumentError("`trans_guess_err` argument can only be used in conjunction "
                                    "with `trans_guess` argument")
@@ -115,6 +115,7 @@ def scenes2strips(demFiles,
         # Files should already be properly ordered if a guess is provided.
         # Running `orderPairs` on them could detrimentally change their order.
         demFiles_ordered = list(demFiles)
+        demFiles_ordered_by_direction = None
     num_scenes = len(demFiles_ordered)
 
     # Initialize output stats.
@@ -137,22 +138,84 @@ def scenes2strips(demFiles,
     # File loop.
     skipped_scene = False
     segment_break = False
-    for i in range(num_scenes+1):
+    picking_up_small_scenes_in_existing_strip_segment = False
+    i = 0
+    while i <= len(demFiles_ordered):
 
-        if skipped_scene:
-            skipped_scene = False
-            trans[:, i-1] = np.nan
-            trans_err[:, i-1] = np.nan
-            rmse[0, i-1] = np.nan
-        if i >= num_scenes:
+        if i >= len(demFiles_ordered):
             break
+
         if (   (trans_guess is not None and np.any(np.isnan(trans_guess[:, i])))
             or (trans_err_guess is not None and np.any(np.isnan(trans_err_guess[:, i])))
             or (rmse_guess is not None and np.isnan(rmse_guess[0, i]))):
             # State of scene is somewhere between naturally redundant
             # or redundant by masking, as classified by prior s2s run.
+            print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFiles_ordered[i]))
+            print("Scene was considered redundant in coregistration step and will be skipped")
             skipped_scene = True
+
+        if skipped_scene:
+            skipped_scene = False
+            trans[:, i] = np.nan
+            trans_err[:, i] = np.nan
+            rmse[0, i] = np.nan
+            i += 1
             continue
+
+        elif segment_break:
+            segment_break = False
+            if not picking_up_small_scenes_in_existing_strip_segment:
+                demFiles_ordered = demFiles_ordered[:i]
+                trans = trans[:, :i]
+                trans_err = trans_err[:, :i]
+                rmse = rmse[:, :i]
+
+                if demFiles_ordered_by_direction is None:
+                    # Unexpected segment break when coregistration value guesses were provided.
+                    # In the usual two-step workflow, this has been seen to happen when the
+                    # masked coregistration step somehow succeeds, but then the unmasked
+                    # mosaicking step fails. It appears this happens due to deficiencies in
+                    # the core merging/feathering logic when s2s analyzes the overlap area
+                    # between the existing swath and the new scene to be added, AND the data
+                    # quality is bad (have seen this happen over water or spare data clusters).
+                    # Regardless of the true source of the issue, it should be okay to break
+                    # to a new segment at this time.
+                    break
+
+                demFile_last_added = demFiles_ordered[-1]
+                last_added_index = demFiles_ordered_by_direction.index(demFile_last_added)
+                demFiles_within_existing_strip = demFiles_ordered_by_direction[:(last_added_index+1)]
+                demFiles_to_try_to_pick_up = set.difference(
+                    set(demFiles_within_existing_strip),
+                    set(demFiles_ordered)
+                )
+
+                if len(demFiles_to_try_to_pick_up) == 0:
+                    break
+                else:
+                    picking_up_small_scenes_in_existing_strip_segment = True
+
+                    num_scenes_pickup = len(demFiles_to_try_to_pick_up)
+                    print("Will attempt to add {} small scenes that were skipped over "
+                          "in initial scene ordering".format(num_scenes_pickup))
+
+                    demFiles_to_try_to_pick_up = [
+                        df for df in demFiles_ordered_by_direction if df in demFiles_to_try_to_pick_up
+                    ]
+                    demFiles_to_try_to_pick_up.reverse()
+                    demFiles_ordered.extend(demFiles_to_try_to_pick_up)
+
+                    trans = np.concatenate((trans, np.zeros((3, num_scenes_pickup))), axis=1)
+                    trans_err = np.concatenate((trans_err, np.zeros((3, num_scenes_pickup))), axis=1)
+                    rmse = np.concatenate((rmse, np.zeros((1, num_scenes_pickup))), axis=1)
+            else:
+                del demFiles_ordered[i]
+                trans = np.delete(trans, i, axis=1)
+                trans_err = np.delete(trans_err, i, axis=1)
+                rmse = np.delete(rmse, i, axis=1)
+
+                if i >= len(demFiles_ordered):
+                    break
 
         # Construct filenames.
         demFile = demFiles_ordered[i]
@@ -201,6 +264,7 @@ def scenes2strips(demFiles,
         if 'X' not in vars():
             X, Y, Z, M, O, O2, MD = x, y, z, m, o, o2, md
             del x, y, z, m, o, o2, md
+            i += 1
             continue
 
         # Pad new arrays to stabilize interpolation.
@@ -262,7 +326,7 @@ def scenes2strips(demFiles,
         if np.count_nonzero(A) <= cluster_min_px:
             print("Not enough overlap, segment break")
             segment_break = True
-            break
+            continue
 
         r, c = cropBorder(A, 0, buff)
 
@@ -392,7 +456,7 @@ def scenes2strips(demFiles,
         if not np.any(P0):
             print("Not enough data overlap, segment break")
             segment_break = True
-            break
+            continue
 
         P1 = getDataDensityMap(m[r[0]:r[1], c[0]:c[1]]) > 0.9
 
@@ -455,7 +519,7 @@ def scenes2strips(demFiles,
         else:
             pass
         if segment_break:
-            break
+            continue
 
         # Interpolation grid
         xi = x - trans[1, i]
@@ -581,10 +645,7 @@ def scenes2strips(demFiles,
         MD[r0:r1, c0:c1] = np.bitwise_or(MDsub, mdi)
         del MDsub, mdi
 
-    if segment_break:
-        demFiles_ordered = demFiles_ordered[:i]
-        trans = trans[:, :i]
-        rmse = rmse[:, :i]
+        i += 1
 
     # Crop to data.
     if 'Z' in vars() and ~np.all(np.isnan(Z)):
@@ -819,33 +880,51 @@ def orderPairs(fnames):
     sample_spat_ref = rat.extractRasterData(fnames[0], 'spat_ref')
 
     # Get rectangular parameters and geometries.
-    for i in range(len(fnames)):
-        cc, geom = rat.extractRasterData(rat.openRaster(fnames[i], sample_spat_ref), 'corner_coords', 'geom')
+    for fname_index, fn in enumerate(fnames):
+        cc, scene_geom = rat.extractRasterData(rat.openRaster(fn, sample_spat_ref), 'corner_coords', 'geom')
         cc_x = cc[:, 0]
         cc_y = cc[:, 1]
-        R0[i, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]
-        indexed_geoms.append((i, geom))
+        R0[fname_index, :] = [min(cc_x), min(cc_y), max(cc_x)-min(cc_x), max(cc_y)-min(cc_y)]
+        indexed_geoms.append((fname_index, scene_geom))
 
     # Calculate aspect ratio, ar = x-extent/y-extent
     ar = (  (max(R0[:, 0] + R0[:, 2]) - min(R0[:, 0]))
           / (max(R0[:, 1] + R0[:, 3]) - min(R0[:, 1])))
 
-    first_fname_index = None
     if ar >= 1:
         # Scenes are in east-west direction; start with scene with minimum x.
-        first_fname_index = np.argmin(R0[:, 0])
+        direction_ordered_indices = np.argsort(R0[:, 0]).tolist()
     else:
         # Scenes are in north-south direction; start with scene with minimum y.
-        first_fname_index = np.argmin(R0[:, 1])
+        direction_ordered_indices = np.argsort(R0[:, 1]).tolist()
+    direction_start_index = 0
+
+    # The first scene by direction could be almost fully overlapped by a larger
+    # subsequent scene as determined by the main ordering algorithm.
+    # That ordering can be detrimental to the quality of the first segment in the merged strip,
+    # since the feather/merge procedure is ill-defined when working on this case.
+    # The following will check if this is the case by natural ordering,
+    # and if it is, select a different first scene to avoid this case.
+    if len(fnames) > 1:
+        for direction_index, fname_index in enumerate(direction_ordered_indices):
+            scene_geom = indexed_geoms[fname_index][1]
+            scene_area = scene_geom.GetArea()
+            overlap_area = max([scene_geom.Intersection(ind_geom[1]).GetArea() for ind_geom in indexed_geoms if ind_geom[0] != fname_index])
+            if overlap_area < (0.9*scene_area):
+                direction_start_index = direction_index
+                break
+    print("orderPairs direction_start_index={}".format(direction_start_index))
 
     # Start with the footprint of this scene and let the strip grow from there.
-    footprint_geom = indexed_geoms[first_fname_index][1]
+    first_fname_index = direction_ordered_indices[direction_start_index]
+    first_geom = indexed_geoms[first_fname_index][1]
+    footprint_geom = first_geom
     ordered_fname_indices = [first_fname_index]
     del indexed_geoms[first_fname_index]
 
     # Loop through scene pair geometries and sequentially add the
     # next pair with the most overlap to the ordered indices list.
-    for i in range(len(indexed_geoms)):
+    while len(indexed_geoms) > 0:
         overlap_area = [footprint_geom.Intersection(ind_geom[1]).GetArea() for ind_geom in indexed_geoms]
         if max(overlap_area) > 0:
             selected_tup = indexed_geoms[np.argmax(overlap_area)]
@@ -860,7 +939,10 @@ def orderPairs(fnames):
             print("Break in scene pair coverage detected, segment break")
             break
 
-    return [fnames[i] for i in ordered_fname_indices]
+    overlap_ordered_fnames = [fnames[i] for i in ordered_fname_indices]
+    direction_ordered_fnames = [fnames[i] for i in direction_ordered_indices]
+
+    return overlap_ordered_fnames, direction_ordered_fnames
 
 
 def rectFootprint(*geoms):
@@ -899,6 +981,8 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     """
     global __INTRACK_ORTHO_CATID__
 
+    demFile_srs = rat.extractRasterData(rat.openRaster(demFile), 'spat_ref')
+
     z, x_dem, y_dem, spat_ref = rat.extractRasterData(rat.openRaster(demFile, __STRIP_SPAT_REF__, 'bilinear'), 'array', 'x', 'y', 'spat_ref')
     if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
         raise SpatialRefError("DEM '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
@@ -907,6 +991,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
     # TODO: Ask Ian about the following interpretation of nodata values.
     z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
+
+    check_srs = rat.extractRasterData(rat.openRaster(matchFile), 'spat_ref')
+    if check_srs.IsSame(demFile_srs) != 1:
+        raise SpatialRefError("Matchtag '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
+                              matchFile, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
 
     m = rat.extractRasterData(rat.openRaster(matchFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.bool)
     if m.shape != z.shape:
@@ -923,13 +1012,19 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
         if ortho_file is None:
             o = None
         else:
+            check_srs = rat.extractRasterData(rat.openRaster(ortho_file), 'spat_ref')
+            if check_srs.IsSame(demFile_srs) != 1:
+                raise SpatialRefError("Ortho{} '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
+                                      ortho_num if ortho_num > 1 else '', ortho_file, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
+
             o = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'array')
             if o.shape != z.shape:
                 warnings.warn("Ortho{} '{}' dimensions differ from DEM dimensions".format(ortho_num if ortho_num > 1 else '', ortho_file)
                              +"\nInterpolating to DEM dimensions")
                 x, y = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'x', 'y')
+                o = o.astype(np.float32)
                 o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
-                o = rat.interp2_gdal(x, y, o.astype(np.float32), x_dem, y_dem, 'cubic')
+                o = rat.interp2_gdal(x, y, o, x_dem, y_dem, 'cubic')
                 o[np.isnan(o)] = 0  # Convert back to uint16.
                 o = rat.astype_round_and_crop(o, np.uint16, allow_modify_array=True)
         ortho_arrays.append(o)
@@ -938,6 +1033,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile):
     if maskFile is None:
         md = np.zeros_like(z, dtype=np.uint8)
     else:
+        check_srs = rat.extractRasterData(rat.openRaster(maskFile), 'spat_ref')
+        if check_srs.IsSame(demFile_srs) != 1:
+            raise SpatialRefError("Mask '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
+                                  maskFile, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
+
         md = rat.extractRasterData(rat.openRaster(maskFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.uint8)
         if md.shape != z.shape:
             raise RasterDimensionError("Mask '{}' dimensions {} do not match DEM dimensions {}".format(
@@ -1018,7 +1118,7 @@ def applyMasks(x, y, z, m, o, o2, md, filter_options=(), maskSuffix=None):
 
     mask_select = (mask_select > 0)
 
-    if maskSuffix in ('mask.tif', 'bitmask.tif'):
+    if maskSuffix.endswith(('mask.tif', 'bitmask.tif')):
         mask_select = mask_v2(postprocess_mask=mask_select, postprocess_res=abs(x[1]-x[0]))
 
     z[mask_select] = np.nan
