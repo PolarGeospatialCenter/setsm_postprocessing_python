@@ -191,7 +191,7 @@ def isValidArggroups(arggroup_list):
 
 
 def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_masks=False,
-                  save_component_masks=MASK_SEPARATE, debug_component_masks=DEBUG_NONE,
+                  save_component_masks=None, debug_component_masks=DEBUG_NONE,
                   use_second_ortho=False, use_pil_imresize=False):
     """
     Create and save scene masks that mask ON regions of bad data.
@@ -261,11 +261,14 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
         if mask_version.endswith('maskv1'):
             masks = mask_v1(demFile, noentropy, image_num=image_num)
         else:
-            if True in [mask_version.endswith(name) for name in ['mask', 'bitmask', 'maskv2_debug']]:
-                if mask_version == 'mask':
-                    save_component_masks = MASK_FLAT
-                elif mask_version == 'bitmask':
-                    save_component_masks = MASK_BIT
+            if mask_version.endswith(('bitmask', 'mask', 'maskv2_debug')):
+                if save_component_masks is None:
+                    if mask_version.endswith('bitmask'):
+                        save_component_masks = MASK_BIT
+                    elif mask_version.endswith('mask'):
+                        save_component_masks = MASK_FLAT
+                    elif mask_version.endswith('maskv2_debug'):
+                        save_component_masks = MASK_SEPARATE
                 mask = mask_v2(demFile, mask_version,
                                save_component_masks=(save_component_masks != MASK_FLAT),
                                debug_component_masks=debug_component_masks,
@@ -275,7 +278,7 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
             elif mask_version.endswith('mask8m'):
                 mask = mask8m(demFile)
             else:
-                raise InvalidArgumentError("`mask_version` must be one of {}, "
+                raise InvalidArgumentError("`mask_version` must end with one of {}, "
                                            "but was {}".format(suffix_choices, mask_version))
 
             if type(mask) == dict:

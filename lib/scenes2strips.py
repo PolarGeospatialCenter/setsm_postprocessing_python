@@ -1118,7 +1118,7 @@ def applyMasks(x, y, z, m, o, o2, md, filter_options=(), maskSuffix=None):
 
     mask_select = (mask_select > 0)
 
-    if maskSuffix in ('mask.tif', 'bitmask.tif'):
+    if maskSuffix.endswith(('mask.tif', 'bitmask.tif')):
         mask_select = mask_v2(postprocess_mask=mask_select, postprocess_res=abs(x[1]-x[0]))
 
     z[mask_select] = np.nan
