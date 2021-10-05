@@ -1308,18 +1308,19 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
 
                 scenedem_fname_remaining = list(set(scenedem_fname_remaining).difference(set(scenedem_fname_mosaicked)))
-                if args.get(ARGSTR_REMERGE_STRIPS) and all_data_masked:
-                    remergeinfo_ffile_list = [stripid_remergeinfo_ffile]
-                    if stripid_remergeinfo_ffile_coreg is not None:
-                        remergeinfo_ffile_list.append(stripid_remergeinfo_ffile_coreg)
-                    newseg_remerge_info = ""
-                    for stripseg_fname in scenedem_fname_mosaicked:
-                        input_stripseg_fname = os.path.basename(stripseg_fname)
-                        input_segnum = int(re.search(RE_STRIPFNAME_SEGNUM, input_stripseg_fname).groups()[0])
-                        newseg_remerge_info += "seg{}>none (masked out)\n".format(input_segnum)
-                    for remergeinfo_ffile in remergeinfo_ffile_list:
-                        with open(remergeinfo_ffile, 'a') as remergeinfo_fp:
-                            remergeinfo_fp.write(newseg_remerge_info)
+                if all_data_masked:
+                    if args.get(ARGSTR_REMERGE_STRIPS):
+                        remergeinfo_ffile_list = [stripid_remergeinfo_ffile]
+                        if stripid_remergeinfo_ffile_coreg is not None:
+                            remergeinfo_ffile_list.append(stripid_remergeinfo_ffile_coreg)
+                        newseg_remerge_info = ""
+                        for stripseg_fname in scenedem_fname_mosaicked:
+                            input_stripseg_fname = os.path.basename(stripseg_fname)
+                            input_segnum = int(re.search(RE_STRIPFNAME_SEGNUM, input_stripseg_fname).groups()[0])
+                            newseg_remerge_info += "seg{}>none (masked out)\n".format(input_segnum)
+                        for remergeinfo_ffile in remergeinfo_ffile_list:
+                            with open(remergeinfo_ffile, 'a') as remergeinfo_fp:
+                                remergeinfo_fp.write(newseg_remerge_info)
                     continue
 
 
