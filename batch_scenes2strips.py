@@ -205,7 +205,11 @@ def argparser_init():
             existcheck_reqval=True),
         help=' '.join([
             "Path to source directory containing scene DEMs to process.",
-            "If {} is not specified, this path should contain the folder 'tif_results'.".format(ARGSTR_DST),
+            "Scene DEMs should be organized in folders named like '<stripid>_<resolution>' (e.g. WV02_20201204_10300100B061A200_10300100B19D1900_2m)",
+            "placed directly within the source directory, unless {} option is provided, in which case".format(ARGSTR_OLD_ORG),
+            "all scene DEM result files must be stored flat within the source directory.",
+            "If {} is not specified, this path should contain the folder 'tif_results'".format(ARGSTR_DST),
+            "so that the destination directory can be automatically derived.".format(ARGSTR_DST),
             "The range of source scenes worked on may be limited with the {} argument.".format(ARGSTR_STRIPID)
         ])
     )
@@ -226,6 +230,148 @@ def argparser_init():
         help=' '.join([
             "Path to destination directory for output mosaicked strip data.",
             "(default is {}.(reverse)replace('tif_results', 'strips'))".format(ARGSTR_SRC)
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_OLD_ORG,
+        action='store_true',
+        help=' '.join([
+            "For source and destination directories, use old scene and strip results organization",
+            "(*flat directory structure*, used prior to reorganization into strip pairname folders)."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_DEM_TYPE,
+        type=str,
+        choices=ARGCHO_DEM_TYPE,
+        default=ARGCHO_DEM_TYPE_LSF,
+        help=' '.join([
+            "Which version of all scene DEMs to work with.",
+            "\n'{}': Use the LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_LSF]),
+            "\n'{}': Use the non-LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_NON_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_NON_LSF]),
+            "\n"
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_UNFILTERED,
+        action='store_true',
+        help=' '.join([
+            "Shortcut for setting {} options to create \"unfiltered\" strips.".format(ARGGRP_UNFILTERED),
+            "\nDefault for {} argument becomes "
+            "({}.(reverse)replace('tif_results', 'strips_unf')).".format(ARGSTR_DST, ARGSTR_SRC),
+            "\nCan only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_USE_OLD_MASKS,
+        action='store_true',
+        help="Use existing scene masks instead of deleting and re-filtering."
+    )
+
+    parser.add_argument(
+        ARGSTR_SCENE_MASKS_ONLY,
+        action='store_true',
+        help="Build scene masks and then exit before proceeding to strip-building steps."
+    )
+
+    parser.add_argument(
+        ARGSTR_REMERGE_STRIPS,
+        action='store_true',
+        help=' '.join([
+            "Source are strip segment results to be treated as input scenes for",
+            "rerunning through the coregistration and mosaicking steps to produce",
+            "a new set of 're-merged' strip results."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_RMSE_CUTOFF,
+        type=float,
+        choices=None,
+        default=3.5,
+        help=' '.join([
+            "Maximum RMSE from coregistration step tolerated for scene merging.",
+            "A value greater than this causes a new strip segment to be created."
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_MASK_VER,
+        type=str,
+        choices=ARGCHO_MASK_VER,
+        default=ARGCHO_MASK_VER_BITMASK,
+        help=' '.join([
+            "Filtering scheme to use when generating mask raster images,",
+            "to classify bad data in scene DEMs.",
+            "\n'{}': Two-component (edge, data density) filter to create".format(ARGCHO_MASK_VER_MASKV1),
+                    "separate edgemask and datamask files for each scene.",
+            "\n'{}': Three-component (edge, water, cloud) filter to create".format(ARGCHO_MASK_VER_MASKV2),
+                    "classical 'flat' binary masks for 2m DEMs.",
+            "\n'{}': Same filter as '{}', but distinguish between".format(ARGCHO_MASK_VER_BITMASK, ARGCHO_MASK_VER_MASKV2),
+                    "the different filter components by creating a bitmask.",
+            "\n'{}': Filter designed specifically for 8m Antarctic DEMs.".format(ARGCHO_MASK_VER_REMA2A),
+            "\n'{}': General-purpose filter for 8m DEMs.".format(ARGCHO_MASK_VER_MASK8M),
+            "\n"
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_NOENTROPY,
+        action='store_true',
+        help=' '.join([
+            "Use filter without entropy protection.",
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_MASKV1)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_NOWATER,
+        action='store_true',
+        help=' '.join([
+            "Use filter without water masking.",
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_NOCLOUD,
+        action='store_true',
+        help=' '.join([
+            "Use filter without cloud masking.",
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_NOFILTER_COREG,
+        action='store_true',
+        help=' '.join([
+            "If {}/{}, turn off the respective filter(s) during".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+            "coregistration step in addition to mosaicking step.",
+            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
+        ])
+    )
+    parser.add_argument(
+        ARGSTR_SAVE_COREG_STEP,
+        type=str,
+        choices=ARGCHO_SAVE_COREG_STEP,
+        default=ARGCHO_SAVE_COREG_STEP_OFF,
+        help=' '.join([
+            "If {}/{}, save output from coregistration step in directory".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+            "'`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components",
+            "([cloud, water, edge], respectively) applied during the coregistration step.",
+            "By default, all three filter components are applied so this code is 111.",
+            "\nIf '{}', do not save output from coregistration step.".format(ARGCHO_SAVE_COREG_STEP_OFF),
+            "\nIf '{}', save only the *_meta.txt component of output strip segments.".format(ARGCHO_SAVE_COREG_STEP_META),
+            "(useful for subsequent runs with {} argument)".format(ARGSTR_META_TRANS_DIR),
+            "\nIf '{}', save all output from coregistration step, including both".format(ARGCHO_SAVE_COREG_STEP_ALL),
+            "metadata and raster components.",
+            "\nCan only be used when {}={}, and has no affect if neither".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK),
+            "{} nor {} arguments are provided, or either".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
+            "{} or {} arguments are provided since then the".format(ARGSTR_META_TRANS_DIR, ARGSTR_NOFILTER_COREG),
+            "coregistration and mosaicking steps are effectively rolled into one step.",
+            "\n"
         ])
     )
 
@@ -267,133 +413,30 @@ def argparser_init():
     )
 
     parser.add_argument(
-        ARGSTR_DEM_TYPE,
+        ARGSTR_CLEANUP_ON_FAILURE,
         type=str,
-        choices=ARGCHO_DEM_TYPE,
-        default=ARGCHO_DEM_TYPE_LSF,
+        choices=ARGCHO_CLEANUP_ON_FAILURE,
+        default=ARGCHO_CLEANUP_ON_FAILURE_OUTPUT,
         help=' '.join([
-            "Which version of all scene DEMs to work with.",
-            "\n'{}': Use the LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_LSF]),
-            "\n'{}': Use the non-LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_NON_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_NON_LSF]),
+            "Which type of output files should be automatically removed upon encountering an error.",
+            "\nIf '{}', remove all scene masks for the strip-pair ID if any scene masks are created".format(ARGCHO_CLEANUP_ON_FAILURE_MASKS),
+            "during this run (meaning {} option was not used, or if it was used but additional".format(ARGSTR_USE_OLD_MASKS),
+            "scene masks were created).",
+            "\nIf '{}', remove all output strip results for the strip-pair ID from the destination.".format(ARGCHO_CLEANUP_ON_FAILURE_STRIP),
+            "\nIf '{}', remove both scene masks and output strip results for the strip-pair ID.".format(ARGCHO_CLEANUP_ON_FAILURE_OUTPUT),
+            "\nIf '{}', remove nothing on error.".format(ARGCHO_CLEANUP_ON_FAILURE_NONE),
             "\n"
         ])
     )
-
     parser.add_argument(
-        ARGSTR_MASK_VER,
-        type=str,
-        choices=ARGCHO_MASK_VER,
-        default=ARGCHO_MASK_VER_BITMASK,
-        help=' '.join([
-            "Filtering scheme to use when generating mask raster images,",
-            "to classify bad data in scene DEMs.",
-            "\n'{}': Two-component (edge, data density) filter to create".format(ARGCHO_MASK_VER_MASKV1),
-                    "separate edgemask and datamask files for each scene.",
-            "\n'{}': Three-component (edge, water, cloud) filter to create".format(ARGCHO_MASK_VER_MASKV2),
-                    "classical 'flat' binary masks for 2m DEMs.",
-            "\n'{}': Same filter as '{}', but distinguish between".format(ARGCHO_MASK_VER_BITMASK, ARGCHO_MASK_VER_MASKV2),
-                    "the different filter components by creating a bitmask.",
-            "\n'{}': Filter designed specifically for 8m Antarctic DEMs.".format(ARGCHO_MASK_VER_REMA2A),
-            "\n'{}': General-purpose filter for 8m DEMs.".format(ARGCHO_MASK_VER_MASK8M),
-            "\n"
-        ])
-    )
-
-    parser.add_argument(
-        ARGSTR_USE_PIL_IMRESIZE,
+        ARGSTR_REMOVE_INCOMPLETE,
         action='store_true',
-        help=' '.join([
-            "Use PIL imresize method over usual fast OpenCV resize method for final resize from ",
-            "8m processing resolution back to native scene raster resolution when generating ",
-            "output bitmask raster. This is to avoid an OpenCV error with unknown cause that ",
-            "can occur when using OpenCV resize on some 50cm scenes at Blue Waters."
-        ])
+        help="Only remove unfinished (no .fin file) output, do not build strips."
     )
-
     parser.add_argument(
-        ARGSTR_NOENTROPY,
+        ARGSTR_RESTART,
         action='store_true',
-        help=' '.join([
-            "Use filter without entropy protection.",
-            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_MASKV1)
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_NOWATER,
-        action='store_true',
-        help=' '.join([
-            "Use filter without water masking.",
-            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_NOCLOUD,
-        action='store_true',
-        help=' '.join([
-            "Use filter without cloud masking.",
-            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_UNFILTERED,
-        action='store_true',
-        help=' '.join([
-            "Shortcut for setting {} options to create \"unfiltered\" strips.".format(ARGGRP_UNFILTERED),
-            "\nDefault for {} argument becomes "
-            "({}.(reverse)replace('tif_results', 'strips_unf')).".format(ARGSTR_DST, ARGSTR_SRC),
-            "\nCan only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_NOFILTER_COREG,
-        action='store_true',
-        help=' '.join([
-            "If {}/{}, turn off the respective filter(s) during".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
-            "coregistration step in addition to mosaicking step.",
-            "Can only be used when {}={}.".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK)
-        ])
-    )
-    parser.add_argument(
-        ARGSTR_SAVE_COREG_STEP,
-        type=str,
-        choices=ARGCHO_SAVE_COREG_STEP,
-        default=ARGCHO_SAVE_COREG_STEP_OFF,
-        help=' '.join([
-            "If {}/{}, save output from coregistration step in directory".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
-            "'`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components",
-            "([cloud, water, edge], respectively) applied during the coregistration step.",
-            "By default, all three filter components are applied so this code is 111.",
-            "\nIf '{}', do not save output from coregistration step.".format(ARGCHO_SAVE_COREG_STEP_OFF),
-            "\nIf '{}', save only the *_meta.txt component of output strip segments.".format(ARGCHO_SAVE_COREG_STEP_META),
-            "(useful for subsequent runs with {} argument)".format(ARGSTR_META_TRANS_DIR),
-            "\nIf '{}', save all output from coregistration step, including both".format(ARGCHO_SAVE_COREG_STEP_ALL),
-            "metadata and raster components.",
-            "\nCan only be used when {}={}, and has no affect if neither".format(ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK),
-            "{} nor {} arguments are provided, or either".format(ARGSTR_NOWATER, ARGSTR_NOCLOUD),
-            "{} or {} arguments are provided since then the".format(ARGSTR_META_TRANS_DIR, ARGSTR_NOFILTER_COREG),
-            "coregistration and mosaicking steps are effectively rolled into one step.",
-            "\n"
-        ])
-    )
-
-    parser.add_argument(
-        ARGSTR_RMSE_CUTOFF,
-        type=float,
-        choices=None,
-        default=1.0,
-        help=' '.join([
-            "Maximum RMSE from coregistration step tolerated for scene merging.",
-            "A value greater than this causes a new strip segment to be created."
-        ])
-    )
-
-    parser.add_argument(
-        ARGSTR_REMERGE_STRIPS,
-        action='store_true',
-        help=' '.join([
-            "Source are strip segment results to be treated as input scenes for",
-            "rerunning through the coregistration and mosaicking steps"
-        ])
+        help="Remove any unfinished (no .fin file) output before submitting all unfinished strips."
     )
 
     parser.add_argument(
@@ -439,40 +482,6 @@ def argparser_init():
     )
 
     parser.add_argument(
-        ARGSTR_RESTART,
-        action='store_true',
-        help="Remove any unfinished (no .fin file) output before submitting all unfinished strips."
-    )
-    parser.add_argument(
-        ARGSTR_REMOVE_INCOMPLETE,
-        action='store_true',
-        help="Only remove unfinished (no .fin file) output, do not build strips."
-    )
-
-    parser.add_argument(
-        ARGSTR_USE_OLD_MASKS,
-        action='store_true',
-        help="Use existing scene masks instead of deleting and re-filtering."
-    )
-
-    parser.add_argument(
-        ARGSTR_CLEANUP_ON_FAILURE,
-        type=str,
-        choices=ARGCHO_CLEANUP_ON_FAILURE,
-        default=ARGCHO_CLEANUP_ON_FAILURE_OUTPUT,
-        help="Which type of output files should be automatically removed upon encountering an error."
-    )
-
-    parser.add_argument(
-        ARGSTR_OLD_ORG,
-        action='store_true',
-        help=' '.join([
-            "Use old scene and strip results organization in flat directory structure,"
-            "prior to reorganization into strip pairname folders."
-        ])
-    )
-
-    parser.add_argument(
         ARGSTR_DRYRUN,
         action='store_true',
         help="Print actions without executing."
@@ -506,10 +515,13 @@ def argparser_init():
     )
 
     parser.add_argument(
-        ARGSTR_SCENE_MASKS_ONLY,
+        ARGSTR_USE_PIL_IMRESIZE,
         action='store_true',
         help=' '.join([
-            "Build scene masks and then exit before proceeding to strip-building steps."
+            "Use PIL imresize method over usual fast OpenCV resize method for final resize from",
+            "8m processing resolution back to native scene raster resolution when generating",
+            "output scene mask rasters. This is to avoid an OpenCV error with unknown cause that",
+            "can occur when using OpenCV resize on some 50cm scenes at Blue Waters."
         ])
     )
 
@@ -651,13 +663,17 @@ def main():
         if args.get(ARGSTR_STRIPID) is None:
 
             # Find all scene DEMs to be merged into strips.
-            src_scenedem_ffile_glob = glob.glob(os.path.join(
+            src_scenedem_ffile_pattern = os.path.join(
                 args.get(ARGSTR_SRC),
                 '*'*(not args.get(ARGSTR_OLD_ORG)),
                 '*_{}'.format(demSuffix)
-            ))
+            )
+            src_scenedem_ffile_glob = glob.glob(src_scenedem_ffile_pattern)
             if not src_scenedem_ffile_glob:
-                print("No scene DEMs found to process, exiting")
+                print("No scene DEMs found to process with pattern: '{}'".format(src_scenedem_ffile_pattern))
+                print("Check --help to see if {} or {} options should be provided".format(
+                    ARGSTR_OLD_ORG, ARGSTR_DEM_TYPE
+                ))
                 sys.exit(0)
 
             # Find all unique strip IDs.

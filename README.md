@@ -34,9 +34,9 @@ You will need to have the environment activated whenever you wish to run the scr
 Located in the root folder of the repo, this is the main post-processing script.
 
 ```
-usage: batch_scenes2strips.py [-h] [--dst DST] [--meta-trans-dir META_TRANS_DIR] [--no-browse] [--build-aux] [--rebuild-aux] [--dem-type {lsf,non-lsf}] [--mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}] [--noentropy] [--nowater] [--nocloud] [--unf] [--nofilter-coreg]
-                              [--save-coreg-step {off,meta,all}] [--rmse-cutoff RMSE_CUTOFF] [--scheduler {pbs}] [--jobscript JOBSCRIPT] [--logdir LOGDIR] [--email [EMAIL]] [--restart] [--remove-incomplete] [--use-old-masks]
-                              [--cleanup-on-failure {masks,strip,output,none}] [--old-org] [--dryrun] [--stripid STRIPID] [--skip-xtrack-missing-ortho2-error] [--build-scene-masks-only]
+usage: batch_scenes2strips.py [-h] [--dst DST] [--meta-trans-dir META_TRANS_DIR] [--no-browse] [--build-aux] [--rebuild-aux] [--dem-type {lsf,non-lsf}] [--mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}] [--use-pil-imresize] [--noentropy] [--nowater] [--nocloud] [--unf] [--nofilter-coreg] [--save-coreg-step {off,meta,all}] [--rmse-cutoff RMSE_CUTOFF]
+                              [--remerge-strips] [--scheduler {None}] [--jobscript JOBSCRIPT] [--logdir LOGDIR] [--email [EMAIL]] [--restart] [--remove-incomplete] [--use-old-masks] [--cleanup-on-failure {masks,strip,output,none}] [--old-org] [--dryrun] [--stripid STRIPID] [--scenedirname SCENEDIRNAME] [--skip-xtrack-missing-ortho2-error]
+                              [--build-scene-masks-only]
                               src res
 ```
 
@@ -63,6 +63,13 @@ When building cross-track ("xtrack") strips:
 * Added requirement that the second scene ortho image exists in source scene pairname folder.
 * For each DEM scene, separate masks will be generated using each of the scene ortho images, and the resulting masks will be combined using logical OR before being written out as the expected single scene mask in the source scene directory.
 * A new *ortho2.tif* second strip ortho image will be created in the output strip pairname folder.
+
+#### 4.1
+* Reduced production of "redundant" strip segments. Many redundant strip segments could result from small DEM scene "slivers" PGC created as part of regular DEM production through 2021, at which point PGC made changes to the processing pipeline to reduce production of these sliver DEMs. Strip segmentation logic was adjusted to consider small DEM scenes that are "skipped over" as part of scene ordering and assembly of the current strip segment, before starting on the next strip segment. In many cases, these small sliver DEM scenes do not add enough data to the current strip segment, will now be properly classified as redundant, and the redundant scene will not be made into a new strip segment.
+* The default value of the `--rmse-cutoff` argument (core coregistration parameter) was increased from 1 to 3.5. The original value of 1 was set by Ian when he established the scenes2strips process to work well over _flat ice_ in Antarctica. In Fall 2021, PGC realized that an RMSE cutoff of 1 is too low over non-ice terrain (especially mountains and vegetation), and resulted in production of many (unmerged) single-scene strip segments. In order to reduce excessive segmentation and create a more useable strip DEM dataset for our users, PGC decided to raise the RMSE cutoff to 3.5 for all of ArcticDEM, EarthDEM, and REMA production.
+* Added capability to `batch_scenes2strips.py` to take existing strip segments as input and produce "remerged" strip segments as output. This capability can be used to remerge strip segments with a higher RMSE cutoff value for the coregistration step, in order to reduce excessive strip segmentation in areas where DEM quality is good but coregistration produces higher than ideal RMSE.
+* Fixed bug that caused scene DEM (bit)mask to skip a post-processing step when the mask is applied to scene DEM component rasters after loading data in the core `scenes2strips` routine.
+* "Strip DEM ID" is now written into output strip `*_meta.txt` metadata files.
 
 
 ### Turning scenes into strips
@@ -146,89 +153,118 @@ Use the `--scheduler` script argument to submit to your system's job scheduler t
 ### Commentary on script arguments
 
 ```
-usage: batch_scenes2strips.py [-h] [--dst DST] [--meta-trans-dir META_TRANS_DIR] [--no-browse] [--build-aux] [--rebuild-aux] [--dem-type {lsf,non-lsf}] [--mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}] [--noentropy] [--nowater] [--nocloud] [--unf] [--nofilter-coreg]
-                              [--save-coreg-step {off,meta,all}] [--rmse-cutoff RMSE_CUTOFF] [--scheduler {pbs}] [--jobscript JOBSCRIPT] [--logdir LOGDIR] [--email [EMAIL]] [--restart] [--remove-incomplete] [--use-old-masks]
-                              [--cleanup-on-failure {masks,strip,output,none}] [--old-org] [--dryrun] [--stripid STRIPID] [--skip-xtrack-missing-ortho2-error] [--build-scene-masks-only]
+usage: batch_scenes2strips.py [-h] [--dst DST] [--old-org] [--dem-type {lsf,non-lsf}] [--unf] [--use-old-masks] [--build-scene-masks-only] [--remerge-strips] [--rmse-cutoff RMSE_CUTOFF] [--mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}] [--noentropy] [--nowater] [--nocloud] [--nofilter-coreg] [--save-coreg-step {off,meta,all}]
+                              [--meta-trans-dir META_TRANS_DIR] [--no-browse] [--build-aux] [--rebuild-aux] [--cleanup-on-failure {masks,strip,output,none}] [--remove-incomplete] [--restart] [--scheduler {None}] [--jobscript JOBSCRIPT] [--logdir LOGDIR] [--email [EMAIL]] [--dryrun] [--stripid STRIPID] [--scenedirname SCENEDIRNAME]
+                              [--skip-xtrack-missing-ortho2-error] [--use-pil-imresize]
                               src res
 
-Filters scene DEMs in a source directory, then mosaics them into strips and saves the results. Batch work is done in units of strip-pair IDs, as parsed from scene dem filenames (see --stripid argument for how this is parsed).
+Filters scene DEMs in a source directory, then mosaics them into strips and saves the results.
+Batch work is done in units of strip-pair IDs, as parsed from scene dem filenames (see --stripid argument for how this is parsed).
 
 positional arguments:
-  src                   Path to source directory containing scene DEMs to process. If --dst is not specified, this path should contain the folder 'tif_results'. The range of source scenes worked on may be limited with the --stripid argument.
+  src                   Path to source directory containing scene DEMs to process. Scene DEMs should be organized in folders named like '<stripid>_<resolution>' (e.g. WV02_20201204_10300100B061A200_10300100B19D1900_2m) placed directly within the source directory, unless --old-org option is provided, in which case all scene DEM result files must be stored
+flat within the source directory. If --dst is not specified, this path should contain the folder 'tif_results' so that the destination directory can be automatically derived. The range of source scenes worked on may be limited with the --stripid argument.
   res                   Resolution of target DEMs in meters.
 
 optional arguments:
   -h, --help            show this help message and exit
   --dst DST             Path to destination directory for output mosaicked strip data. (default is src.(reverse)replace('tif_results', 'strips')) (default: None)
+  --old-org             For source and destination directories, use old scene and strip results organization (*flat directory structure*, used prior to reorganization into strip pairname folders). (default: False)
+  --dem-type {lsf,non-lsf}
+                        Which version of all scene DEMs to work with.
+                        'lsf': Use the LSF DEM with 'dem_smooth.tif' file suffix.
+                        'non-lsf': Use the non-LSF DEM with 'dem.tif' file suffix.
+                         (default: lsf)
+  --unf                 Shortcut for setting ['--nowater', '--nocloud'] options to create "unfiltered" strips.
+                        Default for --dst argument becomes (src.(reverse)replace('tif_results', 'strips_unf')).
+                        Can only be used when --mask-ver=bitmask. (default: False)
+  --use-old-masks       Use existing scene masks instead of deleting and re-filtering. (default: False)
+  --build-scene-masks-only
+                        Build scene masks and then exit before proceeding to strip-building steps. (default: False)
+  --remerge-strips      Source are strip segment results to be treated as input scenes for rerunning through the coregistration and mosaicking steps to produce a new set of 're-merged' strip results. (default: False)
+  --rmse-cutoff RMSE_CUTOFF
+                        Maximum RMSE from coregistration step tolerated for scene merging. A value greater than this causes a new strip segment to be created. (default: 3.5)
+  --mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}
+                        Filtering scheme to use when generating mask raster images, to classify bad data in scene DEMs.
+                        'maskv1': Two-component (edge, data density) filter to create separate edgemask and datamask files for each scene.
+                        'maskv2': Three-component (edge, water, cloud) filter to create classical 'flat' binary masks for 2m DEMs.
+                        'bitmask': Same filter as 'maskv2', but distinguish between the different filter components by creating a bitmask.
+                        'rema2a': Filter designed specifically for 8m Antarctic DEMs.
+                        'mask8m': General-purpose filter for 8m DEMs.
+                         (default: bitmask)
+  --noentropy           Use filter without entropy protection. Can only be used when --mask-ver=maskv1. (default: False)
+  --nowater             Use filter without water masking. Can only be used when --mask-ver=bitmask. (default: False)
+  --nocloud             Use filter without cloud masking. Can only be used when --mask-ver=bitmask. (default: False)
+  --nofilter-coreg      If --nowater/--nocloud, turn off the respective filter(s) during coregistration step in addition to mosaicking step. Can only be used when --mask-ver=bitmask. (default: False)
+  --save-coreg-step {off,meta,all}
+                        If --nowater/--nocloud, save output from coregistration step in directory '`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components ([cloud, water, edge], respectively) applied during the coregistration step. By default, all three filter components are applied so this code is 111.
+                        If 'off', do not save output from coregistration step.
+                        If 'meta', save only the *_meta.txt component of output strip segments. (useful for subsequent runs with --meta-trans-dir argument)
+                        If 'all', save all output from coregistration step, including both metadata and raster components.
+                        Can only be used when --mask-ver=bitmask, and has no affect if neither --nowater nor --nocloud arguments are provided, or either --meta-trans-dir or --nofilter-coreg arguments are provided since then the coregistration and mosaicking steps are effectively rolled into one step.
+                         (default: off)
   --meta-trans-dir META_TRANS_DIR
                         Path to directory of old strip metadata from which translation values will be parsed to skip scene coregistration step. (default: None)
   --no-browse           Do not build 10m hillshade '*_dem_10m_shade.tif' images alongside output DEM strip segments. (default: False)
   --build-aux           Build a suite of downsampled browse images alongside output DEM strip segments. These images are primarily useful to PGC in tile mosaicking efforts. (default: False)
   --rebuild-aux         Rebuild browse images along existing output DEM strip segments. (default: False)
-  --dem-type {lsf,non-lsf}
-                        Which version of all scene DEMs to work with. 'lsf': Use the LSF DEM with 'dem_smooth.tif' file suffix. 'non-lsf': Use the non-LSF DEM with 'dem.tif' file suffix. (default: lsf)
-  --mask-ver {maskv1,maskv2,rema2a,mask8m,bitmask}
-                        Filtering scheme to use when generating mask raster images, to classify bad data in scene DEMs. 'maskv1': Two-component (edge, data density) filter to create separate edgemask and datamask files for each scene. 'maskv2': Three-component (edge,
-                        water, cloud) filter to create classical 'flat' binary masks for 2m DEMs. 'bitmask': Same filter as 'maskv2', but distinguish between the different filter components by creating a bitmask. 'rema2a': Filter designed specifically for 8m Antarctic
-                        DEMs. 'mask8m': General-purpose filter for 8m DEMs. (default: bitmask)
-  --noentropy           Use filter without entropy protection. Can only be used when --mask-ver=maskv1. (default: False)
-  --nowater             Use filter without water masking. Can only be used when --mask-ver=bitmask. (default: False)
-  --nocloud             Use filter without cloud masking. Can only be used when --mask-ver=bitmask. (default: False)
-  --unf                 Shortcut for setting ['--nowater', '--nocloud'] options to create "unfiltered" strips. Default for --dst argument becomes (src.(reverse)replace('tif_results', 'strips_unf')). Can only be used when --mask-ver=bitmask. (default: False)
-  --nofilter-coreg      If --nowater/--nocloud, turn off the respective filter(s) during coregistration step in addition to mosaicking step. Can only be used when --mask-ver=bitmask. (default: False)
-  --save-coreg-step {off,meta,all}
-                        If --nowater/--nocloud, save output from coregistration step in directory '`dstdir`_coreg_filtXXX' where [XXX] is the bit-code corresponding to filter components ([cloud, water, edge], respectively) applied during the coregistration step. By
-                        default, all three filter components are applied so this code is 111. If 'off', do not save output from coregistration step. If 'meta', save only the *_meta.txt component of output strip segments. (useful for subsequent runs with --meta-trans-
-                        dir argument) If 'all', save all output from coregistration step, including both metadata and raster components. Can only be used when --mask-ver=bitmask, and has no affect if neither --nowater nor --nocloud arguments are provided, or either
-                        --meta-trans-dir or --nofilter-coreg arguments are provided since then the coregistration and mosaicking steps are effectively rolled into one step. (default: off)
-  --rmse-cutoff RMSE_CUTOFF
-                        Maximum RMSE from coregistration step tolerated for scene merging. A value greater than this causes a new strip segment to be created. (default: 1.0)
-  --scheduler {pbs}     Submit tasks to job scheduler. (default: None)
-  --jobscript JOBSCRIPT
-                        Script to run in job submission to scheduler. (default scripts are found in /mnt/pgc/data/scratch/erik/repos/setsm_postprocessing_python/jobscripts) (default: None)
-  --logdir LOGDIR       Directory to which standard output/error log files will be written for batch job runs. If not provided, default scheduler (or jobscript #CONDOPT_) options will be used. **Note:** Due to implementation difficulties, this directory will also
-                        become the working directory for the job process. Since relative path inputs are always changed to absolute paths in this script, this should not be an issue. (default: None)
-  --email [EMAIL]       Send email to user upon end or abort of the LAST SUBMITTED task. (default: None)
-  --restart             Remove any unfinished (no .fin file) output before submitting all unfinished strips. (default: False)
-  --remove-incomplete   Only remove unfinished (no .fin file) output, do not build strips. (default: False)
-  --use-old-masks       Use existing scene masks instead of deleting and re-filtering. (default: False)
   --cleanup-on-failure {masks,strip,output,none}
-                        Which type of output files should be automatically removed upon encountering an error. (default: output)
-  --old-org             Use old scene and strip results organization in flat directory structure,prior to reorganization into strip pairname folders. (default: False)
+                        Which type of output files should be automatically removed upon encountering an error.
+                        If 'masks', remove all scene masks for the strip-pair ID if any scene masks are created during this run (meaning --use-old-masks option was not used, or if it was used but additional scene masks were created).
+                        If 'strip', remove all output strip results for the strip-pair ID from the destination.
+                        If 'output', remove both scene masks and output strip results for the strip-pair ID.
+                        If 'none', remove nothing on error.
+                         (default: output)
+  --remove-incomplete   Only remove unfinished (no .fin file) output, do not build strips. (default: False)
+  --restart             Remove any unfinished (no .fin file) output before submitting all unfinished strips. (default: False)
+  --scheduler {None}    Submit tasks to job scheduler. (default: None)
+  --jobscript JOBSCRIPT
+                        Script to run in job submission to scheduler. (default scripts are found in /mnt/c/Users/husby036/scratch/repos/setsm_postprocessing_python/jobscripts) (default: None)
+  --logdir LOGDIR       Directory to which standard output/error log files will be written for batch job runs.
+                        If not provided, default scheduler (or jobscript #CONDOPT_) options will be used.
+                        **Note:** Due to implementation difficulties, this directory will also become the working directory for the job process. Since relative path inputs are always changed to absolute paths in this script, this should not be an issue. (default: None)
+  --email [EMAIL]       Send email to user upon end or abort of the LAST SUBMITTED task. (default: None)
   --dryrun              Print actions without executing. (default: False)
-  --stripid STRIPID     Run filtering and mosaicking for a single strip with strip-pair ID as parsed from scene DEM filenames using the following regex: '(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$' A text file containing a list of strip-pair IDs, each on a
-                        separate line,may instead be provided for batch processing of select strips. (default: None)
+  --stripid STRIPID     Run filtering and mosaicking for a single strip with strip-pair ID as parsed from scene DEM filenames using the following regex: '(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$'
+                        A text file containing a list of strip-pair IDs, each on a separate line,may instead be provided for batch processing of select strips. (default: None)
+  --scenedirname SCENEDIRNAME
+                        Name of folder containing the scene DEM files for a single strip-pair ID designated by the --stripid argument (default: None)
   --skip-xtrack-missing-ortho2-error
                         If at least one scene in a cross-track strip is missing the second ortho component raster, do not throw an error but instead build the strip as if it were in-track with only one ortho. (default: False)
-  --build-scene-masks-only
-                        Build scene masks and then exit before proceeding to strip-building steps. (default: False)
+  --use-pil-imresize    Use PIL imresize method over usual fast OpenCV resize method for final resize from 8m processing resolution back to native scene raster resolution when generating output scene mask rasters. This is to avoid an OpenCV error with unknown cause that can occur when using OpenCV resize on some 50cm scenes at Blue Waters. (default: False)
 ```
 
 * `src` :: In the OSU-PGC processing scheme, this is a path to a `*/tif_results/8m` or `*/tif_results/2m` folder for 8-meter or 2-meter DEMs, respectively. For 50-centimeter processing, it doesn't matter if the name of the lowest folder is "50cm" or "0.5m" or whatever.
-* `res` :: NUMERIC INPUT; This value must be provided in METERS! The input resolution value is used to (1) make sure that the selected scenes in the `src` source directory are indicated by their filenames to be of the same resolution, (2) check if strip results already exist in the `--dst` destination directory *and skip processing the strip if any results already exist*, (3) make sure the selected `--mask-ver` filter scheme works with the resolution, and (4) is the resolution included in the filenames of the output strip results files. For more information on how condition (1) is enforced (as )
+* `res` :: NUMERIC INPUT; This value must be provided in METERS! The input resolution value is used to (1) make sure that the selected scenes in the `src` source directory are indicated by their filenames to be of the same resolution, (2) check if strip results already exist in the `--dst` destination directory *and skip processing the strip if any results already exist*, (3) make sure the selected `--mask-ver` filter scheme works with the resolution, and (4) is the resolution included in the filenames of the output strip results files.
 * `--dst` :: In the OSU-PGC processing scheme, this will be a path to a `*/strips/8m` or `*/strips/2m` folder where the `*` is the same path as given in the commentary for `src`. If this argument isn't provided an attempt is made to determine this path by default (as specified in the `--help` text), so if you're following the OSU-PGC processing scheme you don't ever need to provide this argument. However, if you think you will be creating both filtered and unfiltered versions of strips (through the `--nowater`/`--nocloud` arguments), I recommend making this path `*/strips/2m_filtXXX` where \[`XXX`\] is the bit-code corresponding to filter components (\[cloud, water, edge\], respectively) applied during the final mosaicking step of the scenes2strips process. The bit-code for completely filtered strips is thus `111` while for completely "unfiltered" strips (both `--nowater` and `--nocloud` provided) it is `001`.
-* `--meta-trans-dir` :: This option is useful if either (1) you need to reprocess/recreate strips for some reason and you trust that the coregistration of the scenes in the earlier processing is still sound or (2) you were running scenes2strips with `--save-coreg-step` set to either `meta` or `all` when a crash/abort caused processing to end prematurely and you want to avoid redoing the processing of the coregistration step. If provided, the program will attempt to read the translation values for scenes from old strip segment *meta.txt* files in the provided directory and use these values for assembling strips in lieu of running the coregistration step. If it happens that the scenes2strips process decides to break the new strip into segments differently than it broke for the old strip results in the `--meta-trans-dir` directory, the program will continue to create a new segment(s) as if the argument was never provided *for only that particular strip*.
-* `--no-browse` :: By default, 10-meter resolution hillshades are automatically generated for every output strip segment DEM with the filename suffix *dem_10m_shade.tif*. This is done by calling the *gdal_translate* and *gdaldem hillshade* programs, so these must be callable from the current shell environment. *gdal_translate* creates a 10-meter downsampled version of the DEM (with filename suffix *dem_10m.tif*) as a temporary file that is fed to *gdaldem hillshade*. By supplying this argument to `batch_scenes2strips.py`, you may turn off this additional processing step.
+* `--old-org` :: Prior to July 26, 2019, scripts in this repo assumed the organization of all source and destination scene and strip files was flat within the `*/tif_results/2m` and `*/strips/2m` folders, respectively. After July 26, 2019, both scene and strip files are organized within proper strip-ID pairname folders like `*/tif_results/2m/{strip-pair ID}_2m` for scenes and `*/strips/2m/{strip-pair ID}_2m_lsf` for strips built with LSF-version DEM scenes. This argument must be provided to use the older organizational scheme.
 * `--dem-type` :: Either of the scene DEM versions `*dem.tif` (the DEM as it came straight out of SETSM) or `*dem_smooth.tif` (in which  `*dem.tif` has been smoothed for noise using the LSF method) can be used along with the other matchtag/orto/meta.txt scene components to create a strip. Which version of strips you should create may depend on the land cover type captured in the DEM and/or the intended application for the DEM results.
+* `--unf` :: This argument is a shortcut for setting the `--nowater` and `--nocloud` arguments to create "unfiltered" strips.
+* `--use-old-masks` :: Old scene masks being used to create new strips can cause issues when either the other scene DEM components are updated while the old scene mask remains, or the filtering algorithm is updated and an incomplete run of scenes2strips resulted in partial scene mask creation such that two mask versions could exist for the same strip-pair ID. To avoid these issues, any scene mask files that exist before strip creation are deleted and will be recreated during the filtering step.
+* `--build-scene-masks-only` :: Only create scene mask rasters next to source scene DEM files. Do not produce regular strip DEM output in destination directory.
+* `--remerge-strips` :: Provide this argument if you intend to use **strip DEM (segments)** as source instead of scene DEMs, in order to "re-merge" the strip DEM segments using a different `--rmse-cutoff` value than was used prior, or to make use of better redundant data checks added in newer versions of the scenes2strips program (especially between versions 4 and 4.1).
+* `--rmse-cutoff` :: After the iterative coregistration step is complete, the final RMSE value for the coregistration is reported. If that RMSE value is greater than the value specified by this argument, the scene that failed to register to the strip will become the start of a new strip segment.
 * `--mask-ver` :: Improvements to the scenes2strips filtering step are currently focusing solely on the *bitmask* version that creates the *bitmask.tif* scene/strip mask component raster. Only change this option from its default value (`bitmask`) if for some reason you're interested in seeing what the old masks look like.
 * `--noentropy` :: As noted in the `--help` text, this argument can only be provided along with `--mask-ver=maskv1`. That mask version is deprecated, so use of this argument is unlikely.
 * `--nowater`/`--nocloud` :: These arguments allow for producing unfiltered strip results, which is what really differentiates this version of the scenes2strips process from the earlier MATLAB version. See subsection "Step 2: Scene filtering and creation of the *bitmask.tif* scene component" above for more information.
-* `--unf` :: This argument is a shortcut for setting the `--nowater` and `--nocloud` arguments to create "unfiltered" strips.
 * `--nofilter-coreg` :: By default, all filters (edge, water, and cloud) are applied during the coregistration step with the assumption that the filters remove only bad data and lead to a better coregistration. If the filters are instead removing more good data than bad data, a better coregistration may be achieved by providing this argument to turn off the offending filters during the coregistration step. (Note that the edge filter must be applied in both the coregistration and mosaicking steps because it is known that DEMs produced by SETSM have a border of bad data around their edges that needs to be cropped off before merging.)
 * `--save-coreg-step` :: When the scenes2strips process is split into separate coregistration and mosaicking steps due to providing `--nowater`/`--nocloud`, this option allows for caching the results of the coregistration step. Set this option to `all` if you want the full unfiltered version of strip output in addition to a filtered version. Set it to `meta` if you want to make sure to have a backup of the translation values for `--meta-trans-dir` in case of a crash. Also note that the strip segment *meta.txt* files saved with this option will have different values for the the RMSE component of the "Mosaicking Alignment Statistics" than the output strip meta files saved in the `--dst` directory because the RMSE statistic is properly recalculated for the unfiltered version of the strip during the mosaicking step. For conditions on when this argument applies, see the `--help` text.
-* `--rmse-cutoff` :: After the iterative coregistration step is complete, the final RMSE value for the coregistration is reported. If that RMSE value is greater than the value specified by this argument, the scene that failed to register to the strip will become the start of a new strip segment.
+* `--meta-trans-dir` :: This option is useful if either (1) you need to reprocess/recreate strips for some reason and you trust that the coregistration of the scenes in the earlier processing is still sound or (2) you were running scenes2strips with `--save-coreg-step` set to either `meta` or `all` when a crash/abort caused processing to end prematurely and you want to avoid redoing the processing of the coregistration step. If provided, the program will attempt to read the translation values for scenes from old strip segment *meta.txt* files in the provided directory and use these values for assembling strips in lieu of running the coregistration step. If it happens that the scenes2strips process decides to break the new strip into segments differently than it broke for the old strip results in the `--meta-trans-dir` directory, the program will continue to create a new segment(s) as if the argument was never provided *for only that particular strip*.
+* `--no-browse` :: By default, 10-meter resolution hillshades are automatically generated for every output strip segment DEM with the filename suffix *dem_10m_shade.tif*. This is done by calling the *gdal_translate* and *gdaldem hillshade* programs, so these must be callable from the current shell environment. *gdal_translate* creates a 10-meter downsampled version of the DEM (with filename suffix *dem_10m.tif*) as a temporary file that is fed to *gdaldem hillshade*. By supplying this argument to `batch_scenes2strips.py`, you may turn off this additional processing step.
+* `--build-aux`/`--rebuild-aux` :: These arguments were largely useful only to PGC in producing old-format DEM tile mosaics (entirely different process from scenes2strips), but now these arguments are not used in normal strip DEM production.
+* `--cleanup-on-failure` :: This argument is incredibly useful in troubleshooting scenes2strips runs. *By default, all scene DEM masks and strip DEM results produced for a strip-pair ID are automatically removed upon encountering a fatal error in the scenes2strips program.* If the filtering step that produces the scene DEM masks is working well, provide `--cleanup-on-failure 'strip'` and `--use-old-masks` so that the masks are not recreated with every run. If you are troubleshooting either the filtering or mosaicking steps and want to look at the (incomplete) output that was produced before an error is encountered, provide `--cleanup-on-failure 'none'`.
+* `--remove-incomplete` :: If the scenes2strips process ends abruptly due to any error, an automatic attempt will be made to remove any strip result data for the strip-pair ID that was being worked on, as such result data would be incomplete and must be reprocessed. If this automatic removal fails, incomplete strips (indicated by the absence of the corresponding *.fin* file from the strip results folder) can be identified and removed using this argument.
+* `--restart` :: See notes for `--remove-incomplete`.
 * `--scheduler` :: Currently, only the PBS and SLURM job schedulers are supported. If you provide this argument, note that if you do not specify a particular PBS/SLURM jobscript to run with the `--jobscript` argument a default jobscript will be selected from the 'jobscripts' folder in the repo root directory that corresponds to this script and the indicated scheduler type.
 * `--jobscript` :: REQUIREMENTS: The jobscript MUST (1) be readable by the provided `--scheduler` job scheduler type, (2) load the Python environment that includes all required packages as specified above under "Python package dependencies" before it (3) executes the main command that runs the script for a single `--stripid` by means of substituting the entire command into the jobscript through the environment variable `$p1`.
 * `--logdir` :: If this argument is NOT provided and you are using the default jobscripts from this repo, the default output log file directory for SLURM is the directory where the command to run the script was submitted, while for PBS it is the `$HOME` directory of the user who submitted the command.
-* `--email` :: If this option is provided (with or without an email address) and you are using the default jobscripts from this repo, an email will be sent to the email address tied to your user account upon end or abort of ONLY the job that was submitted last in the batch (to avoid spamming you with emails). This relies on the the mail option provided by the selected job scheduler, which is not supported on every system. If an email address is also provided with this option, an additional email will be sent upon end or error of the last submitted task/job using `email.mime.text.MIMEText` with `smtplib` from the Python Standard Library. 
-* `--restart` :: See notes for `--remove-incomplete`.
-* `--remove-incomplete` :: If the scenes2strips process ends abruptly due to any error, an automatic attempt will be made to remove any strip result data for the strip-pair ID that was being worked on, as such result data would be incomplete and must be reprocessed. If this automatic removal fails, incomplete strips (indicated by the absence of the corresponding *.fin* file from the strip results folder) can be identified and removed using this argument.
-* `--use-old-masks` :: Old scene masks being used to create new strips can cause issues when either the other scene DEM components are updated while the old scene mask remains, or the filtering algorithm is updated and an incomplete run of scenes2strips resulted in partial scene mask creation such that two mask versions could exist for the same strip-pair ID. To avoid these issues, any scene mask files that exist before strip creation are deleted and will be recreated during the filtering step.
-* `--old-org` :: Prior to July 26, 2019, scripts in this repo assumed the organization of all source and destination scene and strip files was flat within the `*/tif_results/2m` and `*/strips/2m` folders, respectively. After July 26, 2019, both scene and strip files are organized within proper strip-ID pairname folders like `*/tif_results/2m/{strip-pair ID}_2m` for scenes and `*/strips/2m/{strip-pair ID}_2m_lsf` for strips built with LSF-version DEM scenes. This argument must be provided to use the older organizational scheme.
+* `--email` :: If this option is provided (with or without an email address) and you are using the default jobscripts from this repo, an email will be sent to the email address tied to your user account upon end or abort of ONLY the job that was submitted last in the batch (to avoid spamming you with emails). This relies on the the mail option provided by the selected job scheduler, which is not supported on every system. If an email address is also provided with this option, an additional email will be sent upon end or error of the last submitted task/job using `email.mime.text.MIMEText` with `smtplib` from the Python Standard Library.
 * `--dryrun` :: Useful for testing which strips will be built where, without actually starting the process of building them.
 * `--stripid` :: During normal batch usage of this script, you only specify the `src` source directory of all scenes that you aim to turn into multiple strips. This argument is then typically used only internally by the batch execution logic to specify which single strip each instance of the scenes2strips program will work on. If you have a ton of scenes (that can be made into multiple strips) in the `src` directory and wish to only create/recreate a specific strip, you can specify that strip using the OSU-PGC strip-pair ID naming convention described above under "Step 1: Source scene selection by "strip-pair ID"".
+* `--scenedirname` :: There multiple folders within the source directory whose names match the same `--stripid` but have a different version suffixes. If necessary, you can provide this argument to select a specific "scene dir" folder name to run on.
+* `--skip-xtrack-missing-ortho2-error` :: Older scene DEM results from OSU-PGC production chose to only keep one of the two stereo ortho images produced by SETSM. Starting around 2019, PGC began keeping both ortho images for cross-track ("xtrack") stereo DEM production. The scenes2strips code now expects both ortho images to exist when filtering the scene DEMs and assembling xtrack strip DEMs, and will throw an error message if one of the scene orthos does not exist. Provide this argument flag to ignore this error message and produce single-ortho xtrack strip DEMs, but note that the quality of the scene DEM filtering may suffer as a result.
 
-### Example commands & output
+### Example commands & output (WARNING: This section is not updated regularly and may be outdated)
 
 Activate the Python environment (if using conda and package dependencies are installed in an environment other than your 'base' environment) or load all necessary modules.
 ```
