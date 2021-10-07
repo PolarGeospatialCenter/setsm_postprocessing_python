@@ -823,6 +823,10 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
     scene_dfull = None
     strip_dfull = None
     strip_dfull_coreg = None
+
+    cleanup_on_failure_backup = args.get(ARGSTR_CLEANUP_ON_FAILURE)
+    args.set(ARGSTR_CLEANUP_ON_FAILURE, ARGCHO_CLEANUP_ON_FAILURE_NONE)
+
     try:
         import numpy as np  # necessary check for later requirement
         from lib.filter_scene import generateMasks
@@ -1033,7 +1037,15 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                     if not args.get(ARGSTR_DRYRUN):
                         os.remove(f)
             scenedems_to_filter = src_scenedem_ffile_glob.copy()
+
         filter_total = len(scenedems_to_filter)
+        if filter_total == 0:
+            if cleanup_on_failure_backup == ARGCHO_CLEANUP_ON_FAILURE_MASKS:
+                cleanup_on_failure_backup = ARGCHO_CLEANUP_ON_FAILURE_NONE
+            elif cleanup_on_failure_backup == ARGCHO_CLEANUP_ON_FAILURE_OUTPUT:
+                cleanup_on_failure_backup = ARGCHO_CLEANUP_ON_FAILURE_STRIP
+        args.set(ARGSTR_CLEANUP_ON_FAILURE, cleanup_on_failure_backup)
+
         i = 0
         for scenedem_ffile in scenedems_to_filter:
             i += 1
