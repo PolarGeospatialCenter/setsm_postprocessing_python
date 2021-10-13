@@ -472,7 +472,7 @@ class ArgumentPasser:
                 self.set(argstr, (argstr in self.provided_opt_args))
 
     def _argval2str(self, item):
-        if type(item) is str and ' ' in item:
+        if type(item) is str:
             if (   (item.startswith("'") and item.endswith("'"))
                 or (item.startswith('"') and item.endswith('"'))):
                 item_str = item
