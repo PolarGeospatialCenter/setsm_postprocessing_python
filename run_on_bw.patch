@@ -16,18 +16,18 @@ index 99f47bb..cd1ba7b 100755
 +++ b/jobscripts/head_pbs.sh
 @@ -1,12 +1,13 @@
  #!/bin/bash
-
+ 
 -#PBS -l walltime=1:00:00,nodes=1:ppn=2,mem=5gb
 +#PBS -l walltime=96:00:00,nodes=1:ppn=16:xe
-
+ 
  #PBS -o $PBS_JOBNAME.o$PBS_JOBID
  #PBS -j oe
  #PBS -k oe
-
+ 
  #PBS -m n
 +#PBS -q high
-
-
+ 
+ 
  ## NOTE: Look to 'body.sh' script for expected environment variable arguments
 diff --git a/jobscripts/init.sh b/jobscripts/init.sh
 index f29836b..36e8917 100755
@@ -42,7 +42,7 @@ index f29836b..36e8917 100755
  # Set environment load commands specific to batch scripts
  if [ "$job_class" == "s2s" ]; then
 diff --git a/reproject_setsm.py b/reproject_setsm.py
-index 93cebdd..e3c6e7f 100644
+index cdd8efa..7b37d55 100644
 --- a/reproject_setsm.py
 +++ b/reproject_setsm.py
 @@ -87,7 +87,7 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR
@@ -54,3 +54,12 @@ index 93cebdd..e3c6e7f 100644
  JOB_MEMORY_GB = 20
  
  ##############################
+@@ -497,6 +497,8 @@ def main():
+                 envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
+             )
+ 
++            cmd = "export NOAPRUNWARN=1; " + cmd
++
+             print(cmd)
+             if not args_batch.get(ARGSTR_DRYRUN):
+                 subprocess.call(cmd, shell=True, cwd=args_batch.get(ARGSTR_LOGDIR))
