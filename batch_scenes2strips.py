@@ -826,7 +826,7 @@ def main():
                 ))
                 dst_sID_ffile_glob = glob.glob(os.path.join(
                     strip_dfull,
-                    '{}_{}{}_seg*_*'.format(
+                    '{}_{}{}_*'.format(
                         sID,
                         res_str,
                         '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
