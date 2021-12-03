@@ -149,6 +149,7 @@ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
 JOB_WALLTIME_HR = 3
 JOB_MEMORY_GB = 40
+JOB_NCORES = 4
 
 ##############################
 
@@ -795,7 +796,7 @@ def main():
                 cmd = args_single.get_jobsubmit_cmd(
                     args_batch.get(ARGSTR_SCHEDULER),
                     jobscript=args_batch.get(ARGSTR_JOBSCRIPT),
-                    jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, email=args.get(ARGSTR_EMAIL),
+                    jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, ncores=JOB_NCORES, email=args.get(ARGSTR_EMAIL),
                     envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
                 )
             else:

@@ -528,7 +528,7 @@ class ArgumentPasser:
     def get_jobsubmit_cmd(self, scheduler,
                           jobscript=None, jobname=None,
                           time_hr=None, time_min=None, time_sec=None,
-                          memory_gb=None, node=None, email=None,
+                          memory_gb=None, ncores=None, email=None,
                           envvars=None, hold=False):
         cmd = None
         cmd_envvars = None
@@ -563,7 +563,7 @@ class ArgumentPasser:
                 "-N {}".format(jobname) * (jobname is not None),
                 "-l {}".format(
                     ','.join([
-                        "nodes={}".format(node) if node is not None else '',
+                        "nodes=1:ppn={}".format(ncores) if ncores is not None else '',
                         "walltime={}".format(time_hms) if time_hms is not None else '',
                         "mem={}gb".format(memory_gb) if memory_gb is not None else ''
                     ]).strip(',')
@@ -580,6 +580,7 @@ class ArgumentPasser:
                 "--job-name {}".format(jobname) if jobname is not None else '',
                 "--time {}".format(time_hms) if time_hms is not None else '',
                 "--mem {}G".format(memory_gb) if memory_gb is not None else '',
+                "--ntasks {}".format(ncores) if ncores is not None else '',
                 "--export {}".format(cmd_envvars) if cmd_envvars is not None else '',
                 "--mail-type FAIL,END" if email else '',
                 "--mail-user {}".format(email) if type(email) is str else '',
