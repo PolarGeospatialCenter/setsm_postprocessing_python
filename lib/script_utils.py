@@ -160,6 +160,12 @@ def showwarning_stdout(message, category, filename, lineno, file=None, line=None
     sys.stdout.write(warnings.formatwarning(message, category, filename, lineno))
 
 
+def loop_items(alist):
+    while True:
+        for item in alist:
+            yield item
+
+
 def exec_cmd(cmd, strip_returned_stdout=False, suppress_stdout_in_success=False):
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (so, se) = p.communicate()
@@ -528,7 +534,8 @@ class ArgumentPasser:
     def get_jobsubmit_cmd(self, scheduler,
                           jobscript=None, jobname=None,
                           time_hr=None, time_min=None, time_sec=None,
-                          memory_gb=None, ncores=None, email=None,
+                          node=None, ncores=None, memory_gb=None,
+                          email=None,
                           envvars=None, hold=False):
         cmd = None
         cmd_envvars = None
@@ -563,7 +570,10 @@ class ArgumentPasser:
                 "-N {}".format(jobname) * (jobname is not None),
                 "-l {}".format(
                     ','.join([
-                        "nodes=1:ppn={}".format(ncores) if ncores is not None else '',
+                        "nodes={}{}".format(
+                            node if node is not None else 1,
+                            ":ppn={}".format(ncores) if ncores is not None else '')
+                        if (node is not None or ncores is not None) else '',
                         "walltime={}".format(time_hms) if time_hms is not None else '',
                         "mem={}gb".format(memory_gb) if memory_gb is not None else ''
                     ]).strip(',')

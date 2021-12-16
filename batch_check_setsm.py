@@ -318,6 +318,7 @@ BATCH_ARGDEF_WD = None
 JOB_WALLTIME_HR = 72
 JOB_MEMORY_GB = 40
 JOB_NCORES = 4
+JOB_NODE = None
 
 ##############################
 
@@ -1799,6 +1800,7 @@ def main():
             args_single.set(ARGSTR_VERIFY_BY_PAIRNAME_DIR_DEPTH, 0)
 
         job_name_prefix = args.get(ARGSTR_JOBNAME)
+        gen_job_node = script_utils.loop_items(JOB_NODE) if type(JOB_NODE) is list else None
 
         job_num = 0
         num_jobs = len(check_units)
@@ -1811,10 +1813,14 @@ def main():
             cmd_single = args_single.get_cmd()
 
             job_name = job_name_prefix+jobnum_fmt.format(job_num)
+            job_node_single = next(gen_job_node) if gen_job_node is not None else JOB_NODE
+
             cmd = args_single.get_jobsubmit_cmd(
                 args_batch.get(ARGSTR_SCHEDULER),
-                jobscript=args_batch.get(ARGSTR_JOBSCRIPT),
-                jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, ncores=JOB_NCORES, email=args.get(ARGSTR_EMAIL),
+                jobscript=args_batch.get(ARGSTR_JOBSCRIPT), jobname=job_name,
+                time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB,
+                node=job_node_single, ncores=JOB_NCORES,
+                email=args.get(ARGSTR_EMAIL),
                 envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN],
                 hold=True
             )
