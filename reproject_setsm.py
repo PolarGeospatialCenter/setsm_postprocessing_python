@@ -90,6 +90,7 @@ JOB_ABBREV = 'Reproj'
 JOB_WALLTIME_HR = 30
 JOB_MEMORY_GB = 20
 JOB_NCORES = 4
+JOB_NODE = None
 
 ##############################
 
@@ -158,7 +159,7 @@ def argparser_init():
             "Path to source SETSM scene/strip *{} file or directory containing these files.".format(SETSM_META_SUFFIX),
         ])
     )
-    
+
     # Optional arguments
 
     parser.add_argument(
@@ -366,7 +367,7 @@ def main():
     elif os.path.isfile(src) and src.endswith('.txt'):
         bundle_file = src
         src_tasks_all = script_utils.read_task_bundle(bundle_file, args_delim=' ')
-        
+
     elif os.path.isdir(src):
         srcdir = src
         src_tasks_all = []
@@ -379,15 +380,15 @@ def main():
     if src_tasks_all is None:
         arg_parser.error("argument {} must be a path to either a directory or a file ending with '{}', "
                          "but was '{}'".format(ARGSTR_SRC, SETSM_META_SUFFIX, src))
-        
+
     src_tasks_incomplete = []
-        
+
     test_srs = osr.SpatialReference()
     for task in src_tasks_all:
         task_metafile_src = ''
         task_dstdir = dstdir
         task_target_epsg = target_epsg
-        
+
         if type(task) is list:
             if len(task) == 2:
                 task_metafile_src, task_dstdir = task
@@ -409,7 +410,7 @@ def main():
             task_metafile_src = task
 
         task = [task_metafile_src, task_dstdir, task_target_epsg]
-            
+
         if not os.path.isfile(task_metafile_src):
             arg_parser.error("Source metafile does not exist: {}".format(task_metafile_src))
         if task_dstdir is None:
@@ -424,7 +425,7 @@ def main():
         task_metafile_dst = os.path.join(task_dstdir, os.path.basename(task_metafile_src))
         if not os.path.isfile(task_metafile_dst) or args.get(ARGSTR_OVERWRITE):
             src_tasks_incomplete.append(task)
-            
+
     num_tasks = len(src_tasks_incomplete)
 
     print("Number of source SETSM metafiles found: {}".format(len(src_tasks_all)))
@@ -471,6 +472,8 @@ def main():
         args_single = copy.deepcopy(args)
         args_single.unset(*ARGGRP_BATCH)
 
+        gen_job_node = script_utils.loop_items(JOB_NODE) if type(JOB_NODE) is list else None
+
         job_num = 0
         num_jobs = len(src_tasks)
         for task in src_tasks:
@@ -491,11 +494,15 @@ def main():
             cmd_single = args_single.get_cmd()
 
             job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
+            job_node_single = next(gen_job_node) if gen_job_node is not None else JOB_NODE
+
             cmd = args_single.get_jobsubmit_cmd(
                 args_batch.get(ARGSTR_SCHEDULER),
-                jobscript=args_batch.get(ARGSTR_JOBSCRIPT),
-                jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, ncores=JOB_NCORES, email=args.get(ARGSTR_EMAIL),
-                envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
+                jobscript=args_batch.get(ARGSTR_JOBSCRIPT), jobname=job_name,
+                time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB,
+                node=job_node_single, ncores=JOB_NCORES,
+                email=args.get(ARGSTR_EMAIL),
+                envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN],
             )
 
             print(cmd)

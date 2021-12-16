@@ -109,6 +109,7 @@ JOB_ABBREV = 'Mask'
 JOB_WALLTIME_HR = 30
 JOB_MEMORY_GB = 20
 JOB_NCORES = 4
+JOB_NODE = None
 
 ##############################
 
@@ -717,6 +718,8 @@ def main():
         if not args.provided(ARGSTR_MASK_SUFFIX):
             args_single.unset(ARGSTR_MASK_SUFFIX)
 
+        gen_job_node = script_utils.loop_items(JOB_NODE) if type(JOB_NODE) is list else None
+
         job_num = 0
         num_jobs = len(src_files)
         for srcfp in src_files:
@@ -728,11 +731,15 @@ def main():
             cmd_single = args_single.get_cmd()
 
             job_name = JOB_ABBREV+jobnum_fmt.format(job_num)
+            job_node_single = next(gen_job_node) if gen_job_node is not None else JOB_NODE
+
             cmd = args_single.get_jobsubmit_cmd(
                 args_batch.get(ARGSTR_SCHEDULER),
-                jobscript=args_batch.get(ARGSTR_JOBSCRIPT),
-                jobname=job_name, time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB, ncores=JOB_NCORES, email=args.get(ARGSTR_EMAIL),
-                envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
+                jobscript=args_batch.get(ARGSTR_JOBSCRIPT), jobname=job_name,
+                time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB,
+                node=job_node_single, ncores=JOB_NCORES,
+                email=args.get(ARGSTR_EMAIL),
+                envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN],
             )
 
             print(cmd)
