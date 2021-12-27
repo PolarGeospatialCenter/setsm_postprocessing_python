@@ -52,10 +52,10 @@ index cdd8efa..7b37d55 100644
 -JOB_WALLTIME_HR = 30
 +JOB_WALLTIME_HR = 96
  JOB_MEMORY_GB = 20
- 
- ##############################
-@@ -497,6 +497,8 @@ def main():
-                 envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN]
+ JOB_NCORES = 4
+ JOB_NODE = None
+@@ -505,6 +505,8 @@ def main():
+                 envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN],
              )
  
 +            cmd = "export NOAPRUNWARN=1; " + cmd
