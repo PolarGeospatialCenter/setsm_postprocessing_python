@@ -200,6 +200,36 @@ def reprojectGDALDataset(ds_in, target_srs, interp_str):
 
 
 def gdalReadAsArraySetsmSceneBand(raster_band, make_nodata_nan=False):
+    """Read full GDAL raster band from a SETSM DEM raster into a NumPy array,
+    converting data type from scaled integer (Int32) to floating point (Float32)
+    if necessary.
+
+    The data type conversion is necessary before working with raw elevation
+    values from DEM rasters that are stored in scaled integer format, chiefly
+    the `*_dem.tif`, `*_ortho.tif`, and `*_matchtag.tif` rasters from 50cm
+    scene DEM results. These rasters are stored in this format with a custom
+    LERC & ZSTD compression applied to achive the greatest space savings for
+    long term, high data volume storage.
+
+    Rasters that do not have internal 'scale' or 'offset' metadata information
+    visible to GDAL will not have their values adjusted, so it should be safe
+    to replace all GDAL `ReadAsArray()` calls on SETSM DEM rasters with this
+    function.
+
+    Parameters
+    ----------
+    raster_band : GDALRasterBand
+        SETSM DEM raster band to be read.
+    make_nodata_nan : boolean, optional
+        Convert NoData values in the raster band to NaN in the returned NumPy
+        array.
+
+    Returns
+    -------
+    array_data : numpy.ndarray
+        The NumPy array containing adjusted (if necessary) values read from the
+        input raster band.
+    """
     scale = raster_band.GetScale()
     offset = raster_band.GetOffset()
     if scale is None:
