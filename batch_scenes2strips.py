@@ -1657,12 +1657,12 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     if orthoFile_10m in output_files:
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
-             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(orthoFile, orthoFile_10m, 10))
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(orthoFile, orthoFile_10m, 10))
         )
     if ortho2File_10m in output_files:
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
-             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(ortho2File, ortho2File_10m, 10))
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(ortho2File, ortho2File_10m, 10))
         )
     if matchFile_10m in output_files:
         commands.append(
