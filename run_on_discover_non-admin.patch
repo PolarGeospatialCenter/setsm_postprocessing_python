@@ -9,8 +9,8 @@ index b13bfb3..a735fde 100644
 -JOB_WALLTIME_HR = 72
 +JOB_WALLTIME_HR = 24
  JOB_MEMORY_GB = 40
- 
- ##############################
+ JOB_NCORES = 4
+ JOB_NODE = None
 diff --git a/jobscripts/head_slurm.sh b/jobscripts/head_slurm.sh
 index 079f4bf..8e71bb8 100755
 --- a/jobscripts/head_slurm.sh
@@ -50,3 +50,16 @@ index f29836b..36e8917 100755
 
  # Set environment load commands specific to batch scripts
  if [ "$job_class" == "s2s" ]; then
+diff --git a/reproject_setsm.py b/reproject_setsm.py
+index cdd8efa..7b37d55 100644
+--- a/reproject_setsm.py
++++ b/reproject_setsm.py
+@@ -87,7 +87,7 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR
+ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
+ JOB_ABBREV = 'Reproj'
+-JOB_WALLTIME_HR = 30
++JOB_WALLTIME_HR = 24
+ JOB_MEMORY_GB = 20
+ JOB_NCORES = 4
+ JOB_NODE = None
