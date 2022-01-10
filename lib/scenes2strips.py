@@ -597,6 +597,12 @@ def scenes2strips(demFiles,
             O  =  O[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
             O2 = O2[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]] if O2 is not None else None
             MD = MD[rcrop[0]:rcrop[1], ccrop[0]:ccrop[1]]
+
+            # Round DEM values to 1/128 to greatly improve compression effectiveness
+            np.multiply(Z, 128.0, out=Z)
+            np.round_(Z, decimals=0, out=Z)
+            np.divide(Z, 128.0, out=Z)
+
             Z[np.isnan(Z)] = -9999
     else:
         X, Y, Z, M, O, O2, MD = None, None, None, None, None, None, None
