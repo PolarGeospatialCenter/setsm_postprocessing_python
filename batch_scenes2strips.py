@@ -1169,6 +1169,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                     parsed_group_version, derived_group_version, setsm_version_list
                 )
             )
+        if parsed_group_version is not None:
+            derived_group_version = parsed_group_version
 
         setsm_verkey = "v{:02}{:02}{:02}".format(*[int(n) for n in derived_group_version.split('.')])
         stripdemid = "{}_{}_{}".format(
