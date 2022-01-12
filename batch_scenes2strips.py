@@ -19,6 +19,7 @@ import gc
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import traceback
@@ -1031,6 +1032,15 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         src_scenedem_ffile_glob.sort()
         print('')
 
+        # Verify source strip finfile exists if doing strip remerge
+        stripid_fin_ffile_src = None
+        if args.get(ARGSTR_REMERGE_STRIPS):
+            stripid_fin_ffile_src = os.path.join(scene_dfull, strip_dname+'.fin')
+            if not os.path.isfile(stripid_fin_ffile_src):
+                print("Source strip directory for remerge does not contain expected finfile: {}".format(stripid_fin_ffile_src))
+                sys.exit(1)
+
+
         stripid_fin_fname = strip_dname+'.fin'
         stripid_remergeinfo_fname = strip_dname+'_remerge.info'
         stripid_fin_ffile = os.path.join(strip_dfull, stripid_fin_fname)
@@ -1411,14 +1421,19 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         print("Completed processing for this strip-pair ID")
 
         if not args.get(ARGSTR_REBUILD_AUX):
-            with open(stripid_fin_ffile, 'w') as stripid_fin_fp:
-                for scenedem_ffile in src_scenedem_ffile_glob:
-                    stripid_fin_fp.write(os.path.basename(scenedem_ffile)+'\n')
-
-            if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
-                with open(stripid_fin_ffile_coreg, 'w') as stripid_fin_coreg_fp:
+            if args.get(ARGSTR_REMERGE_STRIPS):
+                shutil.copyfile(stripid_fin_ffile_src, stripid_fin_ffile)
+                if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
+                    shutil.copyfile(stripid_fin_ffile_src, stripid_fin_ffile_coreg)
+            else:
+                with open(stripid_fin_ffile, 'w') as stripid_fin_fp:
                     for scenedem_ffile in src_scenedem_ffile_glob:
-                        stripid_fin_coreg_fp.write(os.path.basename(scenedem_ffile)+'\n')
+                        stripid_fin_fp.write(os.path.basename(scenedem_ffile)+'\n')
+
+                if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL and os.path.isdir(dstdir_coreg):
+                    with open(stripid_fin_ffile_coreg, 'w') as stripid_fin_coreg_fp:
+                        for scenedem_ffile in src_scenedem_ffile_glob:
+                            stripid_fin_coreg_fp.write(os.path.basename(scenedem_ffile)+'\n')
 
             print(".fin finished indicator file created: {}".format(stripid_fin_ffile))
         print('')
