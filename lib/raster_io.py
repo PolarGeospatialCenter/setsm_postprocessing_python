@@ -603,9 +603,11 @@ def saveArrayAsTiff(array, dest,
         Creation Option arguments to pass to the `Create` method of the GDAL
         Geotiff driver that instantiates the output raster dataset.
         If 'compress', the following default arguments are used:
+          'TILED=YES'
           'BIGTIFF=IF_SAFER'
           'COMPRESS=LZW'
-          'TILED=YES'
+          'PREDICTOR=X' (where `X` is automatically derived from input and
+                         output array data types)
         The 'NBITS=X' argument may not be used -- that is set by the `nbits`
         argument for this function.
         A list of Creation Option arguments may be found here: [1].
@@ -663,7 +665,7 @@ def saveArrayAsTiff(array, dest,
                                                "Please use this function's `nbits` argument.")
 
     shape = array.shape
-    dtype_gdal = None
+    dtype_out_gdal = None
     if like_raster is not None:
         ds_like = openRaster(like_raster)
         if shape[0] != ds_like.RasterYSize or shape[1] != ds_like.RasterXSize:
@@ -677,7 +679,7 @@ def saveArrayAsTiff(array, dest,
         if nodata_val == 'like_raster':
             nodata_val = extractRasterData(ds_like, 'nodata_val')
         if dtype_out is None:
-            dtype_gdal = extractRasterData(ds_like, 'dtype_val')
+            dtype_out_gdal = extractRasterData(ds_like, 'dtype_val')
     else:
         if shape[0] != Y.size or shape[1] != X.size:
             raise InvalidArgumentError("Lengths of [`Y`, `X`] grid coordinates ({}, {}) do not match "
@@ -688,6 +690,18 @@ def saveArrayAsTiff(array, dest,
     if nodata_val == 'like_raster':
         nodata_val = None
 
+    dtype_in_np = array.dtype
+
+    dtype_in_general = None
+    dtype_out_general = None
+
+    if dtype_in_np == bool:
+        dtype_in_general = 'bool'
+    elif np.issubdtype(dtype_in_np, np.integer):
+        dtype_in_general = 'int'
+    elif np.issubdtype(dtype_in_np, np.floating):
+        dtype_in_general = 'float'
+
     if dtype_out is not None:
         if dtype_is_nbits:
             if nbits is None:
@@ -695,41 +709,62 @@ def saveArrayAsTiff(array, dest,
             elif type(nbits) != int or nbits < 1:
                 raise InvalidArgumentError("`nbits` must be an integer in the range [1,32]")
             if nbits <= 8:
-                dtype_gdal = gdal.GDT_Byte
+                dtype_out_gdal = gdal.GDT_Byte
             elif nbits <= 16:
-                dtype_gdal = gdal.GDT_UInt16
+                dtype_out_gdal = gdal.GDT_UInt16
             elif nbits <= 32:
-                dtype_gdal = gdal.GDT_UInt32
+                dtype_out_gdal = gdal.GDT_UInt32
             else:
                 raise InvalidArgumentError("Output array requires {} bits of precision, "
                                            "but GDAL supports a maximum of 32 bits")
+            dtype_out_general = 'int'
         else:
             if type(dtype_out) is str:
                 dtype_out = eval('np.{}'.format(dtype_out.lower()))
-            dtype_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_out)
-            if dtype_gdal is None:
+            dtype_out_gdal = gdal_array.NumericTypeCodeToGDALTypeCode(dtype_out)
+            if dtype_out_gdal is None:
                 raise InvalidArgumentError("Output array data type ({}) does not have equivalent "
                                            "GDAL data type and is not supported".format(dtype_out))
+            if np.issubdtype(dtype_out, np.integer):
+                dtype_out_general = 'int'
+            elif np.issubdtype(dtype_out, np.floating):
+                dtype_out_general = 'float'
 
-    dtype_in = array.dtype
-    dtype_in_gdal, promote_dtype = dtype_np2gdal(dtype_in)
+    dtype_in_gdal, promote_dtype = dtype_np2gdal(dtype_in_np)
     if promote_dtype is not None:
         array = array.astype(promote_dtype)
-        dtype_in = promote_dtype(1).dtype
+        dtype_in_np = promote_dtype(1).dtype
+
+    if dtype_out_general is None:
+        if np.issubdtype(dtype_in_np, np.integer):
+            dtype_out_general = 'int'
+        elif np.issubdtype(dtype_in_np, np.floating):
+            dtype_out_general = 'float'
+
     if dtype_out is not None:
         if dtype_is_nbits:
-            if not np.issubdtype(dtype_in, np.unsignedinteger):
+            if not np.issubdtype(dtype_in_np, np.unsignedinteger):
                 warn("Input array data type ({}) is not unsigned and may be incorrectly saved "
-                     "with n-bit precision".format(dtype_in))
-        elif dtype_in != dtype_out:
+                     "with n-bit precision".format(dtype_in_np))
+        elif dtype_in_np != dtype_out:
             warn("Input array NumPy data type ({}) differs from output "
-                 "NumPy data type ({})".format(dtype_in, dtype_out(1).dtype))
-    elif dtype_gdal is not None and dtype_gdal != dtype_in_gdal:
+                 "NumPy data type ({})".format(dtype_in_np, dtype_out(1).dtype))
+    elif dtype_out_gdal is not None and dtype_out_gdal != dtype_in_gdal:
         warn("Input array GDAL data type ({}) differs from output "
              "GDAL data type ({})".format(gdal.GetDataTypeName(dtype_in_gdal),
-                                          gdal.GetDataTypeName(dtype_gdal)))
-    if dtype_gdal is None:
-        dtype_gdal = dtype_in_gdal
+                                          gdal.GetDataTypeName(dtype_out_gdal)))
+    if dtype_out_gdal is None:
+        dtype_out_gdal = dtype_in_gdal
+
+    if co_args == 'compress':
+        compress_predictor = 1
+        if dtype_in_general == 'bool':
+            compress_predictor = 1
+        elif dtype_out_general == 'int':
+        # elif dtype_out_general == 'int' or dtype_in_general == 'int':
+            compress_predictor = 2
+        elif dtype_out_general == 'float':
+            compress_predictor = 3
 
     sys.stdout.write("Saving Geotiff {} ...".format(dest))
     sys.stdout.flush()
@@ -739,10 +774,11 @@ def saveArrayAsTiff(array, dest,
         co_args = []
     if co_args == 'compress':
         co_args = []
+        co_args.extend(['TILED=YES'])         # Force creation of tiled TIFF files.
         co_args.extend(['BIGTIFF=IF_SAFER'])  # Will create BigTIFF
                                               # if the resulting file *might* exceed 4GB.
         co_args.extend(['COMPRESS=LZW'])      # Do LZW compression on output image.
-        co_args.extend(['TILED=YES'])         # Force creation of tiled TIFF files.
+        co_args.extend(['PREDICTOR={}'.format(compress_predictor)])
     if dtype_is_nbits:
         co_args.extend(['NBITS={}'.format(nbits)])
 
@@ -752,14 +788,14 @@ def saveArrayAsTiff(array, dest,
         if projstr_proj4 is None:
             projstr_proj4 = spat_ref.ExportToProj4()
     sys.stdout.write(" GDAL data type: {}, NoData value: {}, Creation Options: {}, Projection (Proj4): {} ...".format(
-        gdal.GetDataTypeName(dtype_gdal), nodata_val, ' '.join(co_args) if co_args else None, projstr_proj4.strip())
+        gdal.GetDataTypeName(dtype_out_gdal), nodata_val, ' '.join(co_args) if co_args else None, projstr_proj4.strip())
     )
     sys.stdout.flush()
 
     sys.stdout.write(" creating file ...")
     sys.stdout.flush()
     driver = gdal.GetDriverByName('GTiff')
-    ds_out = driver.Create(dest, shape[1], shape[0], 1, dtype_gdal, co_args)
+    ds_out = driver.Create(dest, shape[1], shape[0], 1, dtype_out_gdal, co_args)
     ds_out.SetGeoTransform(geo_trans)
     if projstr_wkt is not None:
         ds_out.SetProjection(projstr_wkt)

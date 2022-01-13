@@ -618,6 +618,8 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
 
     for rasterfile_src in src_rasters_to_reproject:
         rasterfile_dst = os.path.join(dstdir, os.path.basename(rasterfile_src))
+        rasterfile_dst_uncompressed = None
+
         if args.get(ARGSTR_ADD_RES_SUFFIX):
             rasterfile_dst_base, rasterfile_dst_ext = os.path.splitext(rasterfile_dst)
             rasterfile_dst = "{}_{}m{}".format(
@@ -625,6 +627,13 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
             )
         rasterfile_dst_res = (target_resolution if target_resolution is not None else
                               raster_io.extractRasterData(rasterfile_src, 'res'))
+
+        if rasterfile_src.endswith('dem.tif'):
+            rasterfile_dst_base, rasterfile_dst_ext = os.path.splitext(rasterfile_dst)
+            rasterfile_dst_uncompressed = "{}_uncompressed{}".format(
+                rasterfile_dst_base, rasterfile_dst_ext
+            )
+
         resample_method = None
         for suffix_key, suffix_method in SETSM_SUFFIX_KEY_TO_RESAMPLE_METHOD_LOOKUP:
             if suffix_key in rasterfile_src:
@@ -635,15 +644,31 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
                 "No suffix key in `SETSM_SUFFIX_KEY_TO_RESAMPLE_METHOD_LOOKUP` matches "
                 "source raster file: {}".format(rasterfile_src)
             )
+
+        if rasterfile_src.endswith(('ortho.tif', 'ortho2.tif')) or 'bitmask' in rasterfile_src:
+            predictor = 2
+        else:
+            predictor = 1
+
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -tap -t_srs EPSG:{2} -tr {3} {3} -r {4} {5} '
-             '-overwrite -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(
-                rasterfile_src, rasterfile_dst,
-                target_epsg, rasterfile_dst_res, resample_method,
-                '-dstnodata 1' if 'bitmask' in rasterfile_src else ''
+             '-overwrite -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR={6}'.format(
+                rasterfile_src,
+                rasterfile_dst if rasterfile_dst_uncompressed is None else rasterfile_dst_uncompressed,
+                target_epsg,
+                rasterfile_dst_res,
+                resample_method,
+                '-dstnodata 1' if 'bitmask' in rasterfile_src else '',
+                predictor,
             ))
         )
-        if 'bitmask' in rasterfile_src:
+
+        if rasterfile_src.endswith('dem.tif'):
+            commands.append(
+                ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}" --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
+                 ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW --co PREDICTOR=3'.format(rasterfile_dst_uncompressed, rasterfile_dst))
+            )
+        elif 'bitmask' in rasterfile_src:
             commands.append('gdal_edit.py -unsetnodata {}'.format(rasterfile_dst))
 
     for cmd in commands:
@@ -765,6 +790,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     ortho2File_10m     = demFile.replace(demSuffix, 'ortho2_10m.tif')
     matchFile_10m      = demFile.replace(demSuffix, 'matchtag_10m.tif')
     demFile_10m        = demFile.replace(demSuffix, 'dem_10m.tif')
+    demFile_10m_temp   = demFile.replace(demSuffix, 'dem_10m_temp.tif')
     demFile_10m_masked = demFile.replace(demSuffix, 'dem_10m_masked.tif')
     demFile_10m_shade  = demFile.replace(demSuffix, 'dem_10m_shade.tif')
     demFile_shade_mask = demFile.replace(demSuffix, 'dem_10m_shade_masked.tif')
@@ -778,6 +804,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
         output_files.update([
             maskFile_10m,
             demFile_10m,
+            demFile_10m_temp,
             demFile_10m_shade,
             demFile_shade_mask
         ])
@@ -793,6 +820,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
             orthoFile_10m,
             matchFile_10m,
             demFile_10m,
+            demFile_10m_temp,
             demFile_10m_shade,
             demFile_10m_masked,
             demFile_shade_mask,
@@ -827,12 +855,12 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     if orthoFile_10m in output_files:
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
-             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(orthoFile, orthoFile_10m, 10))
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(orthoFile, orthoFile_10m, 10))
         )
     if ortho2File_10m in output_files:
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
-             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(ortho2File, ortho2File_10m, 10))
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(ortho2File, ortho2File_10m, 10))
         )
     if matchFile_10m in output_files:
         commands.append(
@@ -842,7 +870,11 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     if demFile_10m in output_files:
         commands.append(
             ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r bilinear -dstnodata -9999'
-             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(demFile, demFile_10m, 10))
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW'.format(demFile, demFile_10m_temp, 10))
+        )
+        commands.append(
+            ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}" --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
+             ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW --co PREDICTOR=3'.format(demFile_10m_temp, demFile_10m))
         )
     if demFile_10m_shade in output_files:
         commands.append(
