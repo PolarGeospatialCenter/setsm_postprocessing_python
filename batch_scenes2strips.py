@@ -1041,6 +1041,65 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 sys.exit(1)
 
 
+        # Derive stripdemid from SETSM versions in scene metadata.
+        setsm_version_list = list()
+        group_version_list = list()
+
+        for src_demFile in src_scenedem_ffile_glob:
+            src_metaFile = src_demFile.replace(demSuffix, 'meta.txt')
+            if not os.path.isfile(src_metaFile):
+                raise FileNotFoundError("{} not found".format(src_metaFile))
+            with open(src_metaFile, 'r') as src_metaFile_fp:
+                src_metaFile_text = src_metaFile_fp.read()
+            setsm_version_list.extend(re.findall(RE_SCENEMETA_SETSM_VERSION, src_metaFile_text))
+            group_version_list.extend(re.findall(RE_SCENEMETA_GROUP_VERSION, src_metaFile_text))
+
+        if len(setsm_version_list) == 0:
+            raise MetaReadError("No matches for regex '{}' among all scene DEM meta.txt files".format(RE_SCENEMETA_SETSM_VERSION_STR))
+
+        setsm_version_list = list(set([item.split('=')[1].strip() for item in setsm_version_list]))
+        group_version_list = list(set([item.split('=')[1].strip() for item in group_version_list]))
+
+        setsm_version_list_fixed = list()
+        for ver in setsm_version_list:
+            if ver.count('.') == 1:
+                ver = "{}.0.0".format(ver.split('.')[0])
+            elif ver.count('.') != 2:
+                raise MetaReadError("Unexpected SETSM version format: '{}'".format(ver))
+            setsm_version_list_fixed.append(ver)
+
+        setsm_version_list_fixed.sort(key=StrictVersion)
+        group_version_list.sort(key=StrictVersion)
+
+        derived_group_version = setsm_version_list_fixed[0]
+        parsed_group_version = None
+        if len(group_version_list) > 0:
+            if len(group_version_list) == 1:
+                parsed_group_version = group_version_list[0]
+            else:
+                raise MetaReadError("Found more than one 'Group_version' among source "
+                                    "scene DEM meta.txt files: {}".format(group_version_list))
+
+        if parsed_group_version is not None and parsed_group_version != derived_group_version:
+            raise MetaReadError(
+                "Parsed 'Group_version' ({}) from source scene DEM meta.txt files "
+                "does not match group version ({}) derived from 'SETSM Version' meta entries: {}".format(
+                    parsed_group_version, derived_group_version, setsm_version_list
+                )
+            )
+        if parsed_group_version is not None:
+            derived_group_version = parsed_group_version
+
+        setsm_verkey = "v{:02}{:02}{:02}".format(*[int(n) for n in derived_group_version.split('.')])
+        stripdemid = "{}_{}_{}".format(
+            args.get(ARGSTR_STRIPID), res_str, setsm_verkey
+        )
+
+        print("SETSM 'group version' derived from scene DEM meta.txt files: {}".format(derived_group_version))
+        print("Strip DEM ID: {}".format(stripdemid))
+
+
+        # TODO: Reconsider naming finfile using Strip DEM ID
         stripid_fin_fname = strip_dname+'.fin'
         stripid_remergeinfo_fname = strip_dname+'_remerge.info'
         stripid_fin_ffile = os.path.join(strip_dfull, stripid_fin_fname)
@@ -1131,64 +1190,6 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             if not args.get(ARGSTR_OLD_ORG):
                 if not args.get(ARGSTR_DRYRUN):
                     os.rmdir(strip_dfull_coreg)
-
-
-        # Derive stripdemid from SETSM versions in scene metadata.
-        setsm_version_list = list()
-        group_version_list = list()
-
-        for src_demFile in src_scenedem_ffile_glob:
-            src_metaFile = src_demFile.replace(demSuffix, 'meta.txt')
-            if not os.path.isfile(src_metaFile):
-                raise FileNotFoundError("{} not found".format(src_metaFile))
-            with open(src_metaFile, 'r') as src_metaFile_fp:
-                src_metaFile_text = src_metaFile_fp.read()
-            setsm_version_list.extend(re.findall(RE_SCENEMETA_SETSM_VERSION, src_metaFile_text))
-            group_version_list.extend(re.findall(RE_SCENEMETA_GROUP_VERSION, src_metaFile_text))
-
-        if len(setsm_version_list) == 0:
-            raise MetaReadError("No matches for regex '{}' among all scene DEM meta.txt files".format(RE_SCENEMETA_SETSM_VERSION_STR))
-
-        setsm_version_list = list(set([item.split('=')[1].strip() for item in setsm_version_list]))
-        group_version_list = list(set([item.split('=')[1].strip() for item in group_version_list]))
-
-        setsm_version_list_fixed = list()
-        for ver in setsm_version_list:
-            if ver.count('.') == 1:
-                ver = "{}.0.0".format(ver.split('.')[0])
-            elif ver.count('.') != 2:
-                raise MetaReadError("Unexpected SETSM version format: '{}'".format(ver))
-            setsm_version_list_fixed.append(ver)
-
-        setsm_version_list_fixed.sort(key=StrictVersion)
-        group_version_list.sort(key=StrictVersion)
-
-        derived_group_version = setsm_version_list_fixed[0]
-        parsed_group_version = None
-        if len(group_version_list) > 0:
-            if len(group_version_list) == 1:
-                parsed_group_version = group_version_list[0]
-            else:
-                raise MetaReadError("Found more than one 'Group_version' among source "
-                                    "scene DEM meta.txt files: {}".format(group_version_list))
-
-        if parsed_group_version is not None and parsed_group_version != derived_group_version:
-            raise MetaReadError(
-                "Parsed 'Group_version' ({}) from source scene DEM meta.txt files "
-                "does not match group version ({}) derived from 'SETSM Version' meta entries: {}".format(
-                    parsed_group_version, derived_group_version, setsm_version_list
-                )
-            )
-        if parsed_group_version is not None:
-            derived_group_version = parsed_group_version
-
-        setsm_verkey = "v{:02}{:02}{:02}".format(*[int(n) for n in derived_group_version.split('.')])
-        stripdemid = "{}_{}_{}".format(
-            args.get(ARGSTR_STRIPID), res_str, setsm_verkey
-        )
-
-        print("SETSM 'group version' derived from scene DEM meta.txt files: {}".format(derived_group_version))
-        print("Strip DEM ID: {}".format(stripdemid))
 
 
         print('')
