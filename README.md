@@ -288,7 +288,7 @@ radiance value range: 7.00 to 331.54
 20/80 percentile elevation difference: 986.9, sigma-z threshold: 50.0
 /mnt/usr/ehusby/scratch/repos/setsm_postprocessing_python/lib/filter_scene.py:1447: RuntimeWarning: invalid value encountered in greater
   mask_stdev = (dem_data & (stdev_elev_array > stdev_thresh))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P001_501591395050_01_P001_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 Filtering 2 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P002_501591395050_01_P001_2_dem.tif
 ...
 ```
@@ -299,7 +299,7 @@ Filtering 15 of 15: /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_
 rescaled to: 0 to 2047.0
 radiance value range: -3.92 to 337.13
 20/80 percentile elevation difference: 386.5, sigma-z threshold: 50.0
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/tif_results/2m/WV01_20170717_102001006264A100_1020010066A25800_501591396070_01_P008_501591395050_01_P008_2_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 
 All *_bitmask.tif scene masks have been created in source scene directory
 
@@ -357,14 +357,14 @@ out             40                      122283.36                       54323164
 -----------------------------------------------------
 change  -25.93%                 -0.00%                  -0.00%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /mnt/usr/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:462: UserWarning: NumPy array data type (bool) does not have equivalent GDAL data type and is not supported, but can be safely promoted to uint8
   "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /mnt/usr/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:669: UserWarning: Input array NumPy data type (uint16) differs from output NumPy data type (int16)
   "NumPy data type ({})".format(dtype_in, dtype_out(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ```
 Notice that the first strip segment break occurs due to a final RMSE value from the coregistration step that is greater than the allowed maximum RMSE as specified by the script argument `--rmse-cutoff`.
 ```
@@ -395,7 +395,7 @@ out             44                      34723.44                        80320557
 -----------------------------------------------------
 change  -29.03%                 -0.00%                  -0.01%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ...
 ```
 Another segment break occurs soon after the first, resulting in a total of three strip segments created for the whole overlap area of stereo collections referenced by strip-pair ID WV01_20170717_102001006264A100_1020010066A25800.
@@ -413,14 +413,14 @@ out             19                      26046.54                        25045397
 -----------------------------------------------------
 change  -24.00%                 -0.00%                  -0.01%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /mnt/usr/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:462: UserWarning: NumPy array data type (bool) does not have equivalent GDAL data type and is not supported, but can be safely promoted to uint8
   "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /mnt/usr/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:669: UserWarning: Input array NumPy data type (uint16) differs from output NumPy data type (int16)
   "NumPy data type ({})".format(dtype_in, dtype_out(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 
 Completed processing for this strip-pair ID
 .fin finished indicator file created: /home/ehusby/scratch/data/setsm_results/strips/2m/WV01_20170717_102001006264A100_1020010066A25800_2m.fin
@@ -551,7 +551,7 @@ out             41                      122307.26                       54324640
 -----------------------------------------------------
 change  -29.31%                 -0.00%                  -0.00%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg1_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ...
 ```
 Notice this run of the program knew to use only the first 13 scenes when building the first strip segment. This is because the strip segmentation and per-segment scene composition is already spelled out in the *meta.txt* files found in the provided `--meta-trans-dir` folder. This structure for the output strip results must be followed exactly during this run of the program for the old translation values parsed from the *meta.txt* files to be utilized. As mentioned in the "Commentary on script arguments" section above concerning the `--meta-trans-dir` argument, if a segment break occurs in this run where it did not occur in the previous run from which the *meta.txt* files originated, the program will fall back to running as if the argument was never provided for all remaining segments that will be created for this strip-pair ID.
@@ -568,7 +568,7 @@ out             43                      34768.93                        80528941
 -----------------------------------------------------
 change  -31.75%                 -0.00%                  -0.01%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg2_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 ...
 ```
 ```
@@ -584,14 +584,14 @@ out             19                      26049.50                        25051461
 -----------------------------------------------------
 change  -26.92%                 -0.00%                  -0.01%
 
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_dem.tif ... GDAL data type: Float32, NoData value: -9999, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /mnt/usr/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:462: UserWarning: NumPy array data type (bool) does not have equivalent GDAL data type and is not supported, but can be safely promoted to uint8
   "supported, but can be safely promoted to {}".format(dtype_np, promote_dtype(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_matchtag.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 /mnt/usr/ehusby/scratch/repos/setsm_postprocessing_python/lib/raster_array_tools.py:669: UserWarning: Input array NumPy data type (uint16) differs from output NumPy data type (int16)
   "NumPy data type ({})".format(dtype_in, dtype_out(1).dtype))
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
-Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=IF_SAFER COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_ortho.tif ... GDAL data type: Int16, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
+Saving Geotiff /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_seg3_2m_bitmask.tif ... GDAL data type: Byte, NoData value: 0, Creation Options: BIGTIFF=YES COMPRESS=LZW TILED=YES, Projection (Proj4): +proj=utm +zone=39 +south +datum=WGS84 +units=m +no_defs ... creating file ... writing array values ... finishing file ... done!
 
 Completed processing for this strip-pair ID
 .fin finished indicator file created: /home/ehusby/scratch/data/setsm_results/strips/2m_filt001/WV01_20170717_102001006264A100_1020010066A25800_2m.fin

@@ -670,7 +670,7 @@ def saveArrayAsTiff(array, dest,
         Geotiff driver that instantiates the output raster dataset.
         If 'compress', the following default arguments are used:
           'TILED=YES'
-          'BIGTIFF=IF_SAFER'
+          'BIGTIFF=YES'
           'COMPRESS=LZW'
           'PREDICTOR=X' (where `X` is automatically derived from input and
                          output array data types)
@@ -841,7 +841,7 @@ def saveArrayAsTiff(array, dest,
     if co_args == 'compress':
         co_args = []
         co_args.extend(['TILED=YES'])         # Force creation of tiled TIFF files.
-        co_args.extend(['BIGTIFF=IF_SAFER'])  # Will create BigTIFF
+        co_args.extend(['BIGTIFF=YES'])       # Will create BigTIFF
                                               # if the resulting file *might* exceed 4GB.
         co_args.extend(['COMPRESS=LZW'])      # Do LZW compression on output image.
         co_args.extend(['PREDICTOR={}'.format(compress_predictor)])
