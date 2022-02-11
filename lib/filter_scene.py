@@ -340,7 +340,7 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
             print("Resizing mask array {} to native image size {}".format(mask.shape, image_shape))
             mask = rat.imresize(mask, image_shape, 'nearest', method=('pil' if use_pil_imresize else 'cv2'))
 
-        rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=0, dtype_out=mask_dtype, nbits=nbits, co_predictor=1)
+        rat.saveArrayAsTiff(mask, maskFile, like_raster=demFile, nodata_val=1, dtype_out=mask_dtype, nbits=nbits, co_predictor=1)
 
         del mask
 
