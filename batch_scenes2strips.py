@@ -170,7 +170,7 @@ DEM_TYPE_SUFFIX_DICT = {
     ARGCHO_DEM_TYPE_NON_LSF: 'dem.tif'
 }
 
-RE_STRIPID_STR = "(^[A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$"
+RE_STRIPID_STR = "^(?:SETSM_s2s[0-9]{3}_)?([A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$"
 RE_STRIPID = re.compile(RE_STRIPID_STR)
 RE_STRIPFNAME_SEGNUM = re.compile("_seg(\d+)_", re.I)
 RE_SCENEMETA_SETSM_VERSION_STR = "^setsm[ _]version=.*$"
@@ -831,7 +831,7 @@ def main():
                 ))
                 dst_sID_ffile_glob = glob.glob(os.path.join(
                     strip_dfull,
-                    '{}_{}{}_*'.format(
+                    '*{}_{}{}_*'.format(
                         sID,
                         res_str,
                         '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
@@ -1115,7 +1115,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         if os.path.isfile(stripid_fin_ffile) and not args.get(ARGSTR_REBUILD_AUX):
             print("{} .fin file exists, strip output finished, skipping".format(stripid_fin_ffile))
             sys.exit(0)
-        dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, args.get(ARGSTR_STRIPID)+'*'))
+        dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, '*'+args.get(ARGSTR_STRIPID)+'*'))
         if len(dstdir_stripFiles) > 0:
             if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
                 print("Strip output exists (potentially unfinished), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
@@ -1259,7 +1259,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 all_data_masked = False
 
                 # Determine output strip segment DEM file paths.
-                stripdem_fname = "{}_{}{}_seg{}_{}".format(
+                stripdem_fname = "SETSM_s2s{:0>3}_{}_{}{}_seg{}_{}".format(
+                    str(SCRIPT_VERSION_NUM).replace('.', ''),
                     args.get(ARGSTR_STRIPID),
                     res_str,
                     '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
