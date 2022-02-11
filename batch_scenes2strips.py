@@ -1403,7 +1403,7 @@ def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
     if O2 is not None:
         saveArrayAsTiff(O2, strip_ortho2File, X, Y, spat_ref, nodata_val=0, dtype_out='int16',   co_predictor=2)
         del O2
-    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=None,    dtype_out='uint8',   co_predictor=1)
+    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=1,       dtype_out='uint8',   co_predictor=1)
     del MD
 
 
