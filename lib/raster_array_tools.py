@@ -616,7 +616,8 @@ def interp_str2gdal(interp_str):
 
 def saveArrayAsTiff(array, dest,
                     X=None, Y=None, proj_ref=None, geotrans_rot_tup=(0, 0),
-                    nodata_val='like_raster', dtype_out=None, nbits=None, co_args='compress',
+                    nodata_val='like_raster', dtype_out=None, nbits=None,
+                    co_args='compress', co_predictor=None,
                     like_raster=None):
     """
     Save a NumPy 2D array as a single-band raster image in GeoTiff format.
@@ -677,6 +678,10 @@ def saveArrayAsTiff(array, dest,
         The 'NBITS=X' argument may not be used -- that is set by the `nbits`
         argument for this function.
         A list of Creation Option arguments may be found here: [1].
+    co_predictor : None, or int in range [1,3]
+        GeoTIFF Creation Option PREDICTOR value to override the default that
+        would be automatically set when `co_args` is 'compress'.
+        Has no effect if `co_args` is not 'compress'.
     like_raster : None, str (file path), or osgeo.gdal.Dataset
         File path or GDAL dataset for a raster image of identical dimensions,
         geographic location/extent, spatial reference, and nodata value as
@@ -823,14 +828,17 @@ def saveArrayAsTiff(array, dest,
         dtype_out_gdal = dtype_in_gdal
 
     if co_args == 'compress':
-        compress_predictor = 1
-        if dtype_in_general == 'bool':
+        if co_predictor is not None:
+            compress_predictor = co_predictor
+        elif dtype_in_general == 'bool':
             compress_predictor = 1
         elif dtype_out_general == 'int':
         # elif dtype_out_general == 'int' or dtype_in_general == 'int':
             compress_predictor = 2
         elif dtype_out_general == 'float':
             compress_predictor = 3
+        else:
+            compress_predictor = 1
 
     sys.stdout.write("Saving Geotiff {} ...".format(dest))
     sys.stdout.flush()
@@ -845,6 +853,8 @@ def saveArrayAsTiff(array, dest,
                                               # if the resulting file *might* exceed 4GB.
         co_args.extend(['COMPRESS=LZW'])      # Do LZW compression on output image.
         co_args.extend(['PREDICTOR={}'.format(compress_predictor)])
+        # co_args.extend(['BLOCKXSIZE=256'])
+        # co_args.extend(['BLOCKYSIZE=256'])
     if dtype_is_nbits:
         co_args.extend(['NBITS={}'.format(nbits)])
 
