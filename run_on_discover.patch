@@ -33,7 +33,7 @@ index f29836b..36e8917 100755
  # Set default environment load command for all batch scripts (fallback if no specific script setting)
  #default_env_load_cmd="source /mnt/pgc/data/scratch/erik/installed/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/installed/build/miniconda3/envs/s2s"
  #default_env_load_cmd="source /home/husby036/installed/build/miniconda3/bin/activate /home/husby036/installed/build/miniconda3/envs/s2s"
-+default_env_load_cmd="set +u; source /discover/nobackup/projects/sacs_tucker/sw/etc/gdal-v3.3.1.sh; set -u"
++default_env_load_cmd="set +u; source /discover/nobackup/projects/sacsDB/sw/etc/gdal-v3.4.0.sh; set -u"
 
  # Set environment load commands specific to batch scripts
  if [ "$job_class" == "s2s" ]; then
