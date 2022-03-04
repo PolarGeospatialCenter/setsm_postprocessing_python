@@ -803,7 +803,7 @@ def main():
         args_single = copy.deepcopy(args)
         args_single.unset(*ARGGRP_BATCH)
 
-        gen_job_node = script_utils.loop_items(JOB_NODE) if type(JOB_NODE) is list else None
+        gen_job_node = script_utils.yield_loop(JOB_NODE) if type(JOB_NODE) is list else None
 
         job_num = 0
         num_jobs = len(stripids_to_process)

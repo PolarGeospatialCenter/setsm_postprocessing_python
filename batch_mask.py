@@ -718,7 +718,7 @@ def main():
         if not args.provided(ARGSTR_MASK_SUFFIX):
             args_single.unset(ARGSTR_MASK_SUFFIX)
 
-        gen_job_node = script_utils.loop_items(JOB_NODE) if type(JOB_NODE) is list else None
+        gen_job_node = script_utils.yield_loop(JOB_NODE) if type(JOB_NODE) is list else None
 
         job_num = 0
         num_jobs = len(src_files)
