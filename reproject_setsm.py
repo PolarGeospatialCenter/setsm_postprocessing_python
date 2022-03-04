@@ -116,7 +116,7 @@ BUILD_STRIP_AUX_CORE_STRIP_SUFFIXES = [
 ]
 
 RE_UTM_PROJNAME = re.compile("\Autm\d+[ns]\Z")
-RE_SHELVED_STRIP = re.compile("\A.*/(?:strips_v4|strips)/2m/")
+RE_SHELVED_STRIP = re.compile("\A.*/(?:strips|strips_v4[^/]*)/2m/")
 
 DRE_STRIPMETAFILE = demregex.StripSegmentFile(suffix='_meta.txt')
 
@@ -391,25 +391,31 @@ def main():
         task_dstdir = dstdir
         task_target_epsg = target_epsg
 
-        if type(task) is list:
+        if type(task) is not list:
+            task_metafile_src = task
+        else:
             if len(task) == 2:
                 task_metafile_src, task_dstdir = task
             elif len(task) == 3:
                 task_metafile_src, task_dstdir, task_target_epsg = task
                 task_target_epsg = int(task_target_epsg)
-                if task_dstdir in ('psn', 'pss') or re.match(RE_UTM_PROJNAME, task_dstdir) is not None:
-                    if dstdir is not None:
-                        task_dstdir = os.path.join(dstdir, task_dstdir)
-                    else:
-                        shelved_strip_match = re.search(RE_SHELVED_STRIP, task_metafile_src)
-                        if shelved_strip_match is not None:
-                            strips_res_dir = shelved_strip_match.group(0)
-                            task_dstdir = "{}_{}".format(strips_res_dir.rstrip('/'), task_dstdir)
             else:
                 arg_parser.error("Source task list can only have up to three columns: "
                                  "src_metafile, dstdir, target_epsg")
-        else:
-            task_metafile_src = task
+
+            if task_dstdir in ('psn', 'pss') or re.match(RE_UTM_PROJNAME, task_dstdir) is not None:
+                resolved_dstdir = False
+                if dstdir is not None:
+                    task_dstdir = os.path.join(dstdir, task_dstdir)
+                    resolved_dstdir = True
+                else:
+                    shelved_strip_match = re.search(RE_SHELVED_STRIP, task_metafile_src)
+                    if shelved_strip_match is not None:
+                        strips_res_dir = shelved_strip_match.group(0)
+                        task_dstdir = "{}_{}".format(strips_res_dir.rstrip('/'), task_dstdir)
+                        resolved_dstdir = True
+                if not resolved_dstdir:
+                    task_dstdir = None
 
         task = [task_metafile_src, task_dstdir, task_target_epsg]
 
@@ -520,7 +526,7 @@ def main():
 
                 task_metafile_src, task_dstdir, task_target_epsg = task
 
-                print("Reproject ({}/{}): {}".format(i+1, num_tasks, task_metafile_src))
+                print("\nReproject ({}/{}): {}".format(i+1, num_tasks, task_metafile_src))
                 # if not args.get(ARGSTR_DRYRUN):
                 reproject_setsm(task_metafile_src, task_dstdir, task_target_epsg, args=args)
 
@@ -647,7 +653,7 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
                 "source raster file: {}".format(rasterfile_src)
             )
 
-        if rasterfile_src.endswith(('ortho.tif', 'ortho2.tif')) or 'bitmask' in rasterfile_src:
+        if rasterfile_src.endswith(('ortho.tif', 'ortho2.tif')):
             predictor = 2
         else:
             predictor = 1
