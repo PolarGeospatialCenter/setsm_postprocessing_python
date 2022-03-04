@@ -531,33 +531,70 @@ Pairname.restr = Pairname.get_regex()
 Pairname.recmp = re.compile(Pairname.restr)
 
 
-# class Pairname(Regex):
-#     regrp_sensor = 'sensor'
-#     regrp_timestamp = 'timestamp'
-#     regrp_catid1 = 'catid1'
-#     regrp_catid2 = 'catid2'
-#     restr = r"(?P<%s>[A-Z0-9]{{4}})_(?P<%s>\d{{8}})_(?P<%s>{0})_(?P<%s>{0})".format(RECMP_CATALOGID.pattern)
-#     restr = restr % (regrp_sensor, regrp_timestamp, regrp_catid1, regrp_catid2)
-#     recmp = re.compile(restr)
-#     def __init__(self, string_or_match=None, re_function=RE_FULLMATCH_FN, **re_function_kwargs):
-#         super(Pairname, self).__init__(string_or_match, re_function, **re_function_kwargs)
-#     def _populate_match(self, re_match):
-#         super(Pairname, self)._populate_match(re_match)
-#         if self.matched:
-#             self.pairname   = self.match_str
-#             self.sensor     = self.groupdict[Pairname.regrp_sensor]
-#             self.timestamp  = self.groupdict[Pairname.regrp_timestamp]
-#             self.catid1     = self.groupdict[Pairname.regrp_catid1]
-#             self.catid2     = self.groupdict[Pairname.regrp_catid2]
-#             self.catids     = [self.catid1, self.catid2]
-#     def _reset_match_attributes(self):
-#         super(Pairname, self)._reset_match_attributes()
-#         self.pairname   = None
-#         self.sensor     = None
-#         self.timestamp  = None
-#         self.catid1     = None
-#         self.catid2     = None
-#         self.catids     = None
+class StripDemID(Regex):
+    regrp_pairname = 'pairname'
+    regrp_res = 'res'
+    regrp_verkey = 'verkey'
+    restr = r"(?P<%s>{0})_(?P<%s>{1})_(?P<%s>{2})" % (
+        regrp_pairname, regrp_res, regrp_verkey
+    )
+    restr = restr.format(Pairname.recmp.pattern, DemResName.recmp.pattern, SetsmVersionKey.recmp.pattern)
+    recmp = re.compile(restr)
+    def __init__(self, string_or_match=None, re_function=RE_FULLMATCH_FN, **re_function_kwargs):
+        super(StripDemID, self).__init__(string_or_match, re_function, **re_function_kwargs)
+    def _populate_match(self, re_match):
+        super(StripDemID, self)._populate_match(re_match)
+        if self.matched:
+            self.stripDemID = self.match_str
+            self.pairname   = self.groupdict[StripDemID.regrp_pairname]
+            self.Pairname   = Pairname(self.re_match)
+            self.res        = self.groupdict[StripDemID.regrp_res]
+            self.DemRes     = DemRes(self.res)
+            self.verkey     = self.groupdict[StripDemFolder.regrp_verkey]
+            self.Verkey     = SetsmVersionKey(self.re_match)
+            self.version    = self.Verkey.version
+    def _reset_match_attributes(self):
+        super(StripDemID, self)._reset_match_attributes()
+        self.stripDemID = None
+        self.pairname   = None
+        self.Pairname   = None
+        self.res        = None
+        self.DemRes     = None
+        self.version    = None
+        self.Verkey     = None
+        self.version    = None
+
+
+class StripDemFolder(Regex):
+    regrp_pairname = 'pairname'
+    regrp_res = 'res'
+    regrp_lsf = 'lsf'
+    regrp_verkey = 'verkey'
+    restr = r"(?P<%s>{0})_(?P<%s>{1})(?:_(?P<%s>lsf))?_(?P<%s>{2})" % (
+        regrp_pairname, regrp_res, regrp_lsf, regrp_verkey
+    )
+    restr = restr.format(Pairname.recmp.pattern, DemResName.recmp.pattern, SetsmVersionKey.recmp.pattern)
+    recmp = re.compile(restr)
+    def __init__(self, string_or_match=None, re_function=RE_FULLMATCH_FN, **re_function_kwargs):
+        super(StripDemFolder, self).__init__(string_or_match, re_function, **re_function_kwargs)
+    def _populate_match(self, re_match):
+        super(StripDemFolder, self)._populate_match(re_match)
+        if self.matched:
+            self.StripDemFolder = self
+            self.stripDemFolder = self.match_str
+            self.StripDemID     = StripDemID.construct(
+                pairname=self.groupdict[StripDemFolder.regrp_pairname],
+                res     =self.groupdict[StripDemFolder.regrp_res],
+                version =self.groupdict[StripDemFolder.regrp_verkey]
+            )
+            self.lsf            = self.groupdict[StripDemFolder.regrp_lsf]
+
+    def _reset_match_attributes(self):
+        super(StripDemFolder, self)._reset_match_attributes()
+        self.StripDemFolder = None
+        self.stripDemFolder = None
+        self.StripDemID     = None
+        self.lsf            = None
 
 
 class SceneDemOverlapID(Regex):
