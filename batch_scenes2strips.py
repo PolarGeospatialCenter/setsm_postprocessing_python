@@ -1730,7 +1730,9 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
 
     for cmd in commands:
         print(cmd)
-        script_utils.exec_cmd(cmd)
+        rc, _, _ = script_utils.exec_cmd(cmd)
+        if rc != 0:
+            raise ExternalError("External program call finished with non-zero exit status ({})".format(rc))
 
     for outfile in output_files:
         if not os.path.isfile(outfile):
