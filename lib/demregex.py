@@ -657,13 +657,18 @@ class SceneDemID(Regex):
 
 
 class StripSegmentID(Regex):
+    regrp_algorithm = 'algorithm'
+    regrp_s2s_ver = 's2s_ver'
     regrp_pairname = 'pairname'
     regrp_res = 'res'
     regrp_lsf = 'lsf'
     regrp_segnum = 'segnum'
-    restr = r"(?P<%s>{0})_(?P<%s>{1})(?:_(?P<%s>lsf))?_seg(?P<%s>\d+)" % (
-        regrp_pairname, regrp_res, regrp_lsf, regrp_segnum
-    )
+    restr = ''.join([
+        r"(?P<%s>SETSM)_(?P<%s>s2s\d{{3}})_" % (regrp_algorithm, regrp_s2s_ver),
+        r"(?P<%s>{0})_(?P<%s>{1})(?:_(?P<%s>lsf))?_seg(?P<%s>\d+)" % (
+            regrp_pairname, regrp_res, regrp_lsf, regrp_segnum
+        )
+    ])
     restr = restr.format(Pairname.recmp.pattern, DemResName.recmp.pattern)
     recmp = re.compile(restr)
     def __init__(self, string_or_match=None, re_function=RE_FULLMATCH_FN, **re_function_kwargs):
@@ -673,6 +678,8 @@ class StripSegmentID(Regex):
         if self.matched:
             self.StripSegmentID = self
             self.stripSegmentID = self.match_str
+            self.algorithm      = self.groupdict[StripSegmentID.regrp_algorithm]
+            self.s2s_ver        = self.groupdict[StripSegmentID.regrp_s2s_ver]
             self.pairname       = self.groupdict[StripSegmentID.regrp_pairname]
             self.Pairname       = Pairname(self.re_match)
             self.res            = self.groupdict[StripSegmentID.regrp_res]
@@ -683,6 +690,8 @@ class StripSegmentID(Regex):
         super(StripSegmentID, self)._reset_match_attributes()
         self.StripSegmentID = None
         self.stripSegmentID = None
+        self.algorithm      = None
+        self.s2s_ver        = None
         self.pairname       = None
         self.Pairname       = None
         self.res            = None
@@ -691,71 +700,71 @@ class StripSegmentID(Regex):
         self.segnum         = None
 
 
-class StripDemID(Regex):
-    regrp_pairname = 'pairname'
-    regrp_res = 'res'
-    regrp_verkey = 'verkey'
-    restr = r"(?P<%s>{0})_(?P<%s>{1})_(?P<%s>{2})" % (
-        regrp_pairname, regrp_res, regrp_verkey
-    )
-    restr = restr.format(Pairname.recmp.pattern, DemResName.recmp.pattern, SetsmVersionKey.recmp.pattern)
-    recmp = re.compile(restr)
-    def __init__(self, string_or_match=None, re_function=RE_FULLMATCH_FN, **re_function_kwargs):
-        super(StripDemID, self).__init__(string_or_match, re_function, **re_function_kwargs)
-    def _populate_match(self, re_match):
-        super(StripDemID, self)._populate_match(re_match)
-        if self.matched:
-            self.stripDemID = self.match_str
-            self.pairname   = self.groupdict[StripDemID.regrp_pairname]
-            self.Pairname   = Pairname(self.re_match)
-            self.res        = self.groupdict[StripDemID.regrp_res]
-            self.DemRes     = DemRes(self.res)
-            self.verkey     = self.groupdict[StripDemFolder.regrp_verkey]
-            self.Verkey     = SetsmVersionKey(self.re_match)
-            self.version    = self.Verkey.version
-    def _reset_match_attributes(self):
-        super(StripDemID, self)._reset_match_attributes()
-        self.stripDemID = None
-        self.pairname   = None
-        self.Pairname   = None
-        self.res        = None
-        self.DemRes     = None
-        self.version    = None
-        self.Verkey     = None
-        self.version    = None
-
-
-class StripDemFolder(Regex):
-    regrp_pairname = 'pairname'
-    regrp_res = 'res'
-    regrp_lsf = 'lsf'
-    regrp_verkey = 'verkey'
-    restr = r"(?P<%s>{0})_(?P<%s>{1})(?:_(?P<%s>lsf))?_(?P<%s>{2})" % (
-        regrp_pairname, regrp_res, regrp_lsf, regrp_verkey
-    )
-    restr = restr.format(Pairname.recmp.pattern, DemResName.recmp.pattern, SetsmVersionKey.recmp.pattern)
-    recmp = re.compile(restr)
-    def __init__(self, string_or_match=None, re_function=RE_FULLMATCH_FN, **re_function_kwargs):
-        super(StripDemFolder, self).__init__(string_or_match, re_function, **re_function_kwargs)
-    def _populate_match(self, re_match):
-        super(StripDemFolder, self)._populate_match(re_match)
-        if self.matched:
-            self.StripDemFolder = self
-            self.stripDemFolder = self.match_str
-            self.StripDemID     = StripDemID.construct(
-                pairname=self.groupdict[StripDemFolder.regrp_pairname],
-                res     =self.groupdict[StripDemFolder.regrp_res],
-                version =self.groupdict[StripDemFolder.regrp_verkey]
+class StripSegmentFile(Regex):
+    regrp_stripsegmentid = 'stripsegmentid'
+    regrp_suffix, recmp_suffix = 'suffix', re.compile("_.+")
+    @staticmethod
+    def construct(stripsegmentid=None, suffix=None,
+                  validate=True, return_regex=False):
+        skip_inspection = False
+        if all([stripsegmentid, suffix]):
+            if not validate:
+                skip_inspection = True
+        elif not return_regex:
+            raise InvalidArgumentError(
+                "All regex group values must be provided when `return_regex=False`"
             )
-            self.lsf            = self.groupdict[StripDemFolder.regrp_lsf]
-
+        regrp_setting_dict = OrderedDict([
+            (StripSegmentFile.regrp_stripsegmentid, [stripsegmentid,    StripSegmentID.recmp]),
+            (StripSegmentFile.regrp_suffix,         [suffix, StripSegmentFile.recmp_suffix]),
+        ])
+        if not skip_inspection:
+            try:
+                for regrp, setting in regrp_setting_dict.items():
+                    arg_string, default_recmp = setting
+                    if arg_string is None:
+                        setting[0] = default_recmp.pattern
+                    elif validate and not RE_FULLMATCH_FN(default_recmp, arg_string):
+                        raise RegexConstructionFailure(regrp, arg_string, default_recmp.pattern)
+            except RegexConstructionFailure:
+                if not return_regex:
+                    return None
+                else:
+                    raise
+        if return_regex:
+            full_restr = ''.join([
+                "(?P<{}>{})".format(regrp, setting[0])
+                for regrp, setting in regrp_setting_dict.items()
+            ])
+            return full_restr
+        else:
+            full_string = ''.join([setting[0] for setting in regrp_setting_dict.values()])
+            return full_string
+    @staticmethod
+    def get_regex(stripsegmentid=None, suffix=None, validate=True):
+        return StripSegmentFile.construct(stripsegmentid, suffix, validate, True)
+    def __init__(self, string_or_match=None, re_function=RE_FULLMATCH_FN,
+                 stripsegmentid=None,
+                 suffix=None,
+                 **re_function_kwargs):
+        if any([stripsegmentid, suffix]):
+            self.restr = self.get_regex(stripsegmentid, suffix)
+            self.recmp = re.compile(self.restr)
+        super(StripSegmentFile, self).__init__(string_or_match, re_function, **re_function_kwargs)
+    def _populate_match(self, re_match):
+        super(StripSegmentFile, self)._populate_match(re_match)
+        if self.matched:
+            self.StripSegmentFile = self
+            self.stripsegmentfile = self.match_str
+            self.stripsegmentid   = self.groupdict[StripSegmentFile.regrp_stripsegmentid]
+            self.StripSegmentID   = StripSegmentID(self.re_match)
+            self.suffix           = self.groupdict[StripSegmentFile.regrp_suffix]
     def _reset_match_attributes(self):
-        super(StripDemFolder, self)._reset_match_attributes()
-        self.StripDemFolder = None
-        self.stripDemFolder = None
-        self.StripDemID     = None
-        self.lsf            = None
-
-
-
-
+        super(StripSegmentFile, self)._reset_match_attributes()
+        self.StripSegmentFile = None
+        self.stripsegmentfile = None
+        self.stripsegmentid   = None
+        self.StripSegmentID   = None
+        self.suffix           = None
+StripSegmentFile.restr = StripSegmentFile.get_regex()
+StripSegmentFile.recmp = re.compile(StripSegmentFile.restr)

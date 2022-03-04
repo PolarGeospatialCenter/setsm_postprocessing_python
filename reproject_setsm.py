@@ -118,6 +118,8 @@ BUILD_STRIP_AUX_CORE_STRIP_SUFFIXES = [
 RE_UTM_PROJNAME = re.compile("\Autm\d+[ns]\Z")
 RE_SHELVED_STRIP = re.compile("\A.*/(?:strips_v4|strips)/2m/")
 
+DRE_STRIPMETAFILE = demregex.StripSegmentFile(suffix='_meta.txt')
+
 logger = logging.getLogger("logger")
 logger.setLevel(logging.INFO)
 lso = logging.StreamHandler(sys.stdout)
@@ -582,7 +584,7 @@ def get_task_dstdir(src_metafile, dstdir):
 
 def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resolution=None, args=None):
 
-    src_is_strip_metafile = demregex.StripDemFile(os.path.basename(src_metafile)).match().matched
+    src_is_strip_metafile = DRE_STRIPMETAFILE.fullmatch(os.path.basename(src_metafile)).matched
     normal_strip_output = (target_resolution in (None, 2) and not args.get(ARGSTR_ADD_RES_SUFFIX))
 
     if args is None and any([a is None for a in [dstdir, target_epsg]]):
