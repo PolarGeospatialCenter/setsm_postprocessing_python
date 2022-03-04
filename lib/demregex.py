@@ -447,7 +447,7 @@ class DemRes(object):
 
 RECMP_CATALOGID = re.compile("[0-9A-F]{16}")
 RECMP_ORDERNUM = re.compile("\d{12}_\d{2}")
-RECMP_TILENUM = re.compile("R\d+C\d+-")
+RECMP_TILENUM = re.compile("R\d+C\d+")
 RECMP_PARTNUM = re.compile("P\d{3}")
 
 
@@ -564,14 +564,16 @@ class SceneDemOverlapID(Regex):
     regrp_pairname = 'pairname'
     regrp_tile1 = 'tile1'
     regrp_tile2 = 'tile2'
-    regrp_order1 = 'order1'
-    regrp_order2 = 'order2'
-    regrp_part1 = 'part1'
-    regrp_part2 = 'part2'
+    regrp_orderid1 = 'orderid1'
+    regrp_orderid2 = 'orderid2'
+    regrp_ordernum1 = 'ordernum1'
+    regrp_ordernum2 = 'ordernum2'
+    regrp_partnum1 = 'partnum1'
+    regrp_partnum2 = 'partnum2'
     restr = ''.join([
         r"(?P<%s>{0})_" % regrp_pairname,
-        r"(?P<%s>{1})?(?P<%s>{2})_(?P<%s>{3})_" % (regrp_tile1, regrp_order1, regrp_part1),
-        r"(?P<%s>{1})?(?P<%s>{2})_(?P<%s>{3})"  % (regrp_tile2, regrp_order2, regrp_part2),
+        r"(?:(?P<%s>{1})-)?(?P<%s>(?P<%s>{2})_(?P<%s>{3}))_" % (regrp_tile1, regrp_orderid1, regrp_ordernum1, regrp_partnum1),
+        r"(?:(?P<%s>{1})-)?(?P<%s>(?P<%s>{2})_(?P<%s>{3}))"  % (regrp_tile2, regrp_orderid2, regrp_ordernum2, regrp_partnum2),
     ])
     restr = restr.format(Pairname.recmp.pattern, RECMP_TILENUM.pattern, RECMP_ORDERNUM.pattern, RECMP_PARTNUM.pattern)
     recmp = re.compile(restr)
@@ -585,12 +587,15 @@ class SceneDemOverlapID(Regex):
             self.pairname          = self.groupdict[SceneDemOverlapID.regrp_pairname]
             self.Pairname          = Pairname(self.re_match)
             self.tile1             = self.groupdict[SceneDemOverlapID.regrp_tile1]
-            self.order1            = self.groupdict[SceneDemOverlapID.regrp_order1]
-            self.part1             = self.groupdict[SceneDemOverlapID.regrp_part1]
+            self.orderid1          = self.groupdict[SceneDemOverlapID.regrp_orderid1]
+            self.ordernum1         = self.groupdict[SceneDemOverlapID.regrp_ordernum1]
+            self.partnum1          = self.groupdict[SceneDemOverlapID.regrp_partnum1]
             self.tile2             = self.groupdict[SceneDemOverlapID.regrp_tile2]
-            self.order2            = self.groupdict[SceneDemOverlapID.regrp_order2]
-            self.part2             = self.groupdict[SceneDemOverlapID.regrp_part2]
-            self.orders            = [self.order1, self.order2]
+            self.orderid2          = self.groupdict[SceneDemOverlapID.regrp_orderid2]
+            self.ordernum2         = self.groupdict[SceneDemOverlapID.regrp_ordernum2]
+            self.partnum2          = self.groupdict[SceneDemOverlapID.regrp_partnum2]
+            self.orderids          = [self.orderid1,  self.orderid2]
+            self.ordernums         = [self.ordernum1, self.ordernum2]
     def _reset_match_attributes(self):
         super(SceneDemOverlapID, self)._reset_match_attributes()
         self.SceneDemOverlapID = None
@@ -598,12 +603,15 @@ class SceneDemOverlapID(Regex):
         self.pairname          = None
         self.Pairname          = None
         self.tile1             = None
-        self.order1            = None
-        self.part1             = None
+        self.orderid1          = None
+        self.ordernum1         = None
+        self.partnum1          = None
         self.tile2             = None
-        self.order2            = None
-        self.part2             = None
-        self.orders            = None
+        self.orderid2          = None
+        self.ordernum2         = None
+        self.partnum2          = None
+        self.orderids          = None
+        self.ordernums         = None
 
 
 class SceneDemID(Regex):
@@ -628,15 +636,18 @@ class SceneDemID(Regex):
             self.pairname          = self.groupdict[SceneDemOverlapID.regrp_pairname]
             self.Pairname          = Pairname(self.re_match)
             self.tile1             = self.groupdict[SceneDemOverlapID.regrp_tile1]
-            self.order1            = self.groupdict[SceneDemOverlapID.regrp_order1]
-            self.part1             = self.groupdict[SceneDemOverlapID.regrp_part1]
+            self.orderid1          = self.groupdict[SceneDemOverlapID.regrp_orderid1]
+            self.ordernum1         = self.groupdict[SceneDemOverlapID.regrp_ordernum1]
+            self.partnum1          = self.groupdict[SceneDemOverlapID.regrp_partnum1]
             self.tile2             = self.groupdict[SceneDemOverlapID.regrp_tile2]
-            self.order2            = self.groupdict[SceneDemOverlapID.regrp_order2]
-            self.part2             = self.groupdict[SceneDemOverlapID.regrp_part2]
+            self.orderid2          = self.groupdict[SceneDemOverlapID.regrp_orderid2]
+            self.ordernum2         = self.groupdict[SceneDemOverlapID.regrp_ordernum2]
+            self.partnum2          = self.groupdict[SceneDemOverlapID.regrp_partnum2]
             self.res               = self.groupdict[SceneDemID.regrp_res]
             self.DemRes            = DemRes(self.res)
             self.subtile           = self.groupdict[SceneDemID.regrp_subtile]
-            self.orders            = [self.order1, self.order2]
+            self.orderids          = [self.orderid1,  self.orderid2]
+            self.ordernums         = [self.ordernum1, self.ordernum2]
     def _reset_match_attributes(self):
         super(SceneDemID, self)._reset_match_attributes()
         self.SceneDemID        = None
@@ -645,15 +656,18 @@ class SceneDemID(Regex):
         self.pairname          = None
         self.Pairname          = None
         self.tile1             = None
-        self.order1            = None
-        self.part1             = None
+        self.orderid1          = None
+        self.ordernum1         = None
+        self.partnum1          = None
         self.tile2             = None
-        self.order2            = None
-        self.part2             = None
+        self.orderid2          = None
+        self.ordernum2         = None
+        self.partnum2          = None
         self.res               = None
         self.DemRes            = None
         self.subtile           = None
-        self.orders            = None
+        self.orderids          = None
+        self.ordernums         = None
 
 
 class StripSegmentID(Regex):
