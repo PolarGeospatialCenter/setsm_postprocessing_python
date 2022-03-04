@@ -236,6 +236,16 @@ def loop_items(alist):
 
 
 def exec_cmd(cmd, strip_returned_stdout=False, suppress_stdout_in_success=False):
+    cmd = cmd.strip()
+    if SYSTYPE == 'Windows':
+        for pyscript in ('gdal_calc.py', 'gdal_edit.py'):
+            if cmd.startswith(pyscript):
+                rc, pyscript_loc, _ = exec_cmd('where {}'.format(pyscript), strip_returned_stdout=True, suppress_stdout_in_success=True)
+                if rc == 0:
+                    cmd = cmd.replace(pyscript, 'python {}'.format(pyscript_loc), 1)
+                else:
+                    warnings.warn("Could not locate full path to external program Python script '{}'".format(pyscript))
+                break
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     (so, se) = p.communicate()
     rc = p.wait()

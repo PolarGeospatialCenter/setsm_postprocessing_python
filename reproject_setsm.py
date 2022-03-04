@@ -682,7 +682,9 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
     for cmd in commands:
         print(cmd)
         if not args.get(ARGSTR_DRYRUN):
-            script_utils.exec_cmd(cmd)
+            rc, _, _ = script_utils.exec_cmd(cmd)
+            if rc != 0:
+                raise script_utils.ExternalError("External program call finished with non-zero exit status ({})".format(rc))
 
     metafile_src = src_metafile
     metafile_dst = os.path.join(dstdir, os.path.basename(metafile_src))
@@ -918,7 +920,9 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     for cmd in commands:
         print(cmd)
         if not args.get(ARGSTR_DRYRUN):
-            script_utils.exec_cmd(cmd)
+            rc, _, _ = script_utils.exec_cmd(cmd)
+            if rc != 0:
+                raise script_utils.ExternalError("External program call finished with non-zero exit status ({})".format(rc))
 
     if not args.get(ARGSTR_DRYRUN):
         for outfile in output_files:
