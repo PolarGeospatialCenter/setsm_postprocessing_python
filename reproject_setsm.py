@@ -133,7 +133,7 @@ logger.addHandler(lso)
 
 def osr_srs_preserve_axis_order(osr_srs):
     try:
-        # revert to GDAL 2.x axis conventions to maintain consistent results if GDAL 3+ used
+        # Revert to GDAL 2.X axis conventions to maintain consistent results if GDAL 3+ used
         osr_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
     except AttributeError:
         pass

@@ -16,9 +16,11 @@ from scipy import interpolate
 
 if sys.version_info[0] < 3:
     import raster_array_tools as rat
+    import setsm_srs
     from filter_scene import getDataDensityMap, readSceneMeta, rescaleDN
 else:
     from lib import raster_array_tools as rat
+    from lib import setsm_srs
     from lib.filter_scene import getDataDensityMap, readSceneMeta, rescaleDN
 
 
@@ -131,8 +133,21 @@ def scenes2strips(demFiles,
     global __STRIP_SPAT_REF__
     __STRIP_SPAT_REF__ = rat.extractRasterData(demFiles_ordered[0], 'spat_ref')
     if __STRIP_SPAT_REF__.ExportToProj4() == '':
-        raise SpatialRefError("DEM '{}' spatial reference ({}) has no PROJ4 representation "
-                              "and is likely erroneous".format(demFiles_ordered[0], __STRIP_SPAT_REF__.ExportToWkt()))
+        raise SpatialRefError(
+            "DEM '{}' spatial reference ({}) has no PROJ4 representation "
+            "and is likely erroneous".format(
+                demFiles_ordered[0], __STRIP_SPAT_REF__.ExportToWkt()
+            )
+        )
+    strip_srs_proper = setsm_srs.get_matching_srs(__STRIP_SPAT_REF__)
+    if strip_srs_proper is None:
+        raise SpatialRefError(
+            "DEM '{}' spatial reference (PROJ4='{}') is not the same as any of "
+            "the expected SETSM output projections (WGS84 Polar Stereo North/South "
+            "and UTM North/South)".format(
+                demFiles_ordered[0], __STRIP_SPAT_REF__.ExportToProj4()
+            )
+        )
 
     # File loop.
     skipped_scene = False
@@ -607,7 +622,7 @@ def scenes2strips(demFiles,
     else:
         X, Y, Z, M, O, O2, MD = None, None, None, None, None, None, None
 
-    return X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, demFiles_ordered, __STRIP_SPAT_REF__
+    return X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, demFiles_ordered, strip_srs_proper
 
 
 def coregisterdems(x1, y1, z1,
