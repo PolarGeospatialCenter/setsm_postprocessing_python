@@ -1,33 +1,71 @@
 diff --git a/batch_check_setsm.py b/batch_check_setsm.py
-index b13bfb3..a735fde 100644
+index 894c6dd..bba9b62 100644
 --- a/batch_check_setsm.py
 +++ b/batch_check_setsm.py
-@@ -315,7 +315,7 @@ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
+@@ -315,9 +315,9 @@ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
  JOB_ABBREV = 'Check'
  # BATCH_ARGDEF_WD = '/local' if RUNNING_AT_PGC else None
  BATCH_ARGDEF_WD = None
 -JOB_WALLTIME_HR = 72
-+JOB_WALLTIME_HR = 24
- JOB_MEMORY_GB = 40
- JOB_NCORES = 4
+-JOB_MEMORY_GB = 40
+-JOB_NCORES = 4
++JOB_WALLTIME_HR = None
++JOB_MEMORY_GB = None
++JOB_NCORES = None
  JOB_NODE = None
+ 
+ ##############################
+diff --git a/batch_mask.py b/batch_mask.py
+index 779d5d0..c6bd3cd 100644
+--- a/batch_mask.py
++++ b/batch_mask.py
+@@ -106,9 +106,9 @@ ARGGRP_FILTER_COMP = [ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD]
+ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
+ JOB_ABBREV = 'Mask'
+-JOB_WALLTIME_HR = 30
+-JOB_MEMORY_GB = 20
+-JOB_NCORES = 4
++JOB_WALLTIME_HR = None
++JOB_MEMORY_GB = None
++JOB_NCORES = None
+ JOB_NODE = None
+ 
+ ##############################
+diff --git a/batch_scenes2strips.py b/batch_scenes2strips.py
+index 73682c6..4d40b32 100644
+--- a/batch_scenes2strips.py
++++ b/batch_scenes2strips.py
+@@ -151,9 +151,9 @@ ARGGRP_UNFILTERED = [ARGSTR_NOWATER, ARGSTR_NOCLOUD]
+ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
+ JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
+ JOB_ABBREV = 's2s'
+-JOB_WALLTIME_HR = 3
+-JOB_MEMORY_GB = 40
+-JOB_NCORES = 4
++JOB_WALLTIME_HR = None
++JOB_MEMORY_GB = None
++JOB_NCORES = None
+ JOB_NODE = None
+ 
+ ##############################
 diff --git a/jobscripts/head_slurm.sh b/jobscripts/head_slurm.sh
-index 079f4bf..8e71bb8 100755
+index 079f4bf..93b3518 100755
 --- a/jobscripts/head_slurm.sh
 +++ b/jobscripts/head_slurm.sh
 @@ -1,12 +1,19 @@
  #!/bin/bash
-
+ 
 -#SBATCH --time 1:00:00
 +#SBATCH --time 24:00:00
  #SBATCH --nodes 1
 -#SBATCH --ntasks 2
-+#SBATCH --ntasks 8
 -#SBATCH --mem=5G
++#SBATCH --ntasks 8
 +#SBATCH --mem=40G
-
+ 
  #SBATCH -o %x.o%j
-
+ 
 +#SBATCH -A s1780
 +##SBATCH --partition=single
 +##SBATCH --constraint=sky
@@ -35,11 +73,11 @@ index 079f4bf..8e71bb8 100755
 +##SBATCH --nice=370
 +#SBATCH --qos=long
 +
-
+ 
  ## NOTE: Look to 'body.sh' script for expected environment variable arguments
-
+ 
 diff --git a/jobscripts/init.sh b/jobscripts/init.sh
-index f29836b..36e8917 100755
+index f29836b..2b31607 100755
 --- a/jobscripts/init.sh
 +++ b/jobscripts/init.sh
 @@ -19,6 +19,7 @@ env_load_cmd=''
@@ -47,19 +85,23 @@ index f29836b..36e8917 100755
  #default_env_load_cmd="source /mnt/pgc/data/scratch/erik/installed/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/installed/build/miniconda3/envs/s2s"
  #default_env_load_cmd="source /home/husby036/installed/build/miniconda3/bin/activate /home/husby036/installed/build/miniconda3/envs/s2s"
 +default_env_load_cmd="set +u; source /discover/nobackup/projects/sacsDB/sw/etc/gdal-v3.4.0.sh; set -u"
-
+ 
  # Set environment load commands specific to batch scripts
  if [ "$job_class" == "s2s" ]; then
 diff --git a/reproject_setsm.py b/reproject_setsm.py
-index cdd8efa..7b37d55 100644
+index 02f9bb5..50f2aab 100644
 --- a/reproject_setsm.py
 +++ b/reproject_setsm.py
-@@ -87,7 +87,7 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR
+@@ -87,9 +87,9 @@ ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR
  JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
  JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
  JOB_ABBREV = 'Reproj'
 -JOB_WALLTIME_HR = 30
-+JOB_WALLTIME_HR = 24
- JOB_MEMORY_GB = 20
- JOB_NCORES = 4
+-JOB_MEMORY_GB = 20
+-JOB_NCORES = 4
++JOB_WALLTIME_HR = None
++JOB_MEMORY_GB = None
++JOB_NCORES = None
  JOB_NODE = None
+ 
+ ##############################
