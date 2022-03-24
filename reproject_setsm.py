@@ -889,12 +889,12 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     if demFile_10m_shade in output_files:
         commands.append(
             ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff'
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=2'.format(demFile_10m, demFile_10m_shade))
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(demFile_10m, demFile_10m_shade))
         )
     if dem_browse in output_files:
         commands.append(
             ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff'
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=2'.format(demFile_10m, dem_browse))
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(demFile_10m, dem_browse))
         )
     if demFile_10m_masked in output_files:
         commands.append(
@@ -904,7 +904,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     if demFile_shade_mask in output_files:
         commands.append(
             ('gdal_calc.py --quiet --overwrite -A "{0}" -B "{1}" --outfile="{2}" --calc="A*(B==0)" --NoDataValue=0'
-             ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=2'.format(demFile_10m_shade, maskFile_10m, demFile_shade_mask))
+             ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW --co PREDICTOR=2'.format(demFile_10m_shade, maskFile_10m, demFile_shade_mask))
         )
     if demFile_40m_masked in output_files:
         commands.append(
