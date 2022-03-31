@@ -66,7 +66,7 @@ index 079f4bf..93b3518 100755
  
  #SBATCH -o %x.o%j
  
-+#SBATCH -A s1780
++#SBATCH -A s2202
 +##SBATCH --partition=single
 +##SBATCH --constraint=sky
 +##SBATCH --qos=abv_arc_b1016
