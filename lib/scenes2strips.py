@@ -60,7 +60,8 @@ def scenes2strips(demFiles,
                   maskSuffix=None, filter_options=(), max_coreg_rmse=1,
                   trans_guess=None, trans_err_guess=None, rmse_guess=None,
                   hold_guess=HOLD_GUESS_OFF, check_guess=True,
-                  use_second_ortho=False, remerge_strips=False):
+                  use_second_ortho=False, remerge_strips=False,
+                  force_single_scene_strips=False):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -185,6 +186,9 @@ def scenes2strips(demFiles,
                 trans_err = trans_err[:, :i]
                 rmse = rmse[:, :i]
 
+                if force_single_scene_strips:
+                    break
+
                 if demFiles_ordered_by_direction is None:
                     # Unexpected segment break when coregistration value guesses were provided.
                     # In the usual two-step workflow, this has been seen to happen when the
@@ -280,6 +284,8 @@ def scenes2strips(demFiles,
             X, Y, Z, M, O, O2, MD = x, y, z, m, o, o2, md
             del x, y, z, m, o, o2, md
             i += 1
+            if force_single_scene_strips:
+                segment_break = True
             continue
 
         # Pad new arrays to stabilize interpolation.
