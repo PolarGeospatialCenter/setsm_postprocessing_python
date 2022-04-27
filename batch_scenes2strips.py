@@ -55,6 +55,7 @@ PYTHON_EXE = 'python -u'
 ARGSTR_SRC = 'src'
 ARGSTR_RES = 'res'
 ARGSTR_DST = '--dst'
+ARGSTR_SINGLE_SCENE_STRIPS = '--single-scene-strips'
 ARGSTR_META_ONLY = '--meta-only'
 ARGSTR_META_TRANS_DIR = '--meta-trans-dir'
 ARGSTR_NO_BROWSE = '--no-browse'
@@ -144,7 +145,8 @@ MASK_VER_XM = [
 ARGGRP_OUTDIR = [ARGSTR_DST, ARGSTR_LOGDIR]
 ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_LOGDIR, ARGSTR_EMAIL]
 ARGGRP_UNFILTERED = [ARGSTR_NOWATER, ARGSTR_NOCLOUD]
-ARGGRP_META_ONLY = [ARGSTR_USE_OLD_MASKS, ARGSTR_NOFILTER_COREG]
+ARGGRP_META_ONLY = [ARGSTR_SINGLE_SCENE_STRIPS, ARGSTR_USE_OLD_MASKS, ARGSTR_NOFILTER_COREG, (ARGSTR_CLEANUP_ON_FAILURE, ARGCHO_CLEANUP_ON_FAILURE_NONE)]
+ARGGRP_SINGLE_SCENE_STRIPS = [ARGSTR_USE_OLD_MASKS, ARGSTR_NOFILTER_COREG, (ARGSTR_CLEANUP_ON_FAILURE, ARGCHO_CLEANUP_ON_FAILURE_STRIP)]
 
 ##############################
 
@@ -272,6 +274,16 @@ def argparser_init():
             "\nOutput s2s-style metadata textfiles are created next to",
             "source scene DEMs with '{}' file suffix.".format(META_ONLY_META_SUFFIX),
             "\nThe following argument flags are set automatically: {}".format(ARGGRP_META_ONLY)
+        ])
+    )
+
+    parser.add_argument(
+        ARGSTR_SINGLE_SCENE_STRIPS,
+        action='store_true',
+        help=' '.join([
+            "Force creation of strip results to break into a new output strip segment,"
+            "for each non-masked/non-redundant input scene DEM.",
+            "\nThe following argument flags are set automatically: {}".format(ARGGRP_SINGLE_SCENE_STRIPS)
         ])
     )
 
@@ -602,6 +614,10 @@ def main():
         args.set(ARGGRP_META_ONLY)
         print("via provided argument {}, arguments {} set automatically".format(ARGSTR_META_ONLY, ARGGRP_META_ONLY))
 
+    elif args.get(ARGSTR_SINGLE_SCENE_STRIPS):
+        args.set(ARGGRP_SINGLE_SCENE_STRIPS)
+        print("via provided argument {}, arguments {} set automatically".format(ARGSTR_SINGLE_SCENE_STRIPS, ARGGRP_SINGLE_SCENE_STRIPS))
+
     if args.get(ARGSTR_UNFILTERED):
         args.set(ARGGRP_UNFILTERED)
         print("via provided argument {}, arguments {} set automatically".format(ARGSTR_UNFILTERED, ARGGRP_UNFILTERED))
@@ -652,7 +668,7 @@ def main():
         arg_parser.error("{}/{} option(s) can only be used when {}='{}'".format(
             ARGSTR_NOWATER, ARGSTR_NOCLOUD, ARGSTR_MASK_VER, ARGCHO_MASK_VER_BITMASK
         ))
-    if not args.get(ARGSTR_META_ONLY):
+    if not args.get(ARGSTR_SINGLE_SCENE_STRIPS):
         if args.get(ARGSTR_NOFILTER_COREG) and [args.get(ARGSTR_NOWATER), args.get(ARGSTR_NOCLOUD)].count(True) == 0:
             arg_parser.error("{} option must be used in conjunction with {}/{} option(s)".format(
                 ARGSTR_NOFILTER_COREG, ARGSTR_NOWATER, ARGSTR_NOCLOUD
@@ -846,10 +862,7 @@ def main():
                 strip_dname_pattern = os.path.join(args_batch.get(ARGSTR_DST), stripdirname)
 
             strip_dfull_glob = glob.glob(strip_dname_pattern)
-            if len(strip_dfull_glob) == 0:
-                raise InvalidArgumentError("No match for output strip folder in"
-                                           " destination directory with pattern: {}".format(strip_dname_pattern))
-            elif len(strip_dfull_glob) > 1:
+            if len(strip_dfull_glob) > 1:
                 raise InvalidArgumentError("Found more than one match for output strip folder in"
                                            " destination directory with pattern: {}".format(strip_dname_pattern))
             elif len(strip_dfull_glob) == 1:
@@ -1286,6 +1299,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         # Output separate segments if there are breaks in overlap.
         scenedem_fname_remaining = [f for f in src_scenedem_ffile_glob]
         segnum = 1
+        strip_srs = None
+        scene_geom_union = None
         try:
             while len(scenedem_fname_remaining) > 0:
 
@@ -1335,12 +1350,14 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 else:
                     print("Running s2s with coregistration filter options: {}".format(
                         ', '.join(filter_options_coreg) if filter_options_coreg else None))
-                    X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_coregistered, spat_ref = scenes2strips(
+                    X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_coregistered, strip_srs, scene_geom_union = scenes2strips(
                         scenedem_fname_remaining,
                         sceneMaskSuffix, filter_options_coreg, args.get(ARGSTR_RMSE_CUTOFF),
+                        target_srs=strip_srs,
                         use_second_ortho=(stripid_is_xtrack and not bypass_ortho2),
                         remerge_strips=args.get(ARGSTR_REMERGE_STRIPS),
-                        force_single_scene_strips=args.get(ARGSTR_META_ONLY)
+                        force_single_scene_strips=args.get(ARGSTR_SINGLE_SCENE_STRIPS),
+                        preceding_scene_geom_union=scene_geom_union
                     )
                     if X is None:
                         all_data_masked = True
@@ -1348,7 +1365,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
 
                 if (   (filter_options_mask == filter_options_coreg and not use_old_trans)
-                    or all_data_masked or args.get(ARGSTR_META_ONLY)):
+                    or all_data_masked or args.get(ARGSTR_SINGLE_SCENE_STRIPS)):
                     # No need to run second pass of scenes2strips.
                     scenedem_fname_mosaicked = scenedem_fname_coregistered
 
@@ -1367,23 +1384,25 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                             if args.get(ARGSTR_SAVE_COREG_STEP) in (ARGCHO_SAVE_COREG_STEP_META, ARGCHO_SAVE_COREG_STEP_ALL):
                                 saveStripMeta(stripdem_ffile_coreg, stripid_remergeinfo_ffile_coreg,
                                               stripDemSuffix, stripdemid,
-                                              X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
+                                              X, Y, Z, M, MD, trans, trans_err, rmse, strip_srs,
                                               scene_dfull, scenedem_fname_coregistered, args,
                                               filter_options_applied=filter_options_coreg)
                             if args.get(ARGSTR_SAVE_COREG_STEP) == ARGCHO_SAVE_COREG_STEP_ALL:
                                 saveStripRasters(stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix,
-                                                 X, Y, Z, M, O, O2, MD, spat_ref)
+                                                 X, Y, Z, M, O, O2, MD, strip_srs)
                                 saveStripBrowse(args, stripdem_ffile_coreg, stripDemSuffix, stripMaskSuffix)
                         del X, Y, Z, M, O, O2, MD
                         gc.collect()
 
-                    X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_mosaicked, spat_ref = scenes2strips(
+                    X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, scenedem_fname_mosaicked, strip_srs, scene_geom_union = scenes2strips(
                         scenedem_fname_coregistered.copy(),
                         sceneMaskSuffix, filter_options_mask, args.get(ARGSTR_RMSE_CUTOFF),
                         trans_guess=trans, trans_err_guess=trans_err, rmse_guess=rmse,
                         hold_guess=HOLD_GUESS_ALL, check_guess=use_old_trans,
                         use_second_ortho=(stripid_is_xtrack and not bypass_ortho2),
-                        remerge_strips=args.get(ARGSTR_REMERGE_STRIPS)
+                        remerge_strips=args.get(ARGSTR_REMERGE_STRIPS),
+                        force_single_scene_strips=args.get(ARGSTR_SINGLE_SCENE_STRIPS),
+                        preceding_scene_geom_union=scene_geom_union
                     )
                     if X is None:
                         all_data_masked = True
@@ -1423,14 +1442,14 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
                 saveStripMeta(stripdem_ffile, stripid_remergeinfo_ffile,
                               output_dem_suffix, stripdemid,
-                              X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
+                              X, Y, Z, M, MD, trans, trans_err, rmse, strip_srs,
                               scene_dfull, scenedem_fname_mosaicked, args,
                               filter_options_applied=filter_options_mask,
                               meta_suffix=output_meta_suffix)
 
                 if not args.get(ARGSTR_META_ONLY):
                     saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
-                                     X, Y, Z, M, O, O2, MD, spat_ref)
+                                     X, Y, Z, M, O, O2, MD, strip_srs)
                     saveStripBrowse(args, stripdem_ffile, stripDemSuffix, stripMaskSuffix)
 
                 del X, Y, Z, M, O, O2, MD
@@ -1523,7 +1542,7 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
 
 def saveStripMeta(strip_demFile, strip_remergeInfoFile,
                   demSuffix, stripdemid,
-                  X, Y, Z, M, MD, trans, trans_err, rmse, spat_ref,
+                  X, Y, Z, M, MD, trans, trans_err, rmse, strip_srs,
                   scene_dir, scene_demFiles, args,
                   filter_options_applied,
                   meta_suffix='meta.txt'):
@@ -1616,7 +1635,7 @@ def saveStripMeta(strip_demFile, strip_remergeInfoFile,
     Z[dem_nodata] = -9999
     del dem_nodata
 
-    proj4 = spat_ref.ExportToProj4()
+    proj4 = strip_srs.ExportToProj4()
     time = datetime.today().strftime("%d-%b-%Y %H:%M:%S")
 
     writeStripMeta(strip_metaFile, strip_remergeInfoFile,
@@ -1628,7 +1647,7 @@ def saveStripMeta(strip_demFile, strip_remergeInfoFile,
 
 
 def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
-                     X, Y, Z, M, O, O2, MD, spat_ref):
+                     X, Y, Z, M, O, O2, MD, strip_srs):
     from lib.raster_array_tools import saveArrayAsTiff
 
     strip_matchFile  = strip_demFile.replace(demSuffix, 'matchtag.tif')
@@ -1636,16 +1655,16 @@ def saveStripRasters(strip_demFile, demSuffix, maskSuffix,
     strip_ortho2File = strip_demFile.replace(demSuffix, 'ortho2.tif')
     strip_maskFile   = strip_demFile.replace(demSuffix, maskSuffix)
 
-    saveArrayAsTiff(Z, strip_demFile,   X, Y, spat_ref, nodata_val=-9999,   dtype_out='float32', co_predictor=3)
+    saveArrayAsTiff(Z, strip_demFile,   X, Y, strip_srs, nodata_val=-9999,   dtype_out='float32', co_predictor=3)
     del Z
-    saveArrayAsTiff(M, strip_matchFile, X, Y, spat_ref, nodata_val=0,       dtype_out='uint8',   co_predictor=1)
+    saveArrayAsTiff(M, strip_matchFile, X, Y, strip_srs, nodata_val=0,       dtype_out='uint8',   co_predictor=1)
     del M
-    saveArrayAsTiff(O, strip_orthoFile, X, Y, spat_ref, nodata_val=0,       dtype_out='int16',   co_predictor=2)
+    saveArrayAsTiff(O, strip_orthoFile, X, Y, strip_srs, nodata_val=0,       dtype_out='int16',   co_predictor=2)
     del O
     if O2 is not None:
-        saveArrayAsTiff(O2, strip_ortho2File, X, Y, spat_ref, nodata_val=0, dtype_out='int16',   co_predictor=2)
+        saveArrayAsTiff(O2, strip_ortho2File, X, Y, strip_srs, nodata_val=0, dtype_out='int16',   co_predictor=2)
         del O2
-    saveArrayAsTiff(MD, strip_maskFile, X, Y, spat_ref, nodata_val=1,       dtype_out='uint8',   co_predictor=1)
+    saveArrayAsTiff(MD, strip_maskFile, X, Y, strip_srs, nodata_val=1,       dtype_out='uint8',   co_predictor=1)
     del MD
 
 
