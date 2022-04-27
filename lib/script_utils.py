@@ -496,7 +496,14 @@ class ArgumentPasser:
 
     def set(self, argstrs, newval=None):
         argstr_list = argstrs if type(argstrs) in (tuple, list) else [argstrs]
+        default_newval = newval
         for argstr in argstr_list:
+            if type(argstr) in (tuple, list):
+                if len(argstr) != 2:
+                    raise InvalidArgumentError("`argstrs` tuple/list item can only have two elements (argstr, newval), but received: {}".format(argstr))
+                argstr, newval = argstr
+            else:
+                newval = default_newval
             if argstr not in self.argstr2varstr:
                 raise InvalidArgumentError("This {} object has no '{}' argument string".format(type(self).__name__, argstr))
             if newval is None:

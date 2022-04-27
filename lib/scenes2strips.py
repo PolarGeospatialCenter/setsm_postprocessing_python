@@ -60,7 +60,9 @@ def scenes2strips(demFiles,
                   maskSuffix=None, filter_options=(), max_coreg_rmse=1,
                   trans_guess=None, trans_err_guess=None, rmse_guess=None,
                   hold_guess=HOLD_GUESS_OFF, check_guess=True,
-                  use_second_ortho=False, remerge_strips=False):
+                  target_srs=None, use_second_ortho=False, remerge_strips=False,
+                  force_single_scene_strips=False,
+                  preceding_scene_geom_union=None):
     """
     From MATLAB version in Github repo 'setsm_postprocessing', 3.0 branch:
 
@@ -98,6 +100,7 @@ def scenes2strips(demFiles,
 
     cluster_min_px = 1000  # Minimum data cluster area for 2m.
     add_min_px = 50000  # Minimum number of unmasked pixels scene must add to existing segment to not be skipped.
+    add_min_area = add_min_px * (2**2)
 
     # Order scenes in north-south or east-west direction by aspect ratio.
     num_scenes = len(demFiles)
@@ -129,24 +132,25 @@ def scenes2strips(demFiles,
         trans_err_check = np.copy(trans_err)
         rmse_check = np.copy(rmse)
 
-    # Get projection reference of the first scene to be used in equality checks
-    # with the projection reference of all scenes that follow.
-    global __STRIP_SPAT_REF__
-    __STRIP_SPAT_REF__ = rat.extractRasterData(demFiles_ordered[0], 'spat_ref')
-    if __STRIP_SPAT_REF__.ExportToProj4() == '':
-        raise SpatialRefError(
-            "DEM '{}' spatial reference ({}) has no PROJ4 representation "
-            "and is likely erroneous".format(
-                demFiles_ordered[0], __STRIP_SPAT_REF__.ExportToWkt()
+    if target_srs is None:
+        # Get projection reference of the first scene to be used in equality checks
+        # with the projection reference of all scenes that follow.
+        dem_srs = rat.extractRasterData(demFiles_ordered[0], 'spat_ref')
+        if dem_srs is None or dem_srs.ExportToProj4() == '':
+            raise SpatialRefError(
+                "DEM '{}' spatial reference ({}) has no PROJ4 representation "
+                "and is likely erroneous".format(
+                    demFiles_ordered[0], dem_srs.ExportToWkt()
+                )
             )
-        )
-    strip_srs_proper = setsm_srs.get_matching_srs(__STRIP_SPAT_REF__)
-    if strip_srs_proper is None:
+        target_srs = dem_srs
+    target_srs_proper = setsm_srs.get_matching_srs(target_srs)
+    if target_srs_proper is None:
         raise SpatialRefError(
             "DEM '{}' spatial reference (PROJ4='{}') is not the same as any of "
             "the expected SETSM output projections (WGS84 Polar Stereo North/South "
             "and UTM North/South)".format(
-                demFiles_ordered[0], __STRIP_SPAT_REF__.ExportToProj4()
+                demFiles_ordered[0], target_srs.ExportToProj4()
             )
         )
 
@@ -184,6 +188,9 @@ def scenes2strips(demFiles,
                 trans = trans[:, :i]
                 trans_err = trans_err[:, :i]
                 rmse = rmse[:, :i]
+
+                if force_single_scene_strips:
+                    break
 
                 if demFiles_ordered_by_direction is None:
                     # Unexpected segment break when coregistration value guesses were provided.
@@ -250,7 +257,7 @@ def scenes2strips(demFiles,
         print("Scene {} of {}: {}".format(i+1, len(demFiles_ordered), demFile))
 
         # try:
-        x, y, z, m, o, o2, md = loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, remerge_strips)
+        x, y, z, m, o, o2, md = loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, target_srs, remerge_strips)
         # except:
         #     print("Data read error:")
         #     traceback.print_exc()
@@ -279,7 +286,31 @@ def scenes2strips(demFiles,
         if 'X' not in vars():
             X, Y, Z, M, O, O2, MD = x, y, z, m, o, o2, md
             del x, y, z, m, o, o2, md
-            i += 1
+
+            if not force_single_scene_strips:
+                i += 1
+            else:
+                fp_vertices = rat.getFPvertices(Z, X, Y, label=np.nan, label_type='nodata',
+                                                replicate_matlab=True, dtype_out_int64_if_equal=True)
+                scene_geom = ogr.CreateGeometryFromWkt(rat.coordsToWkt(fp_vertices.T))
+
+                if preceding_scene_geom_union is None:
+                    preceding_scene_geom_union = scene_geom
+                else:
+                    geom_to_add = scene_geom.Difference(preceding_scene_geom_union)
+                    geom_to_add_area = geom_to_add.Area()
+                    print("Scene adds an estimated {} square meters to strip geometry".format(geom_to_add_area))
+                    if geom_to_add_area <= add_min_area:
+                        print("Redundant scene, skipping")
+                        skipped_scene = True
+                        del X
+                    else:
+                        preceding_scene_geom_union = preceding_scene_geom_union.Union(scene_geom)
+
+                if not skipped_scene:
+                    segment_break = True
+                    i += 1
+
             continue
 
         # Pad new arrays to stabilize interpolation.
@@ -663,7 +694,7 @@ def scenes2strips(demFiles,
         i += 1
 
     # Crop to data.
-    if 'Z' in vars() and ~np.all(np.isnan(Z)):
+    if 'X' in vars() and ~np.all(np.isnan(Z)):
         rcrop, ccrop = cropBorder(Z, np.nan)
         if rcrop is not None:
             X  =  X[ccrop[0]:ccrop[1]]
@@ -683,7 +714,7 @@ def scenes2strips(demFiles,
     else:
         X, Y, Z, M, O, O2, MD = None, None, None, None, None, None, None
 
-    return X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, demFiles_ordered, strip_srs_proper
+    return X, Y, Z, M, O, O2, MD, trans, trans_err, rmse, demFiles_ordered, target_srs_proper, preceding_scene_geom_union
 
 
 def coregisterdems(x1, y1, z1,
@@ -996,7 +1027,7 @@ def rectFootprint(*geoms):
     return ogr.Geometry(wkt=fp_wkt)
 
 
-def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, remerge_strips=False):
+def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, target_srs, remerge_strips=False):
     """
     Load data files and perform basic conversions.
     """
@@ -1004,10 +1035,10 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, reme
 
     demFile_srs = rat.extractRasterData(rat.openRaster(demFile), 'spat_ref')
 
-    z, x_dem, y_dem, spat_ref = rat.extractRasterData(rat.openRaster(demFile, __STRIP_SPAT_REF__, 'bilinear'), 'array', 'x', 'y', 'spat_ref')
-    if spat_ref.IsSame(__STRIP_SPAT_REF__) != 1:
+    z, x_dem, y_dem, spat_ref = rat.extractRasterData(rat.openRaster(demFile, target_srs, 'bilinear'), 'array', 'x', 'y', 'spat_ref')
+    if spat_ref.IsSame(target_srs) != 1:
         raise SpatialRefError("DEM '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
-                              demFile, spat_ref.ExportToProj4(), __STRIP_SPAT_REF__.ExportToProj4()))
+                              demFile, spat_ref.ExportToProj4(), target_srs.ExportToProj4()))
 
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
     # TODO: Ask Ian about the following interpretation of nodata values.
@@ -1018,11 +1049,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, reme
         raise SpatialRefError("Matchtag '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
                               matchFile, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
 
-    m = rat.extractRasterData(rat.openRaster(matchFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.bool)
+    m = rat.extractRasterData(rat.openRaster(matchFile, target_srs, 'nearest'), 'array').astype(np.bool)
     if m.shape != z.shape:
         warnings.warn("Matchtag '{}' dimensions differ from DEM dimensions".format(matchFile)
                      +"\nInterpolating to DEM dimensions")
-        x, y = rat.extractRasterData(rat.openRaster(matchFile, __STRIP_SPAT_REF__, 'nearest'), 'x', 'y')
+        x, y = rat.extractRasterData(rat.openRaster(matchFile, target_srs, 'nearest'), 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.isnan(m)] = 0  # Convert back to bool/uint8.
         m = m.astype(np.bool)
@@ -1038,11 +1069,11 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, reme
                 raise SpatialRefError("Ortho{} '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
                                       ortho_num if ortho_num > 1 else '', ortho_file, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
 
-            o = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'array')
+            o = rat.extractRasterData(rat.openRaster(ortho_file, target_srs, 'bicubic'), 'array')
             if o.shape != z.shape:
                 warnings.warn("Ortho{} '{}' dimensions differ from DEM dimensions".format(ortho_num if ortho_num > 1 else '', ortho_file)
                              +"\nInterpolating to DEM dimensions")
-                x, y = rat.extractRasterData(rat.openRaster(ortho_file, __STRIP_SPAT_REF__, 'bicubic'), 'x', 'y')
+                x, y = rat.extractRasterData(rat.openRaster(ortho_file, target_srs, 'bicubic'), 'x', 'y')
                 o = o.astype(np.float32)
                 o[o == 0] = np.nan  # Set border to NaN so it won't be interpolated.
                 o = rat.interp2_gdal(x, y, o, x_dem, y_dem, 'cubic')
@@ -1059,7 +1090,7 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, reme
             raise SpatialRefError("Mask '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
                                   maskFile, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
 
-        md = rat.extractRasterData(rat.openRaster(maskFile, __STRIP_SPAT_REF__, 'nearest'), 'array').astype(np.uint8)
+        md = rat.extractRasterData(rat.openRaster(maskFile, target_srs, 'nearest'), 'array').astype(np.uint8)
         if md.shape != z.shape:
             raise RasterDimensionError("Mask '{}' dimensions {} do not match DEM dimensions {}".format(
                                        maskFile, md.shape, z.shape))
