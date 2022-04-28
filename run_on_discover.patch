@@ -57,7 +57,7 @@ index 079f4bf..93b3518 100755
  #!/bin/bash
  
 -#SBATCH --time 1:00:00
-+#SBATCH --time 24:00:00
++#SBATCH --time 72:00:00
  #SBATCH --nodes 1
 -#SBATCH --ntasks 2
 -#SBATCH --mem=5G
@@ -67,11 +67,11 @@ index 079f4bf..93b3518 100755
  #SBATCH -o %x.o%j
  
 +#SBATCH -A s2202
-+##SBATCH --partition=single
-+##SBATCH --constraint=sky
-+##SBATCH --qos=abv_arc_b1016
-+##SBATCH --nice=370
-+#SBATCH --qos=long
++#SBATCH --partition=single
++#SBATCH --constraint=sky
++#SBATCH --qos=abv_arc_b1016
++#SBATCH --nice=370
++##SBATCH --qos=long
 +
  
  ## NOTE: Look to 'body.sh' script for expected environment variable arguments
