@@ -27,7 +27,10 @@ import warnings
 from collections import OrderedDict
 from time import sleep
 from datetime import datetime
-from distutils.version import StrictVersion
+try:
+    from packaging.version import Version as SortVersion
+except ImportError or ModuleNotFoundError:
+    from distutils.version import StrictVersion as SortVersion
 
 from lib import script_utils
 from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgumentError
@@ -1115,8 +1118,8 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 raise MetaReadError("Unexpected SETSM version format: '{}'".format(ver))
             setsm_version_list_fixed.append(ver)
 
-        setsm_version_list_fixed.sort(key=StrictVersion)
-        group_version_list.sort(key=StrictVersion)
+        setsm_version_list_fixed.sort(key=SortVersion)
+        group_version_list.sort(key=SortVersion)
 
         derived_group_version = setsm_version_list_fixed[0]
         parsed_group_version = None
