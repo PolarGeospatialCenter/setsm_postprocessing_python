@@ -588,15 +588,13 @@ def main():
         else:
             raise ScriptArgumentError("Resolution is not in whole meters or whole centimeters")
 
-    if not args.get(ARGSTR_META_ONLY):
+    if not (args.get(ARGSTR_META_ONLY) or args.get(ARGSTR_SCENE_MASKS_ONLY)):
         if args.get(ARGSTR_DST) is not None:
             if (   args.get(ARGSTR_SRC) == args.get(ARGSTR_DST)
                 or (    os.path.isdir(args.get(ARGSTR_DST))
                     and filecmp.cmp(args.get(ARGSTR_SRC), args.get(ARGSTR_DST)))):
                 arg_parser.error("argument {} directory is the same as "
                                  "argument {} directory".format(ARGSTR_SRC, ARGSTR_DST))
-        elif args.get(ARGSTR_SCENE_MASKS_ONLY):
-            args.set(ARGSTR_DST, args.get(ARGSTR_SRC))
         else:
             # Set default dst dir.
             split_ind = args.get(ARGSTR_SRC).rfind('tif_results')
@@ -610,7 +608,15 @@ def main():
 
     argcho_dem_type_opp = ARGCHO_DEM_TYPE_NON_LSF if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ARGCHO_DEM_TYPE_LSF
 
-    if args.get(ARGSTR_META_ONLY):
+    if args.get(ARGSTR_SCENE_MASKS_ONLY):
+        args.set(ARGSTR_DST, args.get(ARGSTR_SRC))
+        print("via provided argument {}, set argument {}={}".format(ARGSTR_SCENE_MASKS_ONLY, ARGSTR_DST, args.get(ARGSTR_DST)))
+
+        if not args.provided(ARGSTR_CLEANUP_ON_FAILURE):
+            args.set(ARGSTR_CLEANUP_ON_FAILURE, ARGCHO_CLEANUP_ON_FAILURE_MASKS)
+            print("via provided argument {}, set argument {}={}".format(ARGSTR_SCENE_MASKS_ONLY, ARGSTR_CLEANUP_ON_FAILURE, args.get(ARGSTR_CLEANUP_ON_FAILURE)))
+
+    elif args.get(ARGSTR_META_ONLY):
         args.set(ARGSTR_DST, args.get(ARGSTR_SRC))
         print("via provided argument {}, set argument {}={}".format(ARGSTR_META_ONLY, ARGSTR_DST, args.get(ARGSTR_DST)))
 
@@ -1161,30 +1167,31 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             stripid_fin_ffile_coreg = None
             stripid_remergeinfo_ffile_coreg = None
 
-        # Strip output existence check.
-        if os.path.isfile(stripid_fin_ffile) and not args.get(ARGSTR_REBUILD_AUX):
-            print("{} .fin file exists, strip output finished, skipping".format(stripid_fin_ffile))
-            sys.exit(0)
-        dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, '*'+args.get(ARGSTR_STRIPID)+'*{}'.format(
-            META_ONLY_META_SUFFIX if args.get(ARGSTR_META_ONLY) else ''
-        )))
-        if len(dstdir_stripFiles) > 0:
-            if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
-                print("Strip output exists (potentially unfinished), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
-                for f in dstdir_stripFiles:
-                    cmd = "rm {}".format(f)
-                    print(cmd)
-                    if not args.get(ARGSTR_DRYRUN):
-                        os.remove(f)
-                if not args.get(ARGSTR_OLD_ORG):
-                    if not args.get(ARGSTR_DRYRUN):
-                        os.rmdir(strip_dfull)
-
-                if not args.get(ARGSTR_RESTART):
-                    sys.exit(0)
-            elif not args.get(ARGSTR_REBUILD_AUX):
-                print("Strip output exists (potentially unfinished), skipping")
+        if not args.get(ARGSTR_SCENE_MASKS_ONLY):
+            # Strip output existence check.
+            if os.path.isfile(stripid_fin_ffile) and not args.get(ARGSTR_REBUILD_AUX):
+                print("{} .fin file exists, strip output finished, skipping".format(stripid_fin_ffile))
                 sys.exit(0)
+            dstdir_stripFiles = glob.glob(os.path.join(strip_dfull, '*'+args.get(ARGSTR_STRIPID)+'*{}'.format(
+                META_ONLY_META_SUFFIX if args.get(ARGSTR_META_ONLY) else ''
+            )))
+            if len(dstdir_stripFiles) > 0:
+                if args.get(ARGSTR_REMOVE_INCOMPLETE) or args.get(ARGSTR_RESTART):
+                    print("Strip output exists (potentially unfinished), REMOVING"+" (dryrun)"*args.get(ARGSTR_DRYRUN))
+                    for f in dstdir_stripFiles:
+                        cmd = "rm {}".format(f)
+                        print(cmd)
+                        if not args.get(ARGSTR_DRYRUN):
+                            os.remove(f)
+                    if not args.get(ARGSTR_OLD_ORG):
+                        if not args.get(ARGSTR_DRYRUN):
+                            os.rmdir(strip_dfull)
+
+                    if not args.get(ARGSTR_RESTART):
+                        sys.exit(0)
+                elif not args.get(ARGSTR_REBUILD_AUX):
+                    print("Strip output exists (potentially unfinished), skipping")
+                    sys.exit(0)
 
         # Make sure all DEM component files exist. If missing, skip.
         src_scenefile_missing_flag = False
