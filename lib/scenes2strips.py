@@ -519,13 +519,13 @@ def scenes2strips(demFiles,
             trans_err[:, i] = trans_err_guess[:, i]
             rmse[0, i] = rmse_guess[0, i]
         else:
-            trans[:, i], trans_err[:, i], rmse[0, i] = coregisterdems(
+            _, trans[:, i], trans_err[:, i], rmse[0, i] = coregisterdems(
                 Xsub[c[0]:c[1]], Ysub[r[0]:r[1]], Zsub[r[0]:r[1], c[0]:c[1]],
                    x[c[0]:c[1]],    y[r[0]:r[1]],    z[r[0]:r[1], c[0]:c[1]],
                 P0, P1,
                 (trans_guess[:, i] if trans_guess is not None else trans_guess),
                 hold_guess != HOLD_GUESS_OFF
-            )[[1, 2, 3]]
+            )
 
             if check_guess:
                 error_tol = 10**-2
@@ -865,11 +865,11 @@ def coregisterdems(x1, y1, z1,
         X = np.column_stack((np.ones(n_count, dtype=np.float32), sx[n], sy[n]))
 
         # Solve for new adjustment.
-        p1 = np.reshape(np.linalg.lstsq(X, dz[n])[0], (-1, 1))
+        p1 = np.reshape(np.linalg.lstsq(X, dz[n], rcond=None)[0], (-1, 1))
 
         # Calculate p errors.
         _, R = np.linalg.qr(X)
-        RI = np.linalg.lstsq(R, np.identity(3, dtype=np.float32))[0]
+        RI = np.linalg.lstsq(R, np.identity(3, dtype=np.float32), rcond=None)[0]
         nu = X.shape[0] - X.shape[1]  # residual degrees of freedom
         yhat = np.matmul(X, p1)       # predicted responses at each data point
         r = dz[n] - yhat.T[0]         # residuals
@@ -915,7 +915,7 @@ def coregisterdems(x1, y1, z1,
     print("Final offset (z,x,y): {:.3f}, {:.3f}, {:.3f}".format(p[0, 0], p[1, 0], p[2, 0]))
     print("Final RMSE = {}".format(d0))
 
-    return np.array([z2out, p.T[0], perr.T[0], d0])
+    return z2out, p.T[0], perr.T[0], d0
 
 
 def orderPairs(fnames):

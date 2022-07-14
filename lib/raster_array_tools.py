@@ -3260,7 +3260,8 @@ def bwareaopen(array, size_tolerance, connectivity=8, in_place=False):
     .. [1] http://scikit-image.org/docs/dev/api/skimage.morphology.html#skimage.morphology.remove_small_objects
 
     """
-    return sk_morphology.remove_small_objects(array, size_tolerance, connectivity/4, in_place)
+    out_array = array if in_place else None
+    return sk_morphology.remove_small_objects(array, size_tolerance, connectivity/4, out=out_array)
 
 
 def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
