@@ -1443,10 +1443,12 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 if args.get(ARGSTR_META_ONLY):
                     stripdem_ffile = scenedem_fname_mosaicked[-1]
                     output_dem_suffix = demSuffix
+                    output_mask_suffix = sceneMaskSuffix
                     output_meta_suffix = META_ONLY_META_SUFFIX
                     print("Writing output strip metadata next to scene DEM: {}".format(stripdem_ffile))
                 else:
                     output_dem_suffix = stripDemSuffix
+                    output_mask_suffix = stripMaskSuffix
                     output_meta_suffix = 'meta.txt'
                     print("Writing output strip segment with DEM: {}".format(stripdem_ffile))
 
@@ -1458,9 +1460,10 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                               meta_suffix=output_meta_suffix)
 
                 if not args.get(ARGSTR_META_ONLY):
-                    saveStripRasters(stripdem_ffile, stripDemSuffix, stripMaskSuffix,
+                    saveStripRasters(stripdem_ffile, output_dem_suffix, output_mask_suffix,
                                      X, Y, Z, M, O, O2, MD, strip_srs)
-                    saveStripBrowse(args, stripdem_ffile, stripDemSuffix, stripMaskSuffix)
+
+                saveStripBrowse(args, stripdem_ffile, output_dem_suffix, output_mask_suffix)
 
                 del X, Y, Z, M, O, O2, MD
 
