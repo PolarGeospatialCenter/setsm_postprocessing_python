@@ -659,8 +659,9 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
             predictor = 1
 
         commands.append(
-            ('gdalwarp "{0}" "{1}" -q -tap -t_srs EPSG:{2} -tr {3} {3} -r {4} {5} '
-             '-overwrite -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR={6}'.format(
+            ('gdalwarp -q -overwrite -t_srs EPSG:{2} -tap -tr {3} {3} -r {4} {5}'
+             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR={6}'
+             ' "{0}" "{1}"'.format(
                 rasterfile_src,
                 rasterfile_dst if rasterfile_dst_uncompressed is None else rasterfile_dst_uncompressed,
                 target_epsg,
@@ -673,7 +674,8 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
 
         if rasterfile_src.endswith('dem.tif'):
             commands.append(
-                ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}" --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
+                ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}"'
+                 ' --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
                  ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=3'.format(rasterfile_dst_uncompressed, rasterfile_dst))
             )
         elif 'bitmask' in rasterfile_src:
@@ -790,22 +792,23 @@ def reproject_stripmeta(metafile_src, metafile_dst, target_epsg, args):
 
 def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
 
-    maskFile           = demFile.replace(demSuffix, maskSuffix)
-    orthoFile          = demFile.replace(demSuffix, 'ortho.tif')
-    ortho2File         = demFile.replace(demSuffix, 'ortho2.tif')
-    matchFile          = demFile.replace(demSuffix, 'matchtag.tif')
-    dem_browse         = demFile.replace(demSuffix, 'dem_browse.tif')
-    maskFile_10m       = demFile.replace(demSuffix, 'bitmask_10m.tif')
-    orthoFile_10m      = demFile.replace(demSuffix, 'ortho_10m.tif')
-    ortho2File_10m     = demFile.replace(demSuffix, 'ortho2_10m.tif')
-    matchFile_10m      = demFile.replace(demSuffix, 'matchtag_10m.tif')
-    demFile_10m        = demFile.replace(demSuffix, 'dem_10m.tif')
-    demFile_10m_temp   = demFile.replace(demSuffix, 'dem_10m_temp.tif')
-    demFile_10m_masked = demFile.replace(demSuffix, 'dem_10m_masked.tif')
-    demFile_10m_shade  = demFile.replace(demSuffix, 'dem_10m_shade.tif')
-    demFile_shade_mask = demFile.replace(demSuffix, 'dem_10m_shade_masked.tif')
-    demFile_40m_masked = demFile.replace(demSuffix, 'dem_40m_masked.tif')
-    demFile_coverage   = demFile.replace(demSuffix, 'dem_40m_coverage.tif')
+    maskFile             = demFile.replace(demSuffix, maskSuffix)
+    orthoFile            = demFile.replace(demSuffix, 'ortho.tif')
+    ortho2File           = demFile.replace(demSuffix, 'ortho2.tif')
+    matchFile            = demFile.replace(demSuffix, 'matchtag.tif')
+    dem_browse           = demFile.replace(demSuffix, 'dem_browse.tif')
+    maskFile_10m         = demFile.replace(demSuffix, 'bitmask_10m.tif')
+    orthoFile_10m        = demFile.replace(demSuffix, 'ortho_10m.tif')
+    ortho2File_10m       = demFile.replace(demSuffix, 'ortho2_10m.tif')
+    matchFile_10m        = demFile.replace(demSuffix, 'matchtag_10m.tif')
+    demFile_unscale_temp = demFile.replace(demSuffix, 'dem_unscale_temp.tif')
+    demFile_10m_temp     = demFile.replace(demSuffix, 'dem_10m_temp.tif')
+    demFile_10m          = demFile.replace(demSuffix, 'dem_10m.tif')
+    demFile_10m_masked   = demFile.replace(demSuffix, 'dem_10m_masked.tif')
+    demFile_10m_shade    = demFile.replace(demSuffix, 'dem_10m_shade.tif')
+    demFile_shade_mask   = demFile.replace(demSuffix, 'dem_10m_shade_masked.tif')
+    demFile_40m_masked   = demFile.replace(demSuffix, 'dem_40m_masked.tif')
+    demFile_coverage     = demFile.replace(demSuffix, 'dem_40m_coverage.tif')
 
     output_files = set()
     keep_files = set()
@@ -852,6 +855,12 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
             output_files.add(ortho2File_10m)
             keep_files.add(ortho2File_10m)
 
+    # The -tap option to gdalwarp is only used in batch_scenes2strips.py
+    # when processing 50cm DEMs. Since we already use -tap to create the
+    # base reprojected DEM rasters these downsample commands run on,
+    # adding the -tap option shouldn't be necessary at all.
+    tap_arg = ''
+
     for ofile in output_files:
         if os.path.isfile(ofile):
             os.remove(ofile)
@@ -859,62 +868,78 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
     commands = []
     if maskFile_10m in output_files:
         commands.append(
-            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r near '
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=1'.format(maskFile, maskFile_10m, 10))
+            ('gdalwarp -q -overwrite -tr {2} {2} {3} -r near -dstnodata 1'
+             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=1'
+             ' "{0}" "{1}"'.format(maskFile, maskFile_10m, 10, tap_arg))
         )
     if orthoFile_10m in output_files:
         commands.append(
-            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=2'.format(orthoFile, orthoFile_10m, 10))
+            ('gdalwarp -q -overwrite -tr {2} {2} {3} -r cubic -dstnodata 0'
+             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=2'
+             ' "{0}" "{1}"'.format(orthoFile, orthoFile_10m, 10, tap_arg))
         )
     if ortho2File_10m in output_files:
         commands.append(
-            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r cubic -dstnodata 0'
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=2'.format(ortho2File, ortho2File_10m, 10))
+            ('gdalwarp -q -overwrite -tr {2} {2} {3} -r cubic -dstnodata 0'
+             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=2'
+             ' "{0}" "{1}"'.format(ortho2File, ortho2File_10m, 10, tap_arg))
         )
     if matchFile_10m in output_files:
         commands.append(
-            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r near -dstnodata 0'
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=1'.format(matchFile, matchFile_10m, 10))
+            ('gdalwarp -q -overwrite -tr {2} {2} {3} -r near -dstnodata 0'
+             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=1'
+             ' "{0}" "{1}"'.format(matchFile, matchFile_10m, 10, tap_arg))
         )
     if demFile_10m in output_files:
         commands.append(
-            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -r bilinear -dstnodata -9999'
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=3'.format(demFile, demFile_10m_temp, 10))
+            ('gdalwarp -q -overwrite -tr {2} {2} {3} -r bilinear -dstnodata -9999'
+             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=3'
+             ' "{0}" "{1}"'.format(demFile, demFile_10m_temp, 10, tap_arg))
         )
         commands.append(
-            ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}" --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
-             ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=3'.format(demFile_10m_temp, demFile_10m))
+            ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}"'
+             ' --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
+             ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=3'
+             .format(demFile_10m_temp, demFile_10m))
         )
     if demFile_10m_shade in output_files:
         commands.append(
-            ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff'
-             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(demFile_10m, demFile_10m_shade))
+            ('gdaldem hillshade -q -z 3 -compute_edges -of GTiff'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'
+             ' "{0}" "{1}"'.format(demFile_10m, demFile_10m_shade))
         )
     if dem_browse in output_files:
         commands.append(
-            ('gdaldem hillshade "{0}" "{1}" -q -z 3 -compute_edges -of GTiff'
-             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'.format(demFile_10m, dem_browse))
+            ('gdaldem hillshade -q -z 3 -compute_edges -of GTiff'
+             ' -co TILED=YES -co BIGTIFF=IF_SAFER -co COMPRESS=LZW -co PREDICTOR=2'
+             ' "{0}" "{1}"'.format(demFile_10m, dem_browse))
         )
     if demFile_10m_masked in output_files:
         commands.append(
-            ('gdal_calc.py --quiet --overwrite -A "{0}" -B "{1}" --outfile="{2}" --calc="A*(B==0)+(-9999)*(B!=0)" --NoDataValue=-9999'
-             ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=3'.format(demFile_10m, maskFile_10m, demFile_10m_masked))
+            ('gdal_calc.py --quiet --overwrite -A "{0}" -B "{1}" --outfile="{2}"'
+             ' --calc="A*(B==0)+(-9999)*(B!=0)" --NoDataValue=-9999'
+             ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=3'
+             .format(demFile_10m, maskFile_10m, demFile_10m_masked))
         )
     if demFile_shade_mask in output_files:
         commands.append(
-            ('gdal_calc.py --quiet --overwrite -A "{0}" -B "{1}" --outfile="{2}" --calc="A*(B==0)" --NoDataValue=0'
-             ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW --co PREDICTOR=2'.format(demFile_10m_shade, maskFile_10m, demFile_shade_mask))
+            ('gdal_calc.py --quiet --overwrite -A "{0}" -B "{1}" --outfile="{2}"'
+             ' --calc="A*(B==0)" --NoDataValue=0'
+             ' --co TILED=YES --co BIGTIFF=IF_SAFER --co COMPRESS=LZW --co PREDICTOR=2'
+             .format(demFile_10m_shade, maskFile_10m, demFile_shade_mask))
         )
     if demFile_40m_masked in output_files:
         commands.append(
-            ('gdalwarp "{0}" "{1}" -q -overwrite -tr {2} {2} -tap -r bilinear -dstnodata -9999'
-             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=3'.format(demFile_10m_masked, demFile_40m_masked, 40))
+            ('gdalwarp -q -overwrite -tr {2} {2} -tap -r bilinear -dstnodata -9999'
+             ' -co TILED=YES -co BIGTIFF=YES -co COMPRESS=LZW -co PREDICTOR=3'
+             ' "{0}" "{1}"'.format(demFile_10m_masked, demFile_40m_masked, 40))
         )
     if demFile_coverage in output_files:
         commands.append(
-            ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}" --type Byte --calc="A!=-9999" --NoDataValue=0'
-             ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=1'.format(demFile_40m_masked, demFile_coverage))
+            ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}" --type Byte'
+             ' --calc="A!=-9999" --NoDataValue=0'
+             ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=1'
+             .format(demFile_40m_masked, demFile_coverage))
         )
 
     for cmd in commands:
