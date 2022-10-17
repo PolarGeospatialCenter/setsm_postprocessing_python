@@ -913,6 +913,13 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
 
             print("Source NoData value: {}".format(src_nodataval))
 
+            if np.issubdtype(dst_array.dtype, np.floating) and src_nodataval == -9999:
+                print("Assuming floating point NoData=-9999 raster is a DEM")
+                print("Rounding DEM values to nearest 1/128 meters (~1cm) for optimal output compression")
+                np.multiply(dst_array, 128.0, out=dst_array)
+                np.round_(dst_array, decimals=0, out=dst_array)
+                np.divide(dst_array, 128.0, out=dst_array)
+
             # Set masking value to source NoDataVal if necessary.
             if maskval is None:
                 if src_nodataval is None:
