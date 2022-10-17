@@ -22,8 +22,17 @@ import traceback
 import warnings
 from time import sleep
 
-from lib import script_utils
-from lib.script_utils import ScriptArgumentError
+import numpy as np
+
+if sys.version_info[0] < 3:
+    import script_utils
+    from script_utils import ScriptArgumentError
+    import raster_io as lib_raster_io
+else:
+    from lib import script_utils
+    from lib.script_utils import ScriptArgumentError
+    import lib.raster_io as lib_raster_io
+
 # from lib.filter_scene import MASKCOMP_EDGE_BIT, MASKCOMP_WATER_BIT, MASKCOMP_CLOUD_BIT
 MASKCOMP_EDGE_BIT = 0
 MASKCOMP_WATER_BIT = 1
@@ -827,8 +836,6 @@ def get_dstFile(rasterFile, args):
 
 
 def mask_rasters(maskFile, suffix_maskval_dict, args):
-    import numpy as np
-    import lib.raster_io as rio
 
     global SRC_SUFFIX_CATCH_ALL
     nodata_opt = args.get(ARGSTR_DST_NODATA)
@@ -844,7 +851,7 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
 
     if True in args.get(ARGSTR_EDGE, ARGSTR_WATER, ARGSTR_CLOUD):
         # Read in mask raster, then unset bits that will not be used to mask.
-        mask_select, mask_x, mask_y = rio.extractRasterData(maskFile, 'z', 'x', 'y')
+        mask_select, mask_x, mask_y = lib_raster_io.extractRasterData(maskFile, 'z', 'x', 'y')
         mask_ones = np.ones_like(mask_select)
         if not args.get(ARGSTR_EDGE):
             np.bitwise_and(mask_select, ~np.left_shift(mask_ones, MASKCOMP_EDGE_BIT), out=mask_select)
@@ -855,7 +862,7 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
         del mask_ones
 
         # Convert remaining component bits to a binary boolean mask.
-        mask_select = mask_select.astype(np.bool)
+        mask_select = mask_select.astype(bool)
     else:
         mask_select = None
 
@@ -902,7 +909,7 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
             print("Masking source raster ({}) to output raster ({})".format(src_rasterFile, dst_rasterFile))
 
             # Read in source raster.
-            dst_array, src_nodataval = rio.extractRasterData(src_rasterFile, 'array', 'nodata_val')
+            dst_array, src_nodataval = lib_raster_io.extractRasterData(src_rasterFile, 'array', 'nodata_val')
 
             print("Source NoData value: {}".format(src_nodataval))
 
@@ -928,8 +935,11 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
                             break
                     if mask_pyramid_current is None:
                         # Build the required mask pyramid level and add to pyramids.
-                        import lib.raster_array_tools as rat
-                        mask_pyramid_current = rat.imresize(mask_select, dst_array.shape, interp='nearest')
+                        if sys.version_info[0] < 3:
+                            from raster_array_tools import imresize
+                        else:
+                            from lib.raster_array_tools import imresize
+                        mask_pyramid_current = imresize(mask_select, dst_array.shape, interp='nearest')
                         mask_pyramids.append(mask_pyramid_current)
                 dst_array[mask_pyramid_current] = maskval
 
@@ -952,10 +962,12 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
             print("Output NoData value: {}".format(dst_nodataval))
 
             # Save output masked raster.
-            rio.saveArrayAsTiff(dst_array, dst_rasterFile,
-                                nodata_val=dst_nodataval,
-                                like_raster=src_rasterFile,
-                                dtype_out=dst_array.dtype)
+            lib_raster_io.saveArrayAsTiff(
+                dst_array, dst_rasterFile,
+                nodata_val=dst_nodataval,
+                like_raster=src_rasterFile,
+                dtype_out=dst_array.dtype
+            )
 
 
 
