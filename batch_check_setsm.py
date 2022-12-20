@@ -2210,6 +2210,12 @@ def check_rasters(raster_ffiles, checkfile, args):
                 if index_setsm_rc != 0:
                     LOGGER.error("Index script returned non-zero exit status ({}); will not write checkfile".format(index_setsm_rc))
                     checkfile_write = False
+                pnamedir_jsonfile = pairname_dir+'.json'
+                if not os.path.isfile(pnamedir_jsonfile) and not re.search(r"_v\d{6}$", pairname_dir):
+                    output_jsonfile_glob = glob.glob('{}_v*.json'.format(pairname_dir))
+                    if len(output_jsonfile_glob) == 1:
+                        output_jsonfile = output_jsonfile_glob[0]
+                        os.rename(output_jsonfile, pnamedir_jsonfile)
 
         if checkfile_write:
             LOGGER.info("Writing group checkfile: {}".format(checkfile))
