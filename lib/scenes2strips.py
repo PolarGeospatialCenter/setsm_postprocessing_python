@@ -584,7 +584,7 @@ def scenes2strips(demFiles,
         # Interpolate matchtag to the same grid.
         mi = rat.interp2_gdal(xi, yi, m.astype(np.float32), Xsub, Ysub, 'nearest')
         mi[np.isnan(mi)] = 0  # convert back to uint8
-        mi = mi.astype(np.bool)
+        mi = mi.astype(bool)
         del m
 
         # Interpolate ortho to same grid.
@@ -789,7 +789,7 @@ def coregisterdems(x1, y1, z1,
                 m2n = rat.interp2_gdal(x2 - pn[1], y2 - pn[2], m2.astype(np.float32),
                                        x1, y1, 'nearest')
                 m2n[np.isnan(m2n)] = 0  # convert back to uint8
-                m2n = m2n.astype(np.bool)
+                m2n = m2n.astype(bool)
         else:
             z2n = z2 - pn[0].astype(np.float32)
             if m2 is not None:
@@ -1049,14 +1049,14 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, targ
         raise SpatialRefError("Matchtag '{}' spatial reference ({}) mismatch with DEM spatial reference ({})".format(
                               matchFile, check_srs.ExportToProj4(), demFile_srs.ExportToProj4()))
 
-    m = rat.extractRasterData(rat.openRaster(matchFile, target_srs, 'nearest'), 'array').astype(np.bool)
+    m = rat.extractRasterData(rat.openRaster(matchFile, target_srs, 'nearest'), 'array').astype(bool)
     if m.shape != z.shape:
         warnings.warn("Matchtag '{}' dimensions differ from DEM dimensions".format(matchFile)
                      +"\nInterpolating to DEM dimensions")
         x, y = rat.extractRasterData(rat.openRaster(matchFile, target_srs, 'nearest'), 'x', 'y')
         m = rat.interp2_gdal(x, y, m.astype(np.float32), x_dem, y_dem, 'nearest')
         m[np.isnan(m)] = 0  # Convert back to bool/uint8.
-        m = m.astype(np.bool)
+        m = m.astype(bool)
 
     ortho_arrays = []
     for i, ortho_file in enumerate([orthoFile, ortho2File]):
@@ -1201,7 +1201,7 @@ def cropBorder(matrix, border_val, buff=0):
     data = None
     if np.isnan(border_val):
         data = ~np.isnan(matrix)
-    elif border_val == 0 and matrix.dtype == np.bool:
+    elif border_val == 0 and matrix.dtype == bool:
         data = matrix
     else:
         data = (matrix != border_val)
@@ -1246,7 +1246,7 @@ def regrid(x, y, z, m, o, o2, md):
 
     m = rat.interp2_gdal(x, y, m.astype(np.float32), xi, yi, 'nearest')
     m[np.isnan(m)] = 0  # Convert back to uint8.
-    m = m.astype(np.bool)
+    m = m.astype(bool)
 
     # Interpolate ortho to same grid.
     o = o.astype(np.float32)
@@ -1281,7 +1281,7 @@ def expandCoverage(Z, M, O, O2, MD, R1, direction):
     if direction in ('up', 'down'):
         # R1 is Y1.
         Z1  = np.full((R1.size,  Z.shape[1]), np.nan, dtype=np.float32)
-        M1  = np.full((R1.size,  M.shape[1]), False,  dtype=np.bool)
+        M1  = np.full((R1.size,  M.shape[1]), False,  dtype=bool)
         O1  = np.full((R1.size,  O.shape[1]), 0,      dtype=np.uint16)
         O21 = np.full((R1.size, O2.shape[1]), 0,      dtype=np.uint16) if O2 is not None else None
         MD1 = np.full((R1.size, MD.shape[1]), 1,      dtype=np.uint8)
@@ -1289,7 +1289,7 @@ def expandCoverage(Z, M, O, O2, MD, R1, direction):
     else:
         # R1 is X1.
         Z1  = np.full((Z.shape[0],  R1.size), np.nan, dtype=np.float32)
-        M1  = np.full((M.shape[0],  R1.size), False,  dtype=np.bool)
+        M1  = np.full((M.shape[0],  R1.size), False,  dtype=bool)
         O1  = np.full((O.shape[0],  R1.size), 0,      dtype=np.uint16)
         O21 = np.full((O2.shape[0], R1.size), 0,      dtype=np.uint16) if O2 is not None else None
         MD1 = np.full((MD.shape[0], R1.size), 1,      dtype=np.uint8)

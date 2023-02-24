@@ -502,7 +502,7 @@ def saveImage(array, fname_or_file='testImage_py.tif', overwrite=False):
     if testFile is None:
         return
 
-    if array.dtype == np.bool:
+    if array.dtype == bool:
         image = Image.frombytes(mode='1', size=array.shape[::-1], data=np.packbits(array, axis=1))
         image.save(testFile)
     else:
@@ -635,8 +635,8 @@ def readImage(fname_or_file='testImage_ml.tif'):
         in_array = imread(testFile)
     except (ValueError, Image.DecompressionBombWarning):
         warn("Error in reading image with tifffile.imread()"
-             "\n-> Assuming image is logical; opening with scipy.misc.imread() and casting array to np.bool")
-        in_array = scipy_imread(testFile).astype(np.bool)
+             "\n-> Assuming image is logical; opening with scipy.misc.imread() and casting array to bool")
+        in_array = scipy_imread(testFile).astype(bool)
     return in_array
 
 

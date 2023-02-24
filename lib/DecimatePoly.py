@@ -121,7 +121,7 @@ def DecimatePoly(C, B_tol=None, P_tol=None):
     C = CheckInputArgs(C, B_tol, P_tol)
 
     N = C.shape[0]
-    i_rem = np.zeros(N, dtype=np.bool)
+    i_rem = np.zeros(N, dtype=bool)
     if N <= 4:
         C_out = C
         return C_out, i_rem
