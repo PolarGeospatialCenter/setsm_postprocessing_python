@@ -490,7 +490,7 @@ def dtype_np2gdal_old(dtype_in, form_out='gdal', force_conversion=False):
     the conversion may be forced with the argument force_conversion=True.
     """
     dtype_dict = {                                            # ---GDAL LIMITATIONS---
-        'bool'      : (np.bool,       gdal.GDT_Byte,     0),  # GDAL no bool/logical/1-bit
+        'bool'      : (bool,       gdal.GDT_Byte,     0),  # GDAL no bool/logical/1-bit
         'int8'      : (np.int8,       gdal.GDT_Byte,     1),  # GDAL byte is unsigned
         'int16'     : (np.int16,      gdal.GDT_Int16,    1),
         'int32'     : (np.int32,      gdal.GDT_Int32,    1),
@@ -532,7 +532,7 @@ def dtype_np2gdal_old(dtype_in, form_out='gdal', force_conversion=False):
 def dtype_np2gdal(dtype_np):
     # TODO: Write docstring.
 
-    if dtype_np == np.bool:
+    if dtype_np == bool:
         promote_dtype = np.uint8
     elif dtype_np == np.int8:
         promote_dtype = np.int16

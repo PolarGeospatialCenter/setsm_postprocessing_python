@@ -855,7 +855,7 @@ def mask_rasters(maskFile, suffix_maskval_dict, args):
         del mask_ones
 
         # Convert remaining component bits to a binary boolean mask.
-        mask_select = mask_select.astype(np.bool)
+        mask_select = mask_select.astype(bool)
     else:
         mask_select = None
 
