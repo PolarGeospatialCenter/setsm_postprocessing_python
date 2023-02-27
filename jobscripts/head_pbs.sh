@@ -2,11 +2,11 @@
 
 #PBS -l walltime=1:00:00,nodes=1:ppn=2,mem=5gb
 
-#PBS -o $PBS_JOBNAME.o$PBS_JOBID
 #PBS -j oe
 #PBS -k oe
 
 #PBS -m n
+#PBS -q batch
 
 
 ## NOTE: Look to 'body.sh' script for expected environment variable arguments

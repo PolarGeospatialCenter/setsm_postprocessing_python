@@ -10,6 +10,7 @@ set -uo pipefail
 # p2 :: core task command to be executed
 # p3 :: python minimum version number (e.g. "3.7.3")
 
+set +u
 if [ ! -z "$PBS_JOBID" ]; then
     scheduler='PBS'
 elif [ ! -z "$SLURM_JOBID" ]; then
@@ -18,6 +19,7 @@ else
     echo "Could not determine job scheduler type by checking environment variables"
     exit 1
 fi
+set -u
 
 # Required environment variable arguments
 jobscript_path="$p0"
@@ -89,7 +91,7 @@ elif [ "$scheduler" == "SLURM" ]; then
     echo Submitted to node: $SLURMD_NODENAME
     echo Cores on node: $SLURM_CPUS_ON_NODE
     echo Requested cores per task: $SLURM_CPUS_PER_TASK
-    echo Requested cores per job: $SLURM_NTASKS
+    echo Requested number of tasks: $SLURM_NTASKS
     echo Requested walltime: $SBATCH_TIMELIMIT
     #echo Nodes assigned to job: $SLURM_JOB_NODELIST
     #echo Running node index: $SLURM_NODEID
