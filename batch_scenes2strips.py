@@ -77,6 +77,7 @@ ARGSTR_CLEANUP_ON_FAILURE = '--cleanup-on-failure'
 ARGSTR_OLD_ORG = '--old-org'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_STRIPID = '--stripid'
+ARGSTR_SCENEDIRNAME = '--scenedirname'
 ARGSTR_SKIP_ORTHO2_ERROR = '--skip-xtrack-missing-ortho2-error'
 ARGSTR_SCENE_MASKS_ONLY = '--build-scene-masks-only'
 ARGSTR_USE_PIL_IMRESIZE = '--use-pil-imresize'
@@ -474,6 +475,14 @@ def argparser_init():
     )
 
     parser.add_argument(
+        ARGSTR_SCENEDIRNAME,
+        help=' '.join([
+            "Name of folder containing the scene DEM files for a single strip-pair ID",
+            "designated by the {} argument".format(ARGSTR_STRIPID)
+        ])
+    )
+
+    parser.add_argument(
         ARGSTR_SKIP_ORTHO2_ERROR,
         action='store_true',
         help=' '.join([
@@ -622,18 +631,23 @@ def main():
         if args.get(ARGSTR_STRIPID) is None:
 
             # Find all scene DEMs to be merged into strips.
-            src_scenedem_ffile_glob = glob.glob(os.path.join(
+            src_scenedem_ffile_pattern = os.path.join(
                 args.get(ARGSTR_SRC),
                 '*'*(not args.get(ARGSTR_OLD_ORG)),
                 '*_{}'.format(demSuffix)
-            ))
+            )
+            src_scenedem_ffile_glob = glob.glob(src_scenedem_ffile_pattern)
             if not src_scenedem_ffile_glob:
-                print("No scene DEMs found to process, exiting")
+                print("No scene DEMs found to process with pattern: '{}'".format(src_scenedem_ffile_pattern))
+                print("Check --help to see if {} or {} options should be provided".format(
+                    ARGSTR_OLD_ORG, ARGSTR_DEM_TYPE
+                ))
                 sys.exit(0)
 
             # Find all unique strip IDs.
             stripids = set()
             stripid_cannot_be_parsed_flag = False
+            old_org = args.get(ARGSTR_OLD_ORG)
             for scenedem_ffile in src_scenedem_ffile_glob:
                 sID_match = re.match(RE_STRIPID, os.path.basename(scenedem_ffile))
                 if sID_match is None:
@@ -643,7 +657,14 @@ def main():
                                   "Please fix source raster filenames so that a strip ID can be parsed "
                                   "using the following regular expression: '{}'".format(RE_STRIPID_STR))
                     continue
-                stripids.add(sID_match.group(1))
+                sID = sID_match.group(1)
+                scenedirname = None
+                if not old_org:
+                    scenedirname_test = os.path.basename(os.path.dirname(scenedem_ffile))
+                    scenedirname_match = re.match(RE_STRIPID, scenedirname_test)
+                    if scenedirname_match is not None:
+                        scenedirname = scenedirname_test
+                stripids.add((sID, scenedirname))
 
             if stripid_cannot_be_parsed_flag:
                 print("One or more scene DEMs could not have their strip ID parsed, exiting")
@@ -681,19 +702,39 @@ def main():
 
         stripids = sorted(list(stripids))
 
+        if len(stripids) == 0:
+            print("No strip-pair IDs found")
+            sys.exit(0)
+
 
         ## Create processing list.
         ## Existence check. Filter out strips with existing .fin output file.
+        stripids_to_process = list()
         dstdir = args.get(ARGSTR_DST)
-        stripids_to_process = [
-            sID for sID in stripids if not glob.glob(
-                os.path.join(
-                    dstdir,
-                    '{}_{}{}*'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG)),
-                    '{}_{}*.fin'.format(sID, res_str)
-                )
-            )
-        ]
+        stripdirname_s2sidentifier = '{}{}'.format(
+            # res_str, '_lsf' if (args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF and not args.get(ARGSTR_META_ONLY)) else ''
+            res_str, '_lsf' if (args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF) else ''
+        )
+        use_scenedirname = (len(stripids[0]) == 2)
+        scenedirname = None
+        stripdirname = None
+        for stripid_tuple in stripids:
+            if use_scenedirname:
+                sID, scenedirname = stripid_tuple
+            else:
+                sID = stripid_tuple
+            if scenedirname is not None:
+                if stripdirname_s2sidentifier in scenedirname:
+                    stripdirname = scenedirname
+                else:
+                    stripdirname = scenedirname.replace(res_str, stripdirname_s2sidentifier)
+            elif args.get(ARGSTR_OLD_ORG):
+                stripdirname = ''
+            else:
+                stripdirname = '{}_{}*'.format(sID, stripdirname_s2sidentifier)
+            dst_sID_ffile_glob = glob.glob(os.path.join(dstdir, stripdirname, '{}_{}*.fin'.format(sID, res_str)))
+            if len(dst_sID_ffile_glob) == 0:
+                stripids_to_process.append((sID, scenedirname, stripdirname))
 
         print("Found {}{} strip-pair IDs, {} unfinished".format(
             len(stripids), ' *'+demSuffix if demSuffix is not None else '', len(stripids_to_process)))
@@ -734,13 +775,16 @@ def main():
 
         job_num = 0
         num_jobs = len(stripids_to_process)
-        for sID in stripids_to_process:
+        for sID, scenedirname, stripdirname in stripids_to_process:
             job_num += 1
 
-            strip_dname_pattern = os.path.join(
-                args_batch.get(ARGSTR_DST),
-                '{}_{}{}*/'.format(sID, res_str, '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_OLD_ORG))
-            )
+            if args.get(ARGSTR_OLD_ORG):
+                strip_dname_pattern = args_batch.get(ARGSTR_DST)
+            else:
+                if stripdirname is None:
+                    stripdirname = '{}_{}*/'.format(sID, stripdirname_s2sidentifier)
+                strip_dname_pattern = os.path.join(args_batch.get(ARGSTR_DST), stripdirname)
+
             strip_dfull_glob = glob.glob(strip_dname_pattern)
             if len(strip_dfull_glob) > 1:
                 raise InvalidArgumentError("Found more than one match for output strip folder in"
@@ -755,10 +799,12 @@ def main():
                 ))
                 dst_sID_ffile_glob = glob.glob(os.path.join(
                     strip_dfull,
-                    '*{}_{}{}_*'.format(
+                    '*{}_{}{}_*{}'.format(
                         sID,
                         res_str,
-                        '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else ''
+                        '_lsf' if (args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF) else '',
+                        # META_ONLY_META_SUFFIX if args.get(ARGSTR_META_ONLY) else ''
+                        ''
                     )
                 ))
 
@@ -790,6 +836,7 @@ def main():
                 continue
 
             args_single.set(ARGSTR_STRIPID, sID)
+            args_single.set(ARGSTR_SCENEDIRNAME, scenedirname)
             if last_job_email and job_num == num_jobs:
                 args_single.set(ARGSTR_EMAIL, last_job_email)
             cmd_single = args_single.get_cmd()
@@ -855,7 +902,11 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         use_old_trans = True if args.get(ARGSTR_META_TRANS_DIR) is not None else False
 
         mask_name = 'mask' if args.get(ARGSTR_MASK_VER) == ARGCHO_MASK_VER_MASKV2 else args.get(ARGSTR_MASK_VER)
-        scene_mask_name = demSuffix.replace('.tif', '_'+mask_name)
+        # if args.get(ARGSTR_REMERGE_STRIPS):
+        if False:
+            scene_mask_name = mask_name
+        else:
+            scene_mask_name = demSuffix.replace('.tif', '_'+mask_name)
         strip_mask_name = mask_name
 
         sceneMaskSuffix = scene_mask_name+'.tif'
@@ -887,31 +938,45 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             scene_dname = ''
         else:
             scene_dname_root = '{}_{}'.format(args.get(ARGSTR_STRIPID), res_str)
-
-            scene_dfull_pattern = os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*/')
-            scene_dfull_glob = glob.glob(scene_dfull_pattern)
-            if len(scene_dfull_glob) != 1:
-                raise InvalidArgumentError("Cannot find only one match for input strip folder in"
-                                           " source directory with pattern: {}".format(scene_dfull_pattern))
-            scene_dfull = scene_dfull_glob[0]
-            scene_dname = os.path.basename(os.path.normpath(scene_dfull))
+            if args.get(ARGSTR_SCENEDIRNAME) is not None:
+                scene_dname = args.get(ARGSTR_SCENEDIRNAME)
+                scene_dfull = os.path.join(args.get(ARGSTR_SRC), scene_dname)
+                if not os.path.isdir(scene_dfull):
+                    raise InvalidArgumentError(
+                        "Source scene directory specified by '{}' and {} arguments does not exist: {}".format(
+                            ARGSTR_SRC, ARGSTR_SCENEDIRNAME, scene_dfull
+                        )
+                    )
+            else:
+                scene_dfull_pattern = os.path.join(args.get(ARGSTR_SRC), scene_dname_root+'*/')
+                scene_dfull_glob = glob.glob(scene_dfull_pattern)
+                if len(scene_dfull_glob) != 1:
+                    raise InvalidArgumentError("Cannot find only one match for input strip folder in"
+                                               " source directory with pattern: {}".format(scene_dfull_pattern))
+                scene_dfull = scene_dfull_glob[0]
+                scene_dname = os.path.basename(os.path.normpath(scene_dfull))
 
         strip_dname = '{}_{}{}{}'.format(
             args.get(ARGSTR_STRIPID),
             res_str,
+            # ('_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '')*(not args.get(ARGSTR_REMERGE_STRIPS)),
             '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
             scene_dname.replace(scene_dname_root, '')
         )
+
+        # output_dname = scene_dname if args.get(ARGSTR_META_ONLY) else strip_dname
+        output_dname = scene_dname if False else strip_dname
 
         if args.get(ARGSTR_OLD_ORG):
             strip_dfull = args.get(ARGSTR_DST)
             strip_dfull_coreg = dstdir_coreg
         else:
-            strip_dfull = os.path.join(args.get(ARGSTR_DST), strip_dname)
+            strip_dfull = os.path.join(args.get(ARGSTR_DST), output_dname)
             strip_dfull_coreg = os.path.join(dstdir_coreg, strip_dname) if dstdir_coreg is not None else None
 
         # Print arguments for this run.
         print("stripid: {}".format(args.get(ARGSTR_STRIPID)))
+        print("scenedirname: {}".format(args.get(ARGSTR_SCENEDIRNAME)))
         print("res: {}".format(res_str))
         print("src dir: {}".format(args.get(ARGSTR_SRC)))
         print("dst dir: {}".format(args.get(ARGSTR_DST)))
