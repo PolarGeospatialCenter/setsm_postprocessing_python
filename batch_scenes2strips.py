@@ -159,8 +159,8 @@ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
 JOB_WALLTIME_HR = 3
-JOB_MEMORY_GB = 40
-JOB_NCORES = 4
+JOB_MEMORY_GB = 60
+JOB_NCORES = 12
 JOB_NODE = None
 
 ##############################
@@ -1914,10 +1914,11 @@ def shouldDoMasking(matchFile, mask_name):
                  else ['{}{}.tif'.format(demFile_base, mask_name)])
     for m in maskFiles:
         if os.path.isfile(m):
-            # Update Mode - will only reprocess masks older than the matchtag file.
-            maskFile_date = os.path.getmtime(m)
-            if (matchFile_date - maskFile_date) > 6.9444e-04:
-                return True
+            # # Update Mode - will only reprocess masks older than the matchtag file.
+            # maskFile_date = os.path.getmtime(m)
+            # if (matchFile_date - maskFile_date) > 6.9444e-04:
+            #     return True
+            return False
         else:
             return True
     return False

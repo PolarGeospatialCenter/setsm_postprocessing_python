@@ -407,7 +407,7 @@ def astype_round_and_crop(array, dtype_out, allow_modify_array=False):
 
     """
     # The trivial case
-    if dtype_out == np.bool:
+    if dtype_out == bool:
         return array.astype(dtype_out)
 
     array_dtype_np = array.dtype.type
@@ -453,7 +453,7 @@ def astype_cropped(array, dtype_out, allow_modify_array=False):
 
     """
     # The trivial case
-    if dtype_out == np.bool:
+    if dtype_out == bool:
         return array.astype(dtype_out)
 
     dtype_out_np = dtype_out if type(dtype_out) != np.dtype else dtype_out.type
@@ -504,7 +504,7 @@ def getDataArray(array, label=0, label_type='nodata'):
         raise InvalidArgumentError("`label_type` must be one of {}, "
                                    "but was {}".format(label_type_choices, label_type))
 
-    if (array.dtype == np.bool
+    if (array.dtype == bool
         and ((label_type == 'nodata' and label == 0)
              or (label_type == 'data' and label == 1))):
         data_array = array
@@ -897,7 +897,7 @@ def imresize(array, size, interp='bicubic', dtype_out='input',
         else:
             array = array.astype(np.float32)
     elif method == 'cv2':
-        if dtype_in == np.bool:
+        if dtype_in == bool:
             promote_dtype = np.uint8
         elif dtype_in == np.int8:
             promote_dtype = np.int16
@@ -931,13 +931,13 @@ def imresize(array, size, interp='bicubic', dtype_out='input',
 
     elif method == 'pil':
         image = (Image.frombytes(mode='1', size=array.shape[::-1], data=np.packbits(array, axis=1))
-                 if array.dtype == np.bool else Image.fromarray(array))
+                 if array.dtype == bool else Image.fromarray(array))
 
         image = image.resize(tuple(list(new_shape)[::-1]), interp_code)
 
         # Set "default" data type for reading data into NumPy array.
         if image.mode == '1':
-            dtype_out_pil = np.bool
+            dtype_out_pil = bool
             image = image.convert('L')
         elif image.mode == 'L':
             dtype_out_pil = np.uint8
@@ -959,7 +959,7 @@ def imresize(array, size, interp='bicubic', dtype_out='input',
         array_r = interp2_gdal(X, Y, array, Xi, Yi, interp, extrapolate=False)
 
     elif method == 'scipy':
-        PILmode = 'L' if array.dtype in (np.bool, np.uint8) else 'F'
+        PILmode = 'L' if array.dtype in (bool, np.uint8) else 'F'
         if PILmode == 'L' and array.dtype != np.uint8:
             array = array.astype(np.uint8)
         array_r = scipy.misc.imresize(array, new_shape, interp, PILmode)
@@ -1095,7 +1095,7 @@ def imresize_pil(array, size, interp='bicubic', dtype_out='input',
 
     # Convert NumPy array to Pillow Image.
     image = None
-    if array_dtype_in == np.bool:
+    if array_dtype_in == bool:
         if float_resize:
             image = Image.fromarray(array, 'L')
         else:
@@ -1120,7 +1120,7 @@ def imresize_pil(array, size, interp='bicubic', dtype_out='input',
 
     # Set "default" data type for reading data into NumPy array.
     if image.mode == '1':
-        dtype_out_np = np.bool
+        dtype_out_np = bool
         image = image.convert("L")
     elif image.mode == 'L':
         dtype_out_np = np.uint8
@@ -1259,7 +1259,7 @@ def imresize_old(array, size, interp='bicubic', dtype_out='input',
         except KeyError:
             raise InvalidArgumentError("For `method=cv2`, `interp` must be one of {}, "
                                        "but was '{}'".format(interp_dict.keys(), interp))
-        if array_dtype_in == np.bool:
+        if array_dtype_in == bool:
             array = array.astype(np.uint8)
         array_r = cv2.resize(array, tuple(list(new_shape)[::-1]), interpolation=interp_cv2)
 
@@ -1275,7 +1275,7 @@ def imresize_old(array, size, interp='bicubic', dtype_out='input',
         return imresize_pil(array, new_shape, interp)
 
     elif method == 'scipy':
-        PILmode = 'L' if array.dtype in (np.bool, np.uint8) else 'F'
+        PILmode = 'L' if array.dtype in (bool, np.uint8) else 'F'
         if PILmode == 'L' and array.dtype != np.uint8:
             array = array.astype(np.uint8)
         array_r = scipy.misc.imresize(array, new_shape, interp, PILmode)
@@ -1378,7 +1378,7 @@ def conv2_slow(array, kernel, shape='full', default_double_out=True, zero_border
         else:
             dtype_out = np.float64
 
-    if kernel.dtype == np.bool:
+    if kernel.dtype == bool:
         warn("Boolean data type for kernel is not supported, casting to float32")
         kernel = kernel.astype(np.float32)
 
@@ -1550,7 +1550,7 @@ def conv2(array, kernel, shape='full', conv_depth='default',
                               "but was {}".format([str(d(1).dtype) for d in cv2_array_dtypes], array.dtype))
         # Only cast to a higher data type for safety.
         array_dtype_cast = None
-        if array_dtype_in == np.bool:
+        if array_dtype_in == bool:
             array_dtype_cast = np.uint8
         elif array_dtype_in == np.int8:
             array_dtype_cast = np.int16
@@ -1567,7 +1567,7 @@ def conv2(array, kernel, shape='full', conv_depth='default',
                                "but was {}".format([str(d(1).dtype) for d in cv2_kernel_dtypes], kernel.dtype))
         # Only cast to a higher data type for safety.
         kernel_dtype_cast = None
-        if kernel_dtype_in == np.bool:
+        if kernel_dtype_in == bool:
             kernel_dtype_cast = np.uint8
         elif kernel_dtype_in == np.uint32:
             kernel_dtype_cast = np.uint64
@@ -1593,13 +1593,13 @@ def conv2(array, kernel, shape='full', conv_depth='default',
     # to continue with faster and more reliable convolution method.
     array_casted = False
     if 'array_dtype_cast' in vars():
-        if array_dtype_in != np.bool:
+        if array_dtype_in != bool:
             warn(array_dtype_errmsg + "\n-> Casting array from {} to {} for processing".format(
                  array_dtype_in, array_dtype_cast(1).dtype))
         array = array.astype(array_dtype_cast)
         array_casted = True
     if 'kernel_dtype_cast' in vars():
-        if array_dtype_in != np.bool:
+        if array_dtype_in != bool:
             warn(kernel_dtype_errmsg + "\n-> Casting kernel from {} to {} for processing".format(
                  kernel_dtype_in, kernel_dtype_cast(1).dtype))
         kernel = kernel.astype(kernel_dtype_cast)
@@ -1868,9 +1868,9 @@ def conv_binary_prevent_overflow(array, structure):
     input_bitdepth_pos = 0
     for arr in (array, structure):
         arr_dtype = arr.dtype
-        if arr.dtype == np.bool:
+        if arr.dtype == bool:
             arr_posbits = 1
-        elif np.issubdtype(arr_dtype, np.int):
+        elif np.issubdtype(arr_dtype, int):
             arr_posbits = int(str(arr.dtype).replace('int', '')) - 1
         elif np.issubdtype(arr_dtype, np.uint):
             arr_posbits = int(str(arr.dtype).replace('uint', ''))
@@ -1944,7 +1944,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
     -----
     This function is meant to replicate MATLAB's `imerode` function [4].
 
-    Strictly binary erosion will be performed if and only if `array.dtype` is `np.bool`,
+    Strictly binary erosion will be performed if and only if `array.dtype` is `bool`,
     otherwise greyscale erosion will be performed. However, greyscale erosion on a
     binary array containing only values X and Y produces the same result as if the
     values [min(X, Y), max(X, Y)] were mapped to [0, 1] and cast to a boolean array,
@@ -1983,7 +1983,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
         structure = np.ones(nhood, dtype=np.float32)
     elif type(nhood) == np.ndarray:
         structure = nhood
-        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+        if structure.dtype != bool and np.any(~np.logical_or(structure == 0, structure == 1)):
             raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
         if cast_structure_for_speed and structure.dtype != np.float32:
             structure = structure.astype(np.float32)
@@ -2010,7 +2010,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
             and not np.issubdtype(structure.dtype, np.floating) ):
             # Make sure one of the input integer arrays has great enough
             # positive bitdepth to prevent overflow during convolution.
-            if array.dtype != np.bool and np.any(~np.logical_or(array == 0, array == 1)):
+            if array.dtype != bool and np.any(~np.logical_or(array == 0, array == 1)):
                 structure = structure.astype(np.uint64)
             else:
                 structure = conv_binary_prevent_overflow(array, structure)
@@ -2023,7 +2023,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
     if mode == 'skimage':
         pady, padx = np.array(structure.shape) / 2
         pady, padx = int(pady), int(padx)
-        if array.dtype == np.bool:
+        if array.dtype == bool:
             padval = 1
         else:
             padval = np.inf if np.issubdtype(array.dtype, np.floating) else np.iinfo(array.dtype).max
@@ -2031,7 +2031,7 @@ def imerode_slow(array, nhood, iterations=1, mode='auto',
 
     for i in range(iterations):
 
-        if array.dtype == np.bool:
+        if array.dtype == bool:
             # Binary erosion
             if mode == 'conv':
                 array_e = (conv2(~array, structure, shape='same', allow_flipped_processing=False) == 0)
@@ -2140,7 +2140,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
     -----
     This function is meant to replicate MATLAB's `imdilate` function [4].
 
-    Strictly binary dilation will be performed if and only if `array.dtype` is `np.bool`,
+    Strictly binary dilation will be performed if and only if `array.dtype` is `bool`,
     otherwise greyscale dilation will be performed. However, greyscale dilation on a
     binary array containing only values X and Y produces the same result as if the
     values [min(X, Y), max(X, Y)] were mapped to [0, 1] and cast to a boolean array,
@@ -2179,7 +2179,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
         structure = np.ones(nhood, dtype=np.float32)
     elif type(nhood) == np.ndarray:
         structure = nhood
-        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+        if structure.dtype != bool and np.any(~np.logical_or(structure == 0, structure == 1)):
             raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
         if cast_structure_for_speed and structure.dtype != np.float32:
             structure = structure.astype(np.float32)
@@ -2206,7 +2206,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
             and not np.issubdtype(structure.dtype, np.floating) ):
             # Make sure one of the input integer arrays has great enough
             # positive bitdepth to prevent overflow during convolution.
-            if array.dtype != np.bool and np.any(~np.logical_or(array == 0, array == 1)):
+            if array.dtype != bool and np.any(~np.logical_or(array == 0, array == 1)):
                 structure = structure.astype(np.uint64)
             else:
                 structure = conv_binary_prevent_overflow(array, structure)
@@ -2217,7 +2217,7 @@ def imdilate_slow(array, nhood, iterations=1, mode='auto',
 
     for i in range(iterations):
 
-        if array.dtype == np.bool:
+        if array.dtype == bool:
             # Binary dilation
             if mode == 'conv':
                 array_d = (conv2(array, structure, shape='same', allow_flipped_processing=False) > 0)
@@ -2344,7 +2344,7 @@ def imerode_imdilate_cv2(array, nhood, iterations=1,
         structure = np.ones(nhood, dtype=np.uint8)
     elif type(nhood) == np.ndarray:
         structure = nhood
-        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+        if structure.dtype != bool and np.any(~np.logical_or(structure == 0, structure == 1)):
             raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
     else:
         raise InvalidArgumentError("`nhood` type may only be int, tuple, or ndarray, "
@@ -2360,7 +2360,7 @@ def imerode_imdilate_cv2(array, nhood, iterations=1,
 
         # Only cast to a higher data type for safety.
         array_dtype_cast = None
-        if array_dtype_in == np.bool:
+        if array_dtype_in == bool:
             array_dtype_cast = np.uint8
         elif array_dtype_in == np.int8:
             array_dtype_cast = np.int16
@@ -2520,7 +2520,7 @@ def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
     # Find boundaries.
     array_b_bw = (array != fn(array, structure))
 
-    if grey_boundaries and array.dtype != np.bool:
+    if grey_boundaries and array.dtype != bool:
         fillval = np.nanmin(array) if side == 'inner' else np.max(array)
         array_b = np.full_like(array, fillval)
         array_b[array_b_bw] = array[array_b_bw]
@@ -2630,7 +2630,7 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
         structure = np.ones(nhood, dtype=np.uint8)
     elif type(nhood) == np.ndarray:
         structure = nhood
-        if structure.dtype != np.bool and np.any(~np.logical_or(structure == 0, structure == 1)):
+        if structure.dtype != bool and np.any(~np.logical_or(structure == 0, structure == 1)):
             raise InvalidArgumentError("`nhood` structure contains values other than 0 and 1")
     else:
         raise InvalidArgumentError("`nhood` type may only be int, tuple, or ndarray, "
@@ -2657,7 +2657,7 @@ def entropyfilt(array, nhood=np.ones((9,9),dtype=np.uint8), bin_bitdepth=8, nbin
     array_dtype_bitdepth = None
     array_dtype_max = None
     array_dtype_unsigned = False
-    if array_dtype_in == np.bool:
+    if array_dtype_in == bool:
         array_dtype_bitdepth = 1
         array_dtype_max = 1
     if np.issubdtype(array_dtype_in, np.integer):
@@ -2825,7 +2825,7 @@ def convex_hull_image(image, offset_coordinates=True, tolerance=1e-10):
         # ERIK'S NOTE: Substituted grid_points_in_poly() for the following for speed.
         # mask = grid_points_in_poly(image.shape, vertices)
         hull_perim_r, hull_perim_c = polygon_perimeter(vertices[:, 0], vertices[:, 1])
-        mask = np.zeros(image.shape, dtype=np.bool)
+        mask = np.zeros(image.shape, dtype=bool)
         mask[hull_perim_r, hull_perim_c] = True
         mask = sp_ndimage.morphology.binary_fill_holes(mask)
     else:
@@ -3389,7 +3389,7 @@ def concave_hull_image(image, concavity,
     del erode_poly, amin_poly, hull_convex_poly
 
     # Draw concave hull image.
-    image_cchull = np.zeros(image.shape, dtype=np.bool)
+    image_cchull = np.zeros(image.shape, dtype=bool)
     for poly in hull_concave_poly:
         cchull_r, cchull_c = poly.exterior.coords.xy
         cchull_r = np.array(cchull_r, dtype=np.int64)

@@ -290,14 +290,14 @@ def generateMasks(demFile, mask_version, dstdir=None, noentropy=False, nbit_mask
                     for mask_name, mask_bit in MASKCOMP_NAME_BIT_ZIP:
                         np.bitwise_or(mask_comp, np.left_shift(component_masks[mask_name].astype(np.uint8), mask_bit), out=mask_comp)
                     try:
-                        if not np.array_equal(mask_comp.astype(np.bool), mask_bin):
+                        if not np.array_equal(mask_comp.astype(bool), mask_bin):
                             raise MaskComponentError("Coverage of edge/water/cloud component mask arrays "
                                                      "does not match coverage of official binary mask array")
                     except MaskComponentError:
                         print("Saving mask coverage arrays in question for inspection")
                         from testing.test import saveImage
                         saveImage(mask_bin, demFname.replace(demSuffix, mask_version+'_binary.tif'), overwrite=True)
-                        saveImage(mask_comp.astype(np.bool), demFname.replace(demSuffix, mask_version+'_components.tif'), overwrite=True)
+                        saveImage(mask_comp.astype(bool), demFname.replace(demSuffix, mask_version+'_components.tif'), overwrite=True)
                         raise
                     if debug_component_masks in (DEBUG_MASKS, DEBUG_ALL):
                         component_masks['binary'] = mask_bin
@@ -633,7 +633,7 @@ def mask_v2(demFile=None, mask_version='mask',
     if save_component_masks:
         mask_components.extend([MASKCOMP_EDGE_NAME, MASKCOMP_WATER_NAME, MASKCOMP_CLOUD_NAME])
     for mask_name in mask_components:
-        component_masks_out[mask_name] = np.ones_like(dem_array, np.bool)
+        component_masks_out[mask_name] = np.ones_like(dem_array, bool)
 
     # Mask edges using DEM slope.
     mask = getSlopeMask(dem_array, dx=processing_dx, dy=processing_dy, source_res=image_res)
@@ -792,7 +792,7 @@ def mask_v2a(demFile, avg_kernel_size=5,
     image_res = abs(image_dx)
 
     # Initialize output.
-    mask_out = np.zeros_like(dem_array, np.bool)
+    mask_out = np.zeros_like(dem_array, bool)
 
     if avg_kernel_size is None:
         avg_kernel_size = int(math.floor(21*2/image_res))
@@ -939,7 +939,7 @@ def mask8m(demFile, avg_kernel_size=21,
                                    matchFile, match_array.shape, dem_array.shape))
 
     # Initialize output.
-    mask_out = np.zeros_like(dem_array, np.bool)
+    mask_out = np.zeros_like(dem_array, bool)
 
     # Get data density map
     data_density_map = getDataDensityMap(match_array, avg_kernel_size)
@@ -1510,7 +1510,7 @@ def getCloudMask(dem_array, ortho_array, data_density_map,
 
     # Make sure sufficient non NaN pixels exist, otherwise cut to the chase.
     if np.count_nonzero(dem_data) < 2*min_cloud_cluster:
-        mask = np.ones(dem_array.shape, dtype=np.bool)
+        mask = np.ones(dem_array.shape, dtype=bool)
         return mask, component_masks
 
     # Calculate standard deviation of elevation.
@@ -1665,7 +1665,7 @@ def getEdgeMask(match_array, hull_concavity=0.5, crop=None,
         raise InvalidArgumentError("Resolution `res` argument must be provided "
                                    "to set default values of min_data_cluster")
     if not np.any(match_array):
-        return match_array.astype(np.bool)
+        return match_array.astype(bool)
     if min_data_cluster is None:
         min_data_cluster = int(math.floor(1000*2/res))
 
@@ -1713,7 +1713,7 @@ def clean_mask(mask, remove_pix=1000, fill_pix=10000, in_place=False):
 
     """
     if not np.any(mask):
-        return mask.astype(np.bool)
+        return mask.astype(bool)
 
     # Remove small data clusters.
     cleaned_mask = rat.bwareaopen(mask, remove_pix, in_place=in_place)

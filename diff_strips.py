@@ -243,14 +243,14 @@ def diff_strips(demFile1, demFile2, diff_demFile, save_match):
         m2i = rat.interp2_gdal(x2-dx, y2-dy, m2, x1, y1, 'nearest')
         del m2
         m2i[np.isnan(m2i)] = 0  # convert back to uint8
-        m2i = m2i.astype(np.bool)
+        m2i = m2i.astype(bool)
 
         if 'm1' not in vars():
             print("Loading match1")
-            m1 = rat.extractRasterData(matchFile1, 'array').astype(np.bool)
+            m1 = rat.extractRasterData(matchFile1, 'array').astype(bool)
             m1 = m1[z1_r0:z1_r1, z1_c0:z1_c1]
-        elif m1.dtype != np.bool:
-            m1 = m1.astype(np.bool)
+        elif m1.dtype != bool:
+            m1 = m1.astype(bool)
 
         print("Saving difference matchtag")
         m_diff = (m1 & m2i)
