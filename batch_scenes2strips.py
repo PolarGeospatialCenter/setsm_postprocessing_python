@@ -1705,10 +1705,11 @@ def shouldDoMasking(matchFile, mask_name):
                  else ['{}{}.tif'.format(demFile_base, mask_name)])
     for m in maskFiles:
         if os.path.isfile(m):
-            # Update Mode - will only reprocess masks older than the matchtag file.
-            maskFile_date = os.path.getmtime(m)
-            if (matchFile_date - maskFile_date) > 6.9444e-04:
-                return True
+            # # Update Mode - will only reprocess masks older than the matchtag file.
+            # maskFile_date = os.path.getmtime(m)
+            # if (matchFile_date - maskFile_date) > 6.9444e-04:
+            #     return True
+            return False
         else:
             return True
     return False
