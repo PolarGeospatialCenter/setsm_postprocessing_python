@@ -149,8 +149,8 @@ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
 JOB_WALLTIME_HR = 3
-JOB_MEMORY_GB = 40
-JOB_NCORES = 4
+JOB_MEMORY_GB = 60
+JOB_NCORES = 12
 JOB_NODE = None
 
 ##############################

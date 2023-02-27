@@ -17,8 +17,7 @@ env_load_cmd=''
 ## Modify the two code blocks below to set default and per-script environment load commands
 
 # Set default environment load command for all batch scripts (fallback if no specific script setting)
-#default_env_load_cmd="source /mnt/pgc/data/scratch/erik/installed/build/miniconda3/bin/activate /mnt/pgc/data/scratch/erik/installed/build/miniconda3/envs/s2s"
-#default_env_load_cmd="source /home/husby036/installed/build/miniconda3/bin/activate /home/husby036/installed/build/miniconda3/envs/s2s"
+#default_env_load_cmd="source /home/husby036/installed/build/miniconda3_rookery2/bin/activate /home/husby036/installed/build/miniconda3_rookery2/envs/s2s"
 
 # Set environment load commands specific to batch scripts
 if [ "$job_class" == "s2s" ]; then
