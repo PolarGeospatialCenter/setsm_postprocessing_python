@@ -15,6 +15,7 @@ Scripts in this repo are intended to work with both Python 2.7 and Python 3.6/3.
 * NumPy
 * SciPy
 * scikit-image
+* matplotlib
 * OpenCV
 * GDAL (including OSGeo, OGR, OSR)
 * Shapely
@@ -25,7 +26,7 @@ You will likely have issues getting all of the dependencies installed and workin
 
 Once conda has been installed, create a new environment into which you will install the required packages. This can be accomplished by running the following commands:
 ```
-conda create --name s2s -c conda-forge python=3 gdal=3 numpy scipy scikit-image opencv shapely --yes
+conda create --name s2s python gdal numpy scipy scikit-image matplotlib opencv shapely --yes
 ````
 You will need to have the environment activated whenever you wish to run the scripts in this repo. If you ran the above commands, the "s2s" environment should already be active, and this is indicated by `(s2s)` appearing at the beginning of your command prompt.
 
