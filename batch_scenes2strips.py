@@ -35,7 +35,7 @@ from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgument
 
 ## Core globals
 
-SCRIPT_VERSION_NUM = script_utils.VersionString('4.0')
+SCRIPT_VERSION_NUM = script_utils.VersionString('4')
 
 # Script paths and execution
 SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
@@ -1157,8 +1157,11 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
                 all_data_masked = False
 
                 # Determine output strip segment DEM file paths.
+                s2s_ver_str = str(SCRIPT_VERSION_NUM)
+                if '.' not in s2s_ver_str:
+                    s2s_ver_str = '{}.0'.format(s2s_ver_str)
                 stripdem_fname = "SETSM_s2s{:0>3}_{}_{}{}_seg{}_{}".format(
-                    str(SCRIPT_VERSION_NUM).replace('.', ''),
+                    s2s_ver_str.replace('.', ''),
                     args.get(ARGSTR_STRIPID),
                     res_str,
                     '_lsf' if args.get(ARGSTR_DEM_TYPE) == ARGCHO_DEM_TYPE_LSF else '',
