@@ -1080,7 +1080,12 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
         # Find scene DEMs for this stripid to be merged into strips.
         src_scenedem_ffile_glob = glob.glob(os.path.join(
             scene_dfull,
-            '{}_*_{}'.format(args.get(ARGSTR_STRIPID), demSuffix)))
+            '{}{}_*_{}'.format(
+                '*' if args.get(ARGSTR_REMERGE_STRIPS) else '',
+                args.get(ARGSTR_STRIPID),
+                demSuffix
+            )
+        ))
         print("Processing strip-pair ID: {}, {} scenes".format(args.get(ARGSTR_STRIPID), len(src_scenedem_ffile_glob)))
         if not src_scenedem_ffile_glob:
             print("No scene DEMs found to process, skipping")
