@@ -2353,13 +2353,19 @@ def check_setsm_meta(meta_fp):
 
 
     if image1_satID in SETSM_META_WV_CORRECT_SATIDS and image1_wv_correct_value != 1:
-        errmsg_print_and_list(errmsg_list, "Image 1 with satID '{}' requires wv_correct application, but {}{}".format(image1_satID,
-            'Image 1 {} meta key was not found'.format(SETSM_META_KEY_WV_CORRECT) if image1_wv_correct_value is None else '',
-            'Image 1 {} flag value is {}'.format(SETSM_META_KEY_WV_CORRECT, image1_wv_correct_value) if image1_wv_correct_value is not None else ''))
+        if image1_satID == 'WV02' and 'Image_1_gen_time=' in meta_txt_buf:
+            pass
+        else:
+            errmsg_print_and_list(errmsg_list, "Image 1 with satID '{}' requires wv_correct application, but {}{}".format(image1_satID,
+                'Image 1 {} meta key was not found'.format(SETSM_META_KEY_WV_CORRECT) if image1_wv_correct_value is None else '',
+                'Image 1 {} flag value is {}'.format(SETSM_META_KEY_WV_CORRECT, image1_wv_correct_value) if image1_wv_correct_value is not None else ''))
     if image2_satID in SETSM_META_WV_CORRECT_SATIDS and image2_wv_correct_value != 1:
-        errmsg_print_and_list(errmsg_list, "Image 2 with satID '{}' requires wv_correct application, but {}{}".format(image2_satID,
-            'Image 2 {} meta key was not found'.format(SETSM_META_KEY_WV_CORRECT) if image2_wv_correct_value is None else '',
-            'Image 2 {} flag value is {}'.format(SETSM_META_KEY_WV_CORRECT, image2_wv_correct_value) if image2_wv_correct_value is not None else ''))
+        if image2_satID == 'WV02' and 'Image_2_gen_time=' in meta_txt_buf:
+            pass
+        else:
+            errmsg_print_and_list(errmsg_list, "Image 2 with satID '{}' requires wv_correct application, but {}{}".format(image2_satID,
+                'Image 2 {} meta key was not found'.format(SETSM_META_KEY_WV_CORRECT) if image2_wv_correct_value is None else '',
+                'Image 2 {} flag value is {}'.format(SETSM_META_KEY_WV_CORRECT, image2_wv_correct_value) if image2_wv_correct_value is not None else ''))
 
 
     return errmsg_list
