@@ -25,13 +25,14 @@ import traceback
 from time import sleep
 
 import numpy as np
-from osgeo import gdal, ogr, osr
 
 from lib import script_utils
 from lib.script_utils import ScriptArgumentError
+from lib import raster_array_tools as rat
 from lib import raster_io
 from lib import demregex
 
+from osgeo import gdal, ogr, osr
 gdal.UseExceptions()
 
 
