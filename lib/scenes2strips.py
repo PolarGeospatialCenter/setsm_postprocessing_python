@@ -707,7 +707,7 @@ def scenes2strips(demFiles,
 
             # Round DEM values to 1/128 to greatly improve compression effectiveness
             np.multiply(Z, 128.0, out=Z)
-            np.round_(Z, decimals=0, out=Z)
+            np.round(Z, decimals=0, out=Z)
             np.divide(Z, 128.0, out=Z)
 
             Z[np.isnan(Z)] = -9999
