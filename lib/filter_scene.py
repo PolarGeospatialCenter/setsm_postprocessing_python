@@ -1356,6 +1356,7 @@ def getWaterMask(ortho_array, data_density_map,
                          - sp_ndimage.minimum_filter1d(ortho_array, ent_kernel_size, axis=0))
 
     # Entropy image
+    ortho_subtraction[np.isnan(ortho_subtraction)] = 0
     entropy_array = rat.entropyfilt(
         rat.astype_round_and_crop(ortho_subtraction, np.uint8, allow_modify_array=True),
         ent_kernel_size)
