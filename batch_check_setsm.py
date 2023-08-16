@@ -1822,7 +1822,7 @@ def main():
                 node=job_node_single, ncores=JOB_NCORES,
                 email=args.get(ARGSTR_EMAIL),
                 envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN],
-                hold=True
+                hold=False
             )
 
             if args_batch.get(ARGSTR_DRYRUN):
