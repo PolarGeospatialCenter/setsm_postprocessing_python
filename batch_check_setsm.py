@@ -1271,18 +1271,21 @@ def main():
                 pairname_dir_not_done_list.append(pairname_dir)
 
         print('')
+        final_rc = 1
         if len(pairname_dir_not_done_list) == 0:
             print("All pairname directories have passed verification!")
+            final_rc = 0
         else:
             print("{} pairname directories have not yet passed verification:\n  {}".format(
                 len(pairname_dir_not_done_list), '\n  '.join(pairname_dir_not_done_list)
             ))
+            final_rc = 1
         if len(pairname_dir_empty_list) != 0:
             print("{} pairname directories are empty:\n  {}".format(
                 len(pairname_dir_empty_list), '\n  '.join(pairname_dir_empty_list)
             ))
 
-        sys.exit(0)
+        sys.exit(final_rc)
 
 
     ## Scan source dir/file input to determine which source files should be checked.
