@@ -195,13 +195,13 @@ SCHED_SUPPORTED = []
 SCHED_PBS = 'pbs'
 SCHED_SLURM = 'slurm'
 SCHED_NAME_TESTCMD_DICT = {
-    SCHED_PBS: 'pbsnodes',
-    SCHED_SLURM: 'sinfo'
+    SCHED_PBS: 'which pbsnodes',
+    SCHED_SLURM: 'which sinfo'
 }
 if SYSTYPE == 'Linux':
     for sched_name in sorted(SCHED_NAME_TESTCMD_DICT.keys()):
         try:
-            child = subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            child = subprocess.Popen(SCHED_NAME_TESTCMD_DICT[sched_name], shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdoutdata, stderrdata = child.communicate()
             if child.returncode == 0:
                 SCHED_SUPPORTED.append(sched_name)
