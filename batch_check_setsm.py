@@ -18,6 +18,7 @@ import glob
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -2059,19 +2060,28 @@ def check_rasters(raster_ffiles, checkfile, args):
                             "All bands will be checked for valid SETSM data range."
                         ]))
 
+                    if args.get(ARGSTR_CHECK_METHOD) == ARGCHO_CHECK_METHOD_CHECKSUM:
+                        cmd = "gdalinfo -checksum {}".format(raster_ffile)
+                        LOGGER.debug("Running checksum with the following command:\n{}".format(cmd))
+                        proc = subprocess.run(shlex.split(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                        if proc.returncode != 0:
+                            errmsg_print_and_list(errmsg_list,
+                                "'gdalinfo -checksum' failure with return code {}".format(proc.returncode))
+                            raise RasterFileReadError()
+
                     for band_index in range(num_bands):
                         band_num = band_index + 1
                         band = ds.GetRasterBand(band_num)
                         LOGGER.debug("Processing Band {}".format(band_num))
 
-                        if args.get(ARGSTR_CHECK_METHOD) == ARGCHO_CHECK_METHOD_CHECKSUM:
-                            try:
-                                LOGGER.debug("Doing checksum")
-                                checksum = band.Checksum()
-                                LOGGER.debug("Checksum succeeded: {}".format(checksum))
-                            except RuntimeError as e:
-                                errmsg_print_and_list(errmsg_list,
-                                    "Band {} checksum error: {}".format(band_num, e))
+                        # if args.get(ARGSTR_CHECK_METHOD) == ARGCHO_CHECK_METHOD_CHECKSUM:
+                        #     try:
+                        #         LOGGER.debug("Doing checksum")
+                        #         checksum = band.Checksum()
+                        #         LOGGER.debug("Checksum succeeded: {}".format(checksum))
+                        #     except RuntimeError as e:
+                        #         errmsg_print_and_list(errmsg_list,
+                        #             "Band {} checksum error: {}".format(band_num, e))
 
                         if args.get(ARGSTR_CHECK_METHOD) == ARGCHO_CHECK_METHOD_READ or setsm_suffix is not None:
                             try:
