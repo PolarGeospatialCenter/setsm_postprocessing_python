@@ -150,4 +150,10 @@ echo ________________________________________________________
 echo
 
 
-time eval "$task_cmd"
+if [ -e /usr/bin/time ]; then
+    eval "/usr/bin/time -v ${task_cmd}"
+elif which time 1>/dev/null 2>/dev/null || type -t time 1>/dev/null 2>/dev/null; then
+    eval "time ${task_cmd}"
+else
+    eval "${task_cmd}"
+fi
