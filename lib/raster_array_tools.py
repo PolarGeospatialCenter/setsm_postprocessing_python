@@ -3383,8 +3383,9 @@ def concave_hull_image(image, concavity,
     # print("hull_concave_poly.is_valid={}".format(hull_concave_poly.is_valid))
     if type(hull_concave_poly) == shapely.geometry.polygon.Polygon:
         hull_concave_poly = [hull_concave_poly]
-    else:
+    elif type(hull_concave_poly) == shapely.geometry.MultiPolygon:
         warn("Concave hull is broken into multiple polygons; try increasing data_boundary_res")
+        hull_concave_poly = hull_concave_poly.geoms
 
     del erode_poly, amin_poly, hull_convex_poly
 
