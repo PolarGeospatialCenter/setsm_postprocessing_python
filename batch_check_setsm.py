@@ -154,10 +154,12 @@ ARGCHO_CHECK_SPECIAL = [
 ARGCHO_CHECK_SPECIAL_DEMTYPE_REGULAR = 'non-lsf'
 ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH = 'lsf'
 ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH = 'both'
+ARGCHO_CHECK_SPECIAL_DEMTYPE_EITHER = 'either' # has only lsf or non-lsf but not both
 ARGCHO_CHECK_SPECIAL_DEMTYPE = [
     ARGCHO_CHECK_SPECIAL_DEMTYPE_REGULAR,
     ARGCHO_CHECK_SPECIAL_DEMTYPE_SMOOTH,
-    ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH
+    ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH,
+    ARGCHO_CHECK_SPECIAL_DEMTYPE_EITHER
 ]
 ARGCHO_REMOVE_TYPE_CHECKFILES = 'checkfiles'
 ARGCHO_REMOVE_TYPE_SOURCEFILES = 'sourcefiles'
@@ -293,6 +295,7 @@ ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT = {
 }
 ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT[ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH] = '/'.join(
     sorted(ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT.values()))
+ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT[ARGCHO_CHECK_SPECIAL_DEMTYPE_EITHER] = ARGCHOSET_CHECK_SPECIAL_DEMTYPE_SUFFIX_DICT[ARGCHO_CHECK_SPECIAL_DEMTYPE_BOTH]
 
 ARGCHOSET_CHECK_SPECIAL_INDEX_MODE_DICT = {
     ARGCHO_CHECK_SPECIAL_SCENEPAIRS: 'scene',
@@ -1007,6 +1010,7 @@ def checkfile_incomplete(args,
                 #     continue
 
                 missing_suffixes = [s for s in src_suffixes_subgroup if not ends_one_of_coll(s, src_rasters_subgroup)]
+
                 if missing_suffixes and args.get(ARGSTR_CHECK_SPECIAL) is not None:
                     missing_suffixes_set = set(missing_suffixes)
                     if args.get(ARGSTR_CHECK_SPECIAL) in ARGCHOGRP_CHECK_SPECIAL_SETSM_DEM_SCENELEVEL:
@@ -1025,6 +1029,13 @@ def checkfile_incomplete(args,
                         missing_suffixes_set.difference_update(CHECK_SPECIAL_DEM_SUFFIX_OPTIONAL_STRIPLEVEL_SET)
                     missing_suffixes = [s for s in missing_suffixes if s in missing_suffixes_set]
 
+                # fixup missing_suffixes for either lsf or non-lsf
+                if (args.get(ARGSTR_CHECK_SPECIAL_DEMTYPE) == ARGCHO_CHECK_SPECIAL_DEMTYPE_EITHER):
+                    eprint("allow either lsf or non-lsf group")
+                    missing_suffixes.sort()
+                    if ((missing_suffixes == ["dem.tif"]) or (missing_suffixes == ["dem_smooth.tif", "smooth_result.txt"])):
+                        missing_suffixes = None
+                #
                 if missing_suffixes:
                     warnings.warn("Source file suffixes for a check group were not found")
                     missing_suffix_errmsg = (
@@ -1385,6 +1396,13 @@ def main():
                     if endswith_one_of_coll(srcfname, src_suffixes):
                         srcffile_checklist.append(os.path.join(root, srcfname))
             missing_suffixes = [s for s in src_suffixes if not ends_one_of_coll(s, srcffile_checklist)]
+            # fixup missing_suffixes for either lsf or non-lsf
+            if (args.get(ARGSTR_CHECK_SPECIAL_DEMTYPE) == ARGCHO_CHECK_SPECIAL_DEMTYPE_EITHER):
+                print("allow either lsf or non-lsf")
+                missing_suffixes.sort()
+                if ((missing_suffixes == ["dem.tif"]) or (missing_suffixes == ["dem_smooth.tif", "smooth_result.txt"])):
+                    missing_suffixes = None
+            #
             if missing_suffixes:
                 warnings.warn("Source file suffixes were not found")
                 if warn_missing_suffix:
