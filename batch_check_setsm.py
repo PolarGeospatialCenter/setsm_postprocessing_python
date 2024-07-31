@@ -237,8 +237,8 @@ ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_STRIPLEVEL = '/'.join([
 ])
 ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_DSP = '/'.join([
     'matchtag.tif',
-    'ortho.tif',
-    ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_INFO50CM
+    'ortho.tif'#,
+    #ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_INFO50CM
 ])
 # ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = re.compile(r"(?P<scenepairname>(?P<strippairname>(?P<sensor>[A-Z0-9]{4})_(?P<timestamp>\d{8})_(?P<catid1>[A-Z0-9]{16})_(?P<catid2>[A-Z0-9]{16}))_(?P<tile1>R\d+C\d+-)?(?P<order1>\d{12}_\d{2})_(?P<part1>P\d{3})_(?P<tile2>R\d+C\d+-)?(?P<order2>\d{12}_\d{2})_(?P<part2>P\d{3})_(?P<res>\d{1}))_(?P<suffix>[_a-z0-9]+)\.(?P<ext>\w+)")
 ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL   = re.compile(r"^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_\d{1}(-\d{2})?)_[a-z0-9_]+\.\w+$")
