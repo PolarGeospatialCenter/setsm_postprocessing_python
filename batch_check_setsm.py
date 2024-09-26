@@ -237,10 +237,10 @@ ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_DSP = '/'.join([
     'ortho.tif',
     ARGCHOSET_CHECK_SPECIAL_DEM_SUFFIX_INFO50CM
 ])
-# ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = re.compile("(?P<scenepairname>(?P<strippairname>(?P<sensor>[A-Z0-9]{4})_(?P<timestamp>\d{8})_(?P<catid1>[A-Z0-9]{16})_(?P<catid2>[A-Z0-9]{16}))_(?P<tile1>R\d+C\d+-)?(?P<order1>\d{12}_\d{2})_(?P<part1>P\d{3})_(?P<tile2>R\d+C\d+-)?(?P<order2>\d{12}_\d{2})_(?P<part2>P\d{3})_(?P<res>\d{1}))_(?P<suffix>[_a-z0-9]+)\.(?P<ext>\w+)")
-ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL   = re.compile("^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_\d{1}(-\d{2})?)_[a-z0-9_]+\.\w+$")
-ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL   = re.compile("^((?:SETSM_s2s\d{3}_)?[A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}).*$")
-ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPSEGMENT = re.compile("^((?:SETSM_s2s\d{3}_)?[A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_\d+c?m(_lsf)?_seg\d+)_[a-z0-9_]+\.\w+$")
+# ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL = re.compile(r"(?P<scenepairname>(?P<strippairname>(?P<sensor>[A-Z0-9]{4})_(?P<timestamp>\d{8})_(?P<catid1>[A-Z0-9]{16})_(?P<catid2>[A-Z0-9]{16}))_(?P<tile1>R\d+C\d+-)?(?P<order1>\d{12}_\d{2})_(?P<part1>P\d{3})_(?P<tile2>R\d+C\d+-)?(?P<order2>\d{12}_\d{2})_(?P<part2>P\d{3})_(?P<res>\d{1}))_(?P<suffix>[_a-z0-9]+)\.(?P<ext>\w+)")
+ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_SCENELEVEL   = re.compile(r"^([A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_\d{1}(-\d{2})?)_[a-z0-9_]+\.\w+$")
+ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPLEVEL   = re.compile(r"^((?:SETSM_s2s\d{3}_)?[A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}).*$")
+ARGCHOSET_CHECK_SPECIAL_DEM_REGEX_STRIPSEGMENT = re.compile(r"^((?:SETSM_s2s\d{3}_)?[A-Z0-9]{4}_\d{8}_[0-9A-F]{16}_[0-9A-F]{16}_\d+c?m(_lsf)?_seg\d+)_[a-z0-9_]+\.\w+$")
 
 ARGCHOSET_CHECK_SPECIAL_SETTING_DICT = {
     ARGCHO_CHECK_SPECIAL_ALL_TOGETHER: [
@@ -338,13 +338,13 @@ SETSM_RASTER_SUFFIX_VALIDRANGE_DICT = {
 
 SETSM_META_SUFFIX = '_meta.txt'
 SETSM_STRIPMETA_SCENEMETA_SECTION_HEADER = 'Scene Metadata'
-SETSM_STRIPMETA_SCENEMETA_ITEM_HEADER_REGEX = re.compile("^\s*scene \d+ name=.*$")
+SETSM_STRIPMETA_SCENEMETA_ITEM_HEADER_REGEX = re.compile(r"^\s*scene \d+ name=.*$")
 
 SETSM_META_REQUIRED_DICT = dict()
-SETSM_META_KEY_TOKEN_DELIM_RE = '(?: +|_+)'
-SETSM_META_SPACE_RE = '[ \t]*?'
-SETSM_META_NEWLINE_START_RE = '(?:\r\n|\r|\n)'
-SETSM_META_NEWLINE_END_RE = '(?=(?:\r\n|\r|\n))'
+SETSM_META_KEY_TOKEN_DELIM_RE = r'(?: +|_+)'
+SETSM_META_SPACE_RE = r'[ \t]*?'
+SETSM_META_NEWLINE_START_RE = r'(?:\r\n|\r|\n)'
+SETSM_META_NEWLINE_END_RE = r'(?=(?:\r\n|\r|\n))'
 SETSM_META_KEY_PREFIX_IMAGE = 'image'.strip().lower()
 SETSM_META_KEY_PREFIX_IMAGE_1 = ' '.join([SETSM_META_KEY_PREFIX_IMAGE, str(1)])
 SETSM_META_KEY_PREFIX_IMAGE_2 = ' '.join([SETSM_META_KEY_PREFIX_IMAGE, str(2)])
@@ -370,7 +370,7 @@ SETSM_META_ITEM_COUNT_PAIR = 2
 
 SETSM_META_KEY = 'Image path'
 SETSM_META_KEY_IMAGE_PATH = SETSM_META_KEY
-SETSM_META_ITEM_RE = get_setsm_meta_item_regex(None, "[\d\w_\-/]+\.tif")
+SETSM_META_ITEM_RE = get_setsm_meta_item_regex(None, r"[\d\w_\-/]+\.tif")
 SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 SETSM_META_KEYGRP_GSD = [
@@ -384,19 +384,19 @@ for SETSM_META_KEY in SETSM_META_KEYGRP_GSD + [
     'Mean_sun_elevation',
     'Mean_sat_azimuth_angle'
 ]:
-    SETSM_META_VALUE_RE = "\d+\.?\d*"
+    SETSM_META_VALUE_RE = r"\d+\.?\d*"
     SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, SETSM_META_VALUE_RE, allow_missing_image_prefix=True)
     SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 SETSM_META_KEY = 'Mean_sat_elevation'
-SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, "\-?\d+\.?\d*", allow_missing_image_prefix=True)
+SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, r"\-?\d+\.?\d*", allow_missing_image_prefix=True)
 SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 for SETSM_META_KEY in [
     'effbw',
     'abscalfact'
 ]:
-    SETSM_META_VALUE_RE = "\d+\.?\d*"
+    SETSM_META_VALUE_RE = r"\d+\.?\d*"
     SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, SETSM_META_VALUE_RE)
     SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
@@ -405,17 +405,17 @@ for SETSM_META_KEY in [
     'min',
     'max'
 ]:
-    SETSM_META_VALUE_RE = "\d+"
+    SETSM_META_VALUE_RE = r"\d+"
     SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, SETSM_META_VALUE_RE)
     SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 SETSM_META_KEY = 'wv_correct'
 SETSM_META_KEY_WV_CORRECT = SETSM_META_KEY
-SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, "[01]")
+SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, r"[01]")
 SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 SETSM_META_KEY = 'ASP build ID'
-SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, "(?:[0-9A-F]+)?")
+SETSM_META_ITEM_RE = get_setsm_meta_item_regex(SETSM_META_KEY, r"(?:[0-9A-F]+)?")
 SETSM_META_REQUIRED_DICT[SETSM_META_KEY] = (SETSM_META_ITEM_RE, SETSM_META_ITEM_IS_KEY_VALUE, SETSM_META_ITEM_COUNT_PAIR)
 
 SETSM_META_REQUIRED_KEY_SORTED_LIST = sorted(SETSM_META_REQUIRED_DICT.keys())
@@ -423,7 +423,7 @@ SETSM_META_REQUIRED_KEY_SORTED_LIST = sorted(SETSM_META_REQUIRED_DICT.keys())
 del SETSM_META_KEY, SETSM_META_ITEM_RE, SETSM_META_VALUE_RE
 
 INFO50CM_RE = re.compile(
-"""scenedemid=[A-Z][A-Z0-9]{2}\d{1}_\d{8}_[A-Z0-9]{16}_[A-Z0-9]{16}_(?:R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(?:R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_0(?:-\d{2})?
+r"""scenedemid=[A-Z][A-Z0-9]{2}\d{1}_\d{8}_[A-Z0-9]{16}_[A-Z0-9]{16}_(?:R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_(?:R\d+C\d+-)?\d{12}_\d{2}_P\d{3}_0(?:-\d{2})?
 stripdemid=[A-Z][A-Z0-9]{2}\d{1}_\d{8}_[A-Z0-9]{16}_[A-Z0-9]{16}_50cm_v\d{6}
 filesz_dem=(\d+\.\d+([eE][-\+]?\d+)?)
 filesz_lsf=((?:\d+\.\d+)?([eE][-\+]?\d+)?)

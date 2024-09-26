@@ -177,13 +177,13 @@ DEM_TYPE_SUFFIX_DICT = {
     ARGCHO_DEM_TYPE_NON_LSF: 'dem.tif'
 }
 
-RE_STRIPID_STR = "^(?:SETSM_s2s[0-9]{3}_)?([A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$"
+RE_STRIPID_STR = r"^(?:SETSM_s2s[0-9]{3}_)?([A-Z0-9]{4}_.*?_?[0-9A-F]{16}_.*?_?[0-9A-F]{16}).*$"
 RE_STRIPID = re.compile(RE_STRIPID_STR)
-RE_STRIPFNAME_SEGNUM = re.compile("_seg(\d+)_", re.I)
-RE_SCENEMETA_SETSM_VERSION_STR = "^setsm[ _]version=.*$"
+RE_STRIPFNAME_SEGNUM = re.compile(r"_seg(\d+)_", re.I)
+RE_SCENEMETA_SETSM_VERSION_STR = r"^setsm[ _]version=.*$"
 RE_SCENEMETA_SETSM_VERSION = re.compile(RE_SCENEMETA_SETSM_VERSION_STR, re.I|re.MULTILINE)
-RE_SCENEMETA_GROUP_VERSION = re.compile("^group[ _]version=.*$", re.I|re.MULTILINE)
-RE_STRIPMETA_SCENE_NAME_KEY = re.compile("^scene \d+ name=", re.I)
+RE_SCENEMETA_GROUP_VERSION = re.compile(r"^group[ _]version=.*$", re.I|re.MULTILINE)
+RE_STRIPMETA_SCENE_NAME_KEY = re.compile(r"^scene \d+ name=", re.I)
 
 META_ONLY_META_SUFFIX = 's2s_meta.txt'
 

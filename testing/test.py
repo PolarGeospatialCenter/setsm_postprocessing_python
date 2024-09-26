@@ -173,7 +173,7 @@ def sg(varNames_csv):
 
 
 def getTestVarsFromGlobals(debug_globals):
-    testVname_pattern_str = "{}\d+_(.+)".format('sg_testVar_')
+    testVname_pattern_str = r"{}\d+_(.+)".format('sg_testVar_')
     testVname_pattern = re.compile(testVname_pattern_str)
     testVar_names = []
     testVar_values = []
@@ -188,7 +188,7 @@ def getTestVarsFromGlobals(debug_globals):
 
 
 def splitTupleString(tup_string):
-    tup_pattern = re.compile("\((.*)\)")
+    tup_pattern = re.compile(r"\((.*)\)")
     search_result = re.search(tup_pattern, tup_string)
     if search_result is None:
         return None
@@ -269,8 +269,8 @@ def getCalledFunctionArgs(depth=1, funcName=None):
             print(fr)
         raise
 
-    args_pattern_str = "\w" if funcName is None else funcName
-    args_pattern_str += "\s*\((.+)\)"
+    args_pattern_str = r"\w" if funcName is None else funcName
+    args_pattern_str += r"\s*\((.+)\)"
     args_pattern = re.compile(args_pattern_str)
     search_result = re.search(args_pattern, funcCall)
     if search_result is None:

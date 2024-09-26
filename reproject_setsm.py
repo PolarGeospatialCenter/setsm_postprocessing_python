@@ -116,8 +116,8 @@ BUILD_STRIP_AUX_CORE_STRIP_SUFFIXES = [
     'bitmask.tif',
 ]
 
-RE_UTM_PROJNAME = re.compile("\Autm\d+[ns]\Z")
-RE_SHELVED_STRIP = re.compile("\A.*/(?:strips|strips_v4[^/]*)/2m/")
+RE_UTM_PROJNAME = re.compile(r"\Autm\d+[ns]\Z")
+RE_SHELVED_STRIP = re.compile(r"\A.*/(?:strips|strips_v4[^/]*)/2m/")
 
 DRE_STRIPMETAFILE = demregex.StripSegmentFile(suffix='_meta.txt')
 

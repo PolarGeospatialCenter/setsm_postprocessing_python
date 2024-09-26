@@ -29,7 +29,7 @@ def capture():
         out[0] = out[0].getvalue()
         out[1] = out[1].getvalue()
 
-cprof_time_re = re.compile(".*\s*\d+ function calls in (\d*\.\d+) seconds.*")
+cprof_time_re = re.compile(r".*\s*\d+ function calls in (\d*\.\d+) seconds.*")
 
 
 fcall_template = "{}(arr, struct, mode='{}')"

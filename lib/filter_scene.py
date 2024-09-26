@@ -78,9 +78,9 @@ HOSTNAME = os.getenv('HOSTNAME')
 # else:
 #     RUNNING_AT_PGC = False
 RUNNING_AT_PGC = False
-RE_SCENE_DEM_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9A-F]{16})_([0-9A-F]{16})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_.*$"
+RE_SCENE_DEM_FNAME_PARTS_STR = r"^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9A-F]{16})_([0-9A-F]{16})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_(.+?\-)?([A-Z0-9]+_[0-9]+)_(P[0-9]{3})_.*$"
 RE_SCENE_DEM_FNAME_PARTS = re.compile(RE_SCENE_DEM_FNAME_PARTS_STR)
-RE_SOURCE_IMAGE_FNAME_PARTS_STR = "^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})_([0-9A-F]{16})_[0-9]{2}([A-Z]{3})[0-9]{2}[0-9]{6}\-(.+?)\-([A-Z0-9]+_[0-9]+)_(P[0-9]{3})\..*$"
+RE_SOURCE_IMAGE_FNAME_PARTS_STR = r"^([A-Z0-9]{4})_([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{6})_([0-9A-F]{16})_[0-9]{2}([A-Z]{3})[0-9]{2}[0-9]{6}\-(.+?)\-([A-Z0-9]+_[0-9]+)_(P[0-9]{3})\..*$"
 RE_SOURCE_IMAGE_FNAME_PARTS = re.compile(RE_SOURCE_IMAGE_FNAME_PARTS_STR)
 
 
