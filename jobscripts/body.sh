@@ -9,7 +9,7 @@ set -uo pipefail
 # p1 :: job class (e.g. 's2s', 'Mask', 'Check')
 # p2 :: core task command to be executed
 # p3 :: python minimum version number (e.g. "3.7.3")
-
+set +u
 if [ ! -z "$PBS_JOBID" ]; then
     scheduler='PBS'
 elif [ ! -z "$SLURM_JOBID" ]; then
@@ -18,6 +18,7 @@ else
     echo "Could not determine job scheduler type by checking environment variables"
     exit 1
 fi
+set -u
 
 # Required environment variable arguments
 jobscript_path="$p0"
