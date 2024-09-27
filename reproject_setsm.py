@@ -676,7 +676,7 @@ def reproject_setsm(src_metafile, dstdir=None, target_epsg=None, target_resoluti
         if rasterfile_src.endswith('dem.tif'):
             commands.append(
                 ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}"'
-                 ' --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
+                 ' --calc="round(A*128.0)/128.0" --NoDataValue=-9999'
                  ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=3'.format(rasterfile_dst_uncompressed, rasterfile_dst))
             )
         elif 'bitmask' in rasterfile_src:
@@ -899,7 +899,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
         )
         commands.append(
             ('gdal_calc.py --quiet --overwrite -A "{0}" --outfile="{1}"'
-             ' --calc="round_(A*128.0)/128.0" --NoDataValue=-9999'
+             ' --calc="round(A*128.0)/128.0" --NoDataValue=-9999'
              ' --co TILED=YES --co BIGTIFF=YES --co COMPRESS=LZW --co PREDICTOR=3'
              .format(demFile_10m_temp, demFile_10m))
         )
