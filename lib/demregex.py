@@ -27,11 +27,11 @@ def re_fullmatch_using_match(pattern, string, **kwargs):
         pattern_str = pattern.pattern
     else:
         raise TypeError("first argument must be string or compiled pattern")
-    if not pattern_str.endswith('\Z'):
+    if not pattern_str.endswith(r'\Z'):
         if pattern is pattern_str:
-            pattern += '\Z'
+            pattern += r'\Z'
         else:
-            pattern = re.compile(pattern_str+'\Z')
+            pattern = re.compile(pattern_str+r'\Z')
     return re.match(pattern, string, **kwargs)
 
 try:
@@ -445,15 +445,15 @@ class DemRes(object):
         return res_name, res_meters, res_whole_meters
 
 
-RECMP_CATALOGID = re.compile("[0-9A-F]{16}")
-RECMP_ORDERNUM = re.compile("\d{12}_\d{2}")
-RECMP_TILENUM = re.compile("R\d+C\d+")
-RECMP_PARTNUM = re.compile("P\d{3}")
+RECMP_CATALOGID = re.compile(r"[0-9A-F]{16}")
+RECMP_ORDERNUM = re.compile(r"\d{12}_\d{2}")
+RECMP_TILENUM = re.compile(r"R\d+C\d+")
+RECMP_PARTNUM = re.compile(r"P\d{3}")
 
 
 class Pairname(Regex):
-    regrp_sensor, recmp_sensor = 'sensor', re.compile("[A-Z][A-Z0-9]{2}[0-9]")
-    regrp_timestamp, recmp_timestamp = 'timestamp', re.compile("\d{8}")
+    regrp_sensor, recmp_sensor = 'sensor', re.compile(r"[A-Z][A-Z0-9]{2}[0-9]")
+    regrp_timestamp, recmp_timestamp = 'timestamp', re.compile(r"\d{8}")
     regrp_catid1, recmp_catid1 = 'catid1', RECMP_CATALOGID
     regrp_catid2, recmp_catid2 = 'catid2', RECMP_CATALOGID
     @staticmethod
