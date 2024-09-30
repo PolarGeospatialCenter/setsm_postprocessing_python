@@ -2,7 +2,7 @@
 
 #SBATCH --time 1:00:00
 #SBATCH --nodes 1
-#SBATCH --ntasks 2
+#SBATCH --cpus-per-task 2
 #SBATCH --mem=5G
 
 #SBATCH -o %x.o%j
