@@ -17,7 +17,7 @@ env_load_cmd=''
 ## Modify the two code blocks below to set default and per-script environment load commands
 
 # Set default environment load command for all batch scripts (fallback if no specific script setting)
-#default_env_load_cmd="source /mnt/pgc/data/common/repos/mambaforge/bin/activate /mnt/pgc/data/common/repos/mambaforge/envs/s2s"
+#default_env_load_cmd="source ~/miniforge3/bin/activate ~/miniforge3/envs/setsmenv"
 
 # Set environment load commands specific to batch scripts
 if [ "$job_class" == "s2s" ]; then
