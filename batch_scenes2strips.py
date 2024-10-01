@@ -1140,14 +1140,14 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             else:
                 raise MetaReadError("Found more than one 'Group_version' among source "
                                     "scene DEM meta.txt files: {}".format(group_version_list))
-
-        if parsed_group_version is not None and parsed_group_version != derived_group_version:
-            raise MetaReadError(
-                "Parsed 'Group_version' ({}) from source scene DEM meta.txt files "
-                "does not match group version ({}) derived from 'SETSM Version' meta entries: {}".format(
-                    parsed_group_version, derived_group_version, setsm_version_list
-                )
-            )
+        ## This check assumes all the scenes in a strip are available - not a valid assumption
+        # if parsed_group_version is not None and parsed_group_version != derived_group_version:
+        #     raise MetaReadError(
+        #         "Parsed 'Group_version' ({}) from source scene DEM meta.txt files "
+        #         "does not match group version ({}) derived from 'SETSM Version' meta entries: {}".format(
+        #             parsed_group_version, derived_group_version, setsm_version_list
+        #         )
+        #     )
         if parsed_group_version is not None:
             derived_group_version = parsed_group_version
 
