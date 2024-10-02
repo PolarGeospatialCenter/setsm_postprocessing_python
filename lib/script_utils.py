@@ -698,7 +698,7 @@ class ArgumentPasser:
                 "--job-name {}".format(jobname) if jobname is not None else '',
                 "--time {}".format(time_hms) if time_hms is not None else '',
                 "--mem {}G".format(memory_gb) if memory_gb is not None else '',
-                "--ntasks {}".format(ncores) if ncores is not None else '',
+                "--cpus-per-task {}".format(ncores) if ncores is not None else '',
                 "--export {}".format(cmd_envvars) if cmd_envvars is not None else '',
                 "--mail-type FAIL,END" if email else '',
                 "--mail-user {}".format(email) if type(email) is str else '',

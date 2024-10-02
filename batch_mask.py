@@ -107,7 +107,7 @@ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 'Mask'
 JOB_WALLTIME_HR = 30
-JOB_MEMORY_GB = 20
+JOB_MEMORY_GB = 30
 JOB_NCORES = 4
 JOB_NODE = None
 

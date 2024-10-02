@@ -159,7 +159,7 @@ JOBSCRIPT_DIR = os.path.join(SCRIPT_DIR, 'jobscripts')
 JOBSCRIPT_INIT = os.path.join(JOBSCRIPT_DIR, 'init.sh')
 JOB_ABBREV = 's2s'
 JOB_WALLTIME_HR = 3
-JOB_MEMORY_GB = 60
+JOB_MEMORY_GB = 80
 JOB_NCORES = 12
 JOB_NODE = None
 
@@ -1140,14 +1140,14 @@ def run_s2s(args, res_str, argcho_dem_type_opp, demSuffix):
             else:
                 raise MetaReadError("Found more than one 'Group_version' among source "
                                     "scene DEM meta.txt files: {}".format(group_version_list))
-
-        if parsed_group_version is not None and parsed_group_version != derived_group_version:
-            raise MetaReadError(
-                "Parsed 'Group_version' ({}) from source scene DEM meta.txt files "
-                "does not match group version ({}) derived from 'SETSM Version' meta entries: {}".format(
-                    parsed_group_version, derived_group_version, setsm_version_list
-                )
-            )
+        ## This check assumes all the scenes in a strip are available - not a valid assumption
+        # if parsed_group_version is not None and parsed_group_version != derived_group_version:
+        #     raise MetaReadError(
+        #         "Parsed 'Group_version' ({}) from source scene DEM meta.txt files "
+        #         "does not match group version ({}) derived from 'SETSM Version' meta entries: {}".format(
+        #             parsed_group_version, derived_group_version, setsm_version_list
+        #         )
+        #     )
         if parsed_group_version is not None:
             derived_group_version = parsed_group_version
 
