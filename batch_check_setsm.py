@@ -854,13 +854,12 @@ def argparser_init():
         nargs='?',
         help="Send email to user upon end or abort of the LAST SUBMITTED task."
     )
-
     parser.add_argument(
         ARGSTR_LICENSES,
         type=script_utils.ARGTYPE_BOOL_PLUS(
             parse_fn=str),
         nargs='?',
-        help="Licenses argument to pass to slurm"
+        help="Licenses argument to pass to slurm."
     )
 
     parser.add_argument(
