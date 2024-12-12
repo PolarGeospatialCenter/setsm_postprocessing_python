@@ -643,7 +643,7 @@ class ArgumentPasser:
                           jobscript=None, jobname=None,
                           time_hr=None, time_min=None, time_sec=None,
                           node=None, ncores=None, memory_gb=None,
-                          email=None,
+                          email=None, licenses=None,
                           envvars=None, hold=False):
         cmd = None
         cmd_envvars = None
@@ -702,6 +702,7 @@ class ArgumentPasser:
                 "--export {}".format(cmd_envvars) if cmd_envvars is not None else '',
                 "--mail-type FAIL,END" if email else '',
                 "--mail-user {}".format(email) if type(email) is str else '',
+                "--licenses={}".format(licenses) if type(licenses) is str else '',
             ])
             jobscript_optkey = '#SBATCH'
 
