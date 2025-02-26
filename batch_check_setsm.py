@@ -105,13 +105,14 @@ ARGSTR_SCRATCH = '--scratch'
 ARGSTR_WD = '--wd'
 ARGSTR_LOGDIR = '--logdir'
 ARGSTR_EMAIL = '--email'
+ARGSTR_LICENSES = '--licenses'
 ARGSTR_DO_DELETE = '--do-delete'
 ARGSTR_DRYRUN = '--dryrun'
 ARGSTR_DEBUG = '--debug'
 
 # Argument groups
 ARGGRP_OUTDIR = [ARGSTR_LOGDIR, ARGSTR_SCRATCH]
-ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR_EMAIL]
+ARGGRP_BATCH = [ARGSTR_SCHEDULER, ARGSTR_JOBSCRIPT, ARGSTR_TASKS_PER_JOB, ARGSTR_EMAIL, ARGSTR_LICENSES]
 ARGGRP_CHECK_REGULAR = [ARGSTR_CHECKFILE, ARGSTR_CHECKFILE_ROOT, ARGSTR_CHECKFILE_ROOT_REGEX]
 ARGGRP_CHECK_OTHER = [ARGSTR_CHECK_SPECIAL]
 ARGGRP_CHECK_ALL = ARGGRP_CHECK_REGULAR + ARGGRP_CHECK_OTHER
@@ -852,6 +853,13 @@ def argparser_init():
             parse_fn=str),
         nargs='?',
         help="Send email to user upon end or abort of the LAST SUBMITTED task."
+    )
+    parser.add_argument(
+        ARGSTR_LICENSES,
+        type=script_utils.ARGTYPE_BOOL_PLUS(
+            parse_fn=str),
+        nargs='?',
+        help="Licenses argument to pass to slurm."
     )
 
     parser.add_argument(
@@ -1824,7 +1832,7 @@ def main():
                 jobscript=args_batch.get(ARGSTR_JOBSCRIPT), jobname=job_name,
                 time_hr=JOB_WALLTIME_HR, memory_gb=JOB_MEMORY_GB,
                 node=job_node_single, ncores=JOB_NCORES,
-                email=args.get(ARGSTR_EMAIL),
+                email=args.get(ARGSTR_EMAIL), licenses=args.get(ARGSTR_LICENSES),
                 envvars=[args_batch.get(ARGSTR_JOBSCRIPT), JOB_ABBREV, cmd_single, PYTHON_VERSION_ACCEPTED_MIN],
                 hold=False
             )
