@@ -2087,7 +2087,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                         ]))
 
                     if args.get(ARGSTR_CHECK_METHOD) == ARGCHO_CHECK_METHOD_CHECKSUM:
-                        cmd = "gdalinfo -checksum {}".format(raster_ffile)
+                        cmd = "gdalinfo -checksum '/vsicached?chunk_size=1MB&'file={}".format(raster_ffile)
                         LOGGER.debug("Running checksum with the following command:\n{}".format(cmd))
                         proc = subprocess.run(shlex.split(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
                         if proc.returncode != 0:
