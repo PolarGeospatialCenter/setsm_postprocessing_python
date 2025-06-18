@@ -2070,7 +2070,7 @@ def check_rasters(raster_ffiles, checkfile, args):
                                 break
 
                     try:
-                        ds = gdal.Open(raster_ffile, gdal.GA_ReadOnly)
+                        ds = gdal.Open("/vsicached?chunk_size=1MB&file="+raster_ffile, gdal.GA_ReadOnly)
                     except RuntimeError as e:
                         errmsg_print_and_list(errmsg_list,
                             "Raster file read error: {}".format(e))
