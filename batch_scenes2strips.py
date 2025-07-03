@@ -1759,7 +1759,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
             output_files.add(ortho2File_10m)
             keep_files.add(ortho2File_10m)
 
-    tap_arg = '-tap' if args.get(ARGSTR_RES) == 0.5 else ''
+    tap_arg = '-tap'
 
     for ofile in output_files:
         if os.path.isfile(ofile):
