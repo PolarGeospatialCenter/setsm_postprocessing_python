@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2019
 
@@ -6,7 +6,7 @@
 from __future__ import division
 from lib import script_utils
 
-PYTHON_VERSION_ACCEPTED_MIN = "2.7"  # supports multiple dot notation
+PYTHON_VERSION_ACCEPTED_MIN = "3.11"  # supports multiple dot notation
 if script_utils.PYTHON_VERSION < script_utils.VersionString(PYTHON_VERSION_ACCEPTED_MIN):
     raise script_utils.VersionError("Python version ({}) is below accepted minimum ({})".format(
         script_utils.PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
@@ -48,7 +48,7 @@ SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 SCRIPT_RUNCMD = ' '.join(sys.argv)+'\n'
-PYTHON_EXE = 'python -u'
+PYTHON_EXE = 'python3 -u'
 
 ##############################
 
