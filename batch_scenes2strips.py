@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # Erik Husby, Claire Porter; Polar Geospatial Center, University of Minnesota; 2019
 
@@ -6,7 +6,7 @@
 from __future__ import division
 from lib import script_utils
 
-PYTHON_VERSION_ACCEPTED_MIN = "2.7"  # supports multiple dot notation
+PYTHON_VERSION_ACCEPTED_MIN = "3.11"  # supports multiple dot notation
 if script_utils.PYTHON_VERSION < script_utils.VersionString(PYTHON_VERSION_ACCEPTED_MIN):
     raise script_utils.VersionError("Python version ({}) is below accepted minimum ({})".format(
         script_utils.PYTHON_VERSION, PYTHON_VERSION_ACCEPTED_MIN))
@@ -40,7 +40,7 @@ from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgument
 
 ## Core globals
 
-SCRIPT_VERSION_NUM = script_utils.VersionString('4.1')
+SCRIPT_VERSION_NUM = script_utils.VersionString('4.2')
 
 # Script paths and execution
 SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
@@ -48,7 +48,7 @@ SCRIPT_FNAME = os.path.basename(SCRIPT_FILE)
 SCRIPT_NAME, SCRIPT_EXT = os.path.splitext(SCRIPT_FNAME)
 SCRIPT_DIR = os.path.dirname(SCRIPT_FILE)
 SCRIPT_RUNCMD = ' '.join(sys.argv)+'\n'
-PYTHON_EXE = 'python -u'
+PYTHON_EXE = 'python3 -u'
 
 ##############################
 
@@ -95,7 +95,6 @@ ARGSTR_USE_PIL_IMRESIZE = '--use-pil-imresize'
 ARGCHO_DEM_TYPE_LSF = 'lsf'
 ARGCHO_DEM_TYPE_NON_LSF = 'non-lsf'
 ARGCHO_DEM_TYPE = [
-    ARGCHO_DEM_TYPE_LSF,
     ARGCHO_DEM_TYPE_NON_LSF
 ]
 ARGCHO_MASK_VER_MASKV1 = 'maskv1'
@@ -168,7 +167,7 @@ JOB_NODE = None
 
 ## Custom globals
 
-SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
+SUFFIX_PRIORITY_DEM = ['dem.tif', 'dem_smooth.tif']
 SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
 SUFFIX_PRIORITY_ORTHO1 = ['ortho_image1.tif', 'ortho_image_1.tif', 'ortho1.tif', 'ortho_1.tif', 'ortho.tif']
 SUFFIX_PRIORITY_ORTHO2 = ['ortho_image2.tif', 'ortho_image_2.tif', 'ortho2.tif', 'ortho_2.tif']
@@ -259,10 +258,10 @@ def argparser_init():
         ARGSTR_DEM_TYPE,
         type=str,
         choices=ARGCHO_DEM_TYPE,
-        default=ARGCHO_DEM_TYPE_LSF,
+        default=ARGCHO_DEM_TYPE_NON_LSF,
         help=' '.join([
             "Which version of all scene DEMs to work with.",
-            "\n'{}': Use the LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_LSF]),
+            #"\n'{}': Use the LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_LSF]),
             "\n'{}': Use the non-LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_NON_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_NON_LSF]),
             "\n"
         ])
@@ -1760,7 +1759,7 @@ def saveStripBrowse(args, demFile, demSuffix, maskSuffix):
             output_files.add(ortho2File_10m)
             keep_files.add(ortho2File_10m)
 
-    tap_arg = '-tap' if args.get(ARGSTR_RES) == 0.5 else ''
+    tap_arg = '-tap'
 
     for ofile in output_files:
         if os.path.isfile(ofile):
