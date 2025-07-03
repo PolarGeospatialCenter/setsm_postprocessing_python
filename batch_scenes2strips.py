@@ -40,7 +40,7 @@ from lib.script_utils import ScriptArgumentError, ExternalError, InvalidArgument
 
 ## Core globals
 
-SCRIPT_VERSION_NUM = script_utils.VersionString('4.1')
+SCRIPT_VERSION_NUM = script_utils.VersionString('4.2')
 
 # Script paths and execution
 SCRIPT_FILE = os.path.abspath(os.path.realpath(__file__))
