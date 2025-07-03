@@ -95,7 +95,6 @@ ARGSTR_USE_PIL_IMRESIZE = '--use-pil-imresize'
 ARGCHO_DEM_TYPE_LSF = 'lsf'
 ARGCHO_DEM_TYPE_NON_LSF = 'non-lsf'
 ARGCHO_DEM_TYPE = [
-    ARGCHO_DEM_TYPE_LSF,
     ARGCHO_DEM_TYPE_NON_LSF
 ]
 ARGCHO_MASK_VER_MASKV1 = 'maskv1'
@@ -168,7 +167,7 @@ JOB_NODE = None
 
 ## Custom globals
 
-SUFFIX_PRIORITY_DEM = ['dem_smooth.tif', 'dem.tif']
+SUFFIX_PRIORITY_DEM = ['dem.tif', 'dem_smooth.tif']
 SUFFIX_PRIORITY_MATCHTAG = ['matchtag_mt.tif', 'matchtag.tif']
 SUFFIX_PRIORITY_ORTHO1 = ['ortho_image1.tif', 'ortho_image_1.tif', 'ortho1.tif', 'ortho_1.tif', 'ortho.tif']
 SUFFIX_PRIORITY_ORTHO2 = ['ortho_image2.tif', 'ortho_image_2.tif', 'ortho2.tif', 'ortho_2.tif']
@@ -259,10 +258,10 @@ def argparser_init():
         ARGSTR_DEM_TYPE,
         type=str,
         choices=ARGCHO_DEM_TYPE,
-        default=ARGCHO_DEM_TYPE_LSF,
+        default=ARGCHO_DEM_TYPE_NON_LSF,
         help=' '.join([
             "Which version of all scene DEMs to work with.",
-            "\n'{}': Use the LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_LSF]),
+            #"\n'{}': Use the LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_LSF]),
             "\n'{}': Use the non-LSF DEM with '{}' file suffix.".format(ARGCHO_DEM_TYPE_NON_LSF, DEM_TYPE_SUFFIX_DICT[ARGCHO_DEM_TYPE_NON_LSF]),
             "\n"
         ])
