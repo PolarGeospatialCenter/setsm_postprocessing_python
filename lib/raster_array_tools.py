@@ -2416,7 +2416,8 @@ def bwareaopen(array, size_tolerance, connectivity=8, in_place=False):
     array : ndarray, 2D
         Equivalent to `ar`.
     size_tolerance : positive int
-        Equivalent to `min_size`.
+        Equivalent to `min_size` (remove if fewer than # pixels, deprecated in 0.26.0)
+        After 0.26.0, use `max_size=size_tolerance-1` (remove if fewer or equal to # pixels)
     connectivity : int, 4 or 8
         For drawing boundaries...
         If 4, only pixels with touching edges are considered connected.
@@ -2435,7 +2436,7 @@ def bwareaopen(array, size_tolerance, connectivity=8, in_place=False):
 
     """
     out_array = array if in_place else None
-    return sk_morphology.remove_small_objects(array, size_tolerance, connectivity/4, out=out_array)
+    return sk_morphology.remove_small_objects(array, max_size=size_tolerance-1, connectivity=connectivity/4, out=out_array)
 
 
 def bwboundaries_array(array, side='inner', connectivity=8, noholes=False,
