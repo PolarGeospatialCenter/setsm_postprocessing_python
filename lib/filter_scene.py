@@ -1882,7 +1882,8 @@ def readFromXml(xmlFile, xml_paramstrs):
     while line != '' and None in values:
         for ps in xml_paramstrs_left:
             if ps in line:
-                values[xml_paramstrs.index(ps)] = line.replace("<{}>".format(ps), '').replace("</{}>".format(ps), '')
+                regex = "<([^:]*:){0,1}"+ps+">(.*)</([^:]*:){0,1}"+ps+">"
+                values[xml_paramstrs.index(ps)] = re.sub(regex, r"\2", line)
                 xml_paramstrs_left.remove(ps)
                 break
     xmlFile_fp.close()
