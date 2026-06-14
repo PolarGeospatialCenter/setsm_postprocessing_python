@@ -1,4 +1,4 @@
-# -*- coding: UTF-8 -*-
+# -*- coding: utf-8 -*-
 
 # Version 3.1; Erik Husby, Ryan Shellberg; Polar Geospatial Center, University of Minnesota; 2019
 # Translated from MATLAB code written by Ian Howat, Ohio State University, 2018
