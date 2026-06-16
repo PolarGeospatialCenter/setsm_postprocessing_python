@@ -1882,6 +1882,8 @@ def readFromXml(xmlFile, xml_paramstrs):
     while line != '' and None in values:
         for ps in xml_paramstrs_left:
             if ps in line:
+                if not re.match(r"^[A-Za-z0-9-_\.]+$", ps):
+                    raise InvalidArgumentError(f"Error: Illegal XML tag name: {ps}")
                 regex = "<([^:]*:){0,1}"+ps+">(.*)</([^:]*:){0,1}"+ps+">"
                 values[xml_paramstrs.index(ps)] = re.sub(regex, r"\2", line)
                 xml_paramstrs_left.remove(ps)
