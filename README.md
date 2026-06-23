@@ -72,6 +72,8 @@ When building cross-track ("xtrack") strips:
 * Fixed bug that caused scene DEM (bit)mask to skip a post-processing step when the mask is applied to scene DEM component rasters after loading data in the core `scenes2strips` routine.
 * "Strip DEM ID" is now written into output strip `*_meta.txt` metadata files.
 
+#### 4.2
+* Produce only non-LSF strips.
 
 ### Turning scenes into strips
 
