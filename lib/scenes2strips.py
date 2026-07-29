@@ -51,6 +51,10 @@ class RasterDimensionError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
 
+class RasterValueError(Exception):
+    def __init__(self, msg=""):
+        super(Exception, self).__init__(msg)
+
 class MetadataError(Exception):
     def __init__(self, msg=""):
         super(Exception, self).__init__(msg)
@@ -1035,14 +1039,18 @@ def loadData(demFile, matchFile, orthoFile, ortho2File, maskFile, metaFile, targ
 
     demFile_srs = rat.extractRasterData(rat.openRaster(demFile), 'spat_ref')
 
-    z, x_dem, y_dem, spat_ref = rat.extractRasterData(rat.openRaster(demFile, target_srs, 'bilinear'), 'array', 'x', 'y', 'spat_ref')
+    z, x_dem, y_dem, spat_ref, nodata_val = rat.extractRasterData(rat.openRaster(demFile, target_srs, 'bilinear'), 'array', 'x', 'y', 'spat_ref', 'nodata_val')
     if spat_ref.IsSame(target_srs) != 1:
         raise SpatialRefError("DEM '{}' spatial reference ({}) mismatch with strip spatial reference ({})".format(
                               demFile, spat_ref.ExportToProj4(), target_srs.ExportToProj4()))
 
+    # Fail if any input pixel is infinite
+    if np.any(np.isinf(z)):
+        #warnings.warn("DEM '{}' contains infinite values".format(demFile))
+        raise RasterValueError("DEM '{}' contains infinite values".format(demFile))
+
     # A DEM pixel with a value of -9999 is a nodata pixel; interpret it as NaN.
-    # TODO: Ask Ian about the following interpretation of nodata values.
-    z[(z < -100) | (z == 0) | (z == -np.inf) | (z == np.inf)] = np.nan
+    z[(z == nodata_val) | np.isinf(z)] = np.nan
 
     check_srs = rat.extractRasterData(rat.openRaster(matchFile), 'spat_ref')
     if check_srs.IsSame(demFile_srs) != 1:
